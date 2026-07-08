@@ -80,6 +80,8 @@
             overflow: hidden;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -959,17 +961,1211 @@
         let currentUser = null;
         let currentTabId = 'welcome-page'; // Tracks the active tab
 
-        // ---- REPLACE THIS WITH YOUR DEPLOYED APPS SCRIPT URL ----
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzxo1R4Po-IvTervApxV0O7XPfTlbrKrLG4PeIupUTecDOsmaLQw1DbTHdO8COu-eb1Ig/exec';
+        /*
+        -- Run this SQL in Supabase SQL Editor before first use:
 
-        async function api(action, payload = {}) {
-            const res = await fetch(APPS_SCRIPT_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action, payload }),
+        -- Players/Standings table
+        create table players (
+          id uuid primary key default gen_random_uuid(),
+          name text not null,
+          elo integer default 1200,
+          wins integer default 0,
+          losses integer default 0,
+          total_games integer default 0,
+          gender text,
+          weekly_sum integer default 0,
+          last_match_date date,
+          membership text default 'Non-Member',
+          is_hidden boolean default false,
+          is_under18 boolean default false,
+          created_at timestamptz default now()
+        );
+
+        -- Match history table
+        create table matches (
+          id uuid primary key default gen_random_uuid(),
+          match_date date not null,
+          w1 text not null,
+          w2 text default 'Singles',
+          l1 text not null,
+          l2 text default 'Singles',
+          score_w integer,
+          score_l integer,
+          change_w1 integer,
+          change_w2 integer,
+          change_l1 integer,
+          change_l2 integer,
+          created_at timestamptz default now()
+        );
+
+        -- Events table
+        create table events (
+          id uuid primary key default gen_random_uuid(),
+          title text not null,
+          event_date date not null,
+          event_time text,
+          location text,
+          max_players integer,
+          member_open_date date,
+          public_open_date date,
+          status text default 'Active',
+          signup_deadline date,
+          duration numeric,
+          member_price numeric default 0,
+          non_member_price numeric default 0,
+          newcomers_only boolean default false,
+          under18_only boolean default false,
+          created_at timestamptz default now()
+        );
+
+        -- Signups table
+        create table signups (
+          id uuid primary key default gen_random_uuid(),
+          event_id uuid references events(id),
+          player_name text not null,
+          player_type text,
+          email text,
+          status text default 'Confirmed',
+          payment_status text default 'Unpaid',
+          created_at timestamptz default now()
+        );
+
+        -- Users table
+        create table users (
+          id uuid primary key default gen_random_uuid(),
+          username text unique not null,
+          password_hash text not null,
+          first_name text not null,
+          surname text not null,
+          email text,
+          role text default 'Non-Member',
+          gender text,
+          starting_elo integer default 1200,
+          is_under18 boolean default false,
+          consent_verified boolean default false,
+          status text default 'Pending',
+          reset_token text,
+          reset_token_expiry timestamptz,
+          created_at timestamptz default now()
+        );
+
+        -- Locations table
+        create table locations (
+          id uuid primary key default gen_random_uuid(),
+          name text not null
+        );
+
+        -- Live scramble table
+        create table live_scramble (
+          id uuid primary key default gen_random_uuid(),
+          round integer,
+          court integer,
+          p1 text,
+          p2 text,
+          p3 text,
+          p4 text,
+          score_a integer,
+          score_b integer,
+          created_at timestamptz default now()
+        );
+
+        -- Ladder session table
+        create table ladder_session (
+          id uuid primary key default gen_random_uuid(),
+          status text default 'Active',
+          total_rounds integer,
+          current_round integer default 1,
+          players jsonb,
+          created_at timestamptz default now()
+        );
+
+        -- Ladder courts table
+        create table ladder_courts (
+          id uuid primary key default gen_random_uuid(),
+          session_id uuid references ladder_session(id),
+          court integer,
+          player_name text,
+          round_points integer default 0
+        );
+
+        -- Ladder games table
+        create table ladder_games (
+          id uuid primary key default gen_random_uuid(),
+          session_id uuid references ladder_session(id),
+          court integer,
+          round integer,
+          p1 text,
+          p2 text,
+          p3 text,
+          p4 text,
+          score_a integer,
+          score_b integer
+        );
+        */
+
+        const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_qFG6VEHtM9eMy_6WR86QxQ_fi7Wzed8';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // TODO: Replace with your EmailJS credentials
+        const EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID';
+        const EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';
+        // TODO: Replace template IDs below with your configured EmailJS templates
+        const EMAILJS_TEMPLATE_CONTACT = 'YOUR_CONTACT_TEMPLATE_ID';
+        const EMAILJS_TEMPLATE_ACCIDENT = 'YOUR_ACCIDENT_TEMPLATE_ID';
+        const EMAILJS_TEMPLATE_PASSWORD_RESET = 'YOUR_PASSWORD_RESET_TEMPLATE_ID';
+        const EMAILJS_TEMPLATE_EVENT_CANCEL = 'YOUR_EVENT_CANCEL_TEMPLATE_ID';
+        emailjs.init(EMAILJS_PUBLIC_KEY);
+
+        const CACHE_KEY = 'pickle_global_data_cache_v1';
+        const CACHE_TTL_MS = 5 * 60 * 1000;
+        const DEFAULT_ELO = 1200;
+        let liveScrambleIdMap = {};
+        let ladderGameIdMap = {};
+
+        function normalizeName(name) {
+            return String(name || '').trim().toLowerCase();
+        }
+
+        function parseDateOnly(value) {
+            if (!value) return null;
+            return String(value).slice(0, 10);
+        }
+
+        function getCachedLeagueData() {
+            try {
+                const cachedRaw = localStorage.getItem(CACHE_KEY);
+                if (!cachedRaw) return null;
+                const cached = JSON.parse(cachedRaw);
+                if (!cached || !cached.ts || !cached.data) return null;
+                if ((Date.now() - cached.ts) > CACHE_TTL_MS) return null;
+                return cached.data;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function setCachedLeagueData(data) {
+            try {
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
+            } catch (_) {}
+        }
+
+        function clearLeagueCache() {
+            try { localStorage.removeItem(CACHE_KEY); } catch (_) {}
+        }
+
+        function toPlayerView(row) {
+            return {
+                name: row.name,
+                elo: Number(row.elo || DEFAULT_ELO),
+                wins: Number(row.wins || 0),
+                losses: Number(row.losses || 0),
+                totalGames: Number(row.total_games || 0),
+                gender: row.gender || '',
+                weeklySum: Number(row.weekly_sum || 0),
+                lastMatchDate: row.last_match_date || '',
+                membership: row.membership || 'Non-Member',
+                isHidden: !!row.is_hidden,
+                isUnder18: !!row.is_under18
+            };
+        }
+
+        function mapGlobalData(payload) {
+            const players = payload.players || [];
+            const matches = payload.matches || [];
+            const events = payload.events || [];
+            const signups = payload.signups || [];
+            const locations = payload.locations || [];
+            const pendingUsers = payload.pendingUsers || [];
+            const ladderSession = payload.ladderSession || null;
+            const ladderCourts = payload.ladderCourts || [];
+            const ladderGames = payload.ladderGames || [];
+            const scrambleRows = payload.liveScramble || [];
+
+            liveScrambleIdMap = {};
+            const activeScramble = scrambleRows.map((r, i) => {
+                const displayId = i + 1;
+                liveScrambleIdMap[String(displayId)] = r.id;
+                return [
+                    displayId,
+                    r.p1 || '',
+                    r.p2 || 'Singles',
+                    r.p3 || '',
+                    r.p4 || 'Singles',
+                    r.score_a ?? '',
+                    r.score_b ?? '',
+                    Number(r.court || 0),
+                    Number(r.round || 0)
+                ];
             });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
+
+            ladderGameIdMap = {};
+            const mappedLadderGames = ladderGames.map((g, i) => {
+                const displayId = i + 1;
+                ladderGameIdMap[String(displayId)] = g.id;
+                return {
+                    gameId: displayId,
+                    court: Number(g.court || 0),
+                    p1: g.p1 || '',
+                    p2: g.p2 || 'Singles',
+                    p3: g.p3 || '',
+                    p4: g.p4 || 'Singles',
+                    scoreA: g.score_a ?? '',
+                    scoreB: g.score_b ?? ''
+                };
+            });
+
+            return {
+                standings: players.map(toPlayerView),
+                history: matches
+                    .map(m => ({
+                        date: m.match_date,
+                        w1: m.w1,
+                        w2: m.w2 || 'Singles',
+                        l1: m.l1,
+                        l2: m.l2 || 'Singles',
+                        sW: Number(m.score_w || 0),
+                        sL: Number(m.score_l || 0),
+                        c1: Number(m.change_w1 || 0),
+                        c2: Number(m.change_w2 || 0),
+                        c3: Number(m.change_l1 || 0),
+                        c4: Number(m.change_l2 || 0)
+                    }))
+                    .sort((a, b) => new Date(b.date) - new Date(a.date)),
+                events: events.map(e => [
+                    e.id,
+                    e.title,
+                    e.event_date,
+                    e.event_time || '',
+                    Number(e.max_players || 0),
+                    e.member_open_date || '',
+                    e.public_open_date || '',
+                    e.status || 'Active',
+                    e.location || '',
+                    e.signup_deadline || '',
+                    e.duration ?? '',
+                    Number(e.member_price || 0),
+                    Number(e.non_member_price || 0),
+                    !!e.newcomers_only,
+                    !!e.under18_only
+                ]),
+                signups: signups.map(s => [
+                    s.event_id,
+                    s.player_name,
+                    s.created_at || '',
+                    s.player_type || '',
+                    s.email || '',
+                    s.status || 'Confirmed',
+                    s.payment_status || 'Unpaid'
+                ]),
+                names: players
+                    .filter(p => !p.is_hidden && ['Member', 'Admin'].includes(p.membership || 'Non-Member'))
+                    .map(p => p.name),
+                locations: locations.map(l => l.name).filter(Boolean),
+                pendingUsers: pendingUsers.map(u => [
+                    u.username,
+                    '',
+                    u.first_name,
+                    u.surname,
+                    u.email || '',
+                    !!u.is_under18,
+                    u.gender || '',
+                    Number(u.starting_elo || DEFAULT_ELO),
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    !!u.consent_verified
+                ]),
+                ladderSession: ladderSession ? {
+                    id: ladderSession.id,
+                    status: ladderSession.status,
+                    totalRounds: Number(ladderSession.total_rounds || 0),
+                    currentRound: Number(ladderSession.current_round || 1),
+                    players: ladderSession.players || []
+                } : null,
+                ladderCourts: ladderCourts.map(c => ({
+                    court: Number(c.court || 0),
+                    playerName: c.player_name || '',
+                    roundPoints: Number(c.round_points || 0)
+                })),
+                ladderGames: mappedLadderGames,
+                activeScramble
+            };
+        }
+
+        async function fetchAllDataFromSupabase() {
+            const [
+                playersRes,
+                matchesRes,
+                eventsRes,
+                signupsRes,
+                locationsRes,
+                pendingUsersRes,
+                ladderSessionRes,
+                scrambleRes
+            ] = await Promise.all([
+                supabase.from('players').select('*').order('name', { ascending: true }),
+                supabase.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
+                supabase.from('events').select('*').order('event_date', { ascending: true }),
+                supabase.from('signups').select('*').order('created_at', { ascending: true }),
+                supabase.from('locations').select('*').order('name', { ascending: true }),
+                supabase.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
+                supabase.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: false }).limit(1),
+                supabase.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true })
+            ]);
+
+            const firstError = [playersRes, matchesRes, eventsRes, signupsRes, locationsRes, pendingUsersRes, ladderSessionRes, scrambleRes].find(r => r.error);
+            if (firstError && firstError.error) throw new Error(firstError.error.message);
+
+            const ladderSession = ladderSessionRes.data && ladderSessionRes.data.length ? ladderSessionRes.data[0] : null;
+            let ladderCourts = [];
+            let ladderGames = [];
+
+            if (ladderSession) {
+                const [courtsRes, gamesRes] = await Promise.all([
+                    supabase.from('ladder_courts').select('*').eq('session_id', ladderSession.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
+                    supabase.from('ladder_games').select('*').eq('session_id', ladderSession.id).eq('round', ladderSession.current_round).order('court', { ascending: true }).order('id', { ascending: true })
+                ]);
+                if (courtsRes.error) throw new Error(courtsRes.error.message);
+                if (gamesRes.error) throw new Error(gamesRes.error.message);
+                ladderCourts = courtsRes.data || [];
+                ladderGames = gamesRes.data || [];
+            }
+
+            return mapGlobalData({
+                players: playersRes.data || [],
+                matches: matchesRes.data || [],
+                events: eventsRes.data || [],
+                signups: signupsRes.data || [],
+                locations: locationsRes.data || [],
+                pendingUsers: pendingUsersRes.data || [],
+                ladderSession,
+                ladderCourts,
+                ladderGames,
+                liveScramble: scrambleRes.data || []
+            });
+        }
+
+        async function loadAllData(options = {}) {
+            const { useCache = true } = options;
+            if (useCache) {
+                const cached = getCachedLeagueData();
+                if (cached) return cached;
+            }
+            const data = await fetchAllDataFromSupabase();
+            setCachedLeagueData(data);
             return data;
+        }
+
+        async function refreshAllData() {
+            clearLeagueCache();
+            const data = await loadAllData({ useCache: false });
+            render(data);
+            return data;
+        }
+
+        function calculateElo(winnerElo, loserElo, scoreW, scoreL, isProvisional) {
+            const k = isProvisional ? 48 : 32;
+            const expectedWinner = 1 / (1 + Math.pow(10, (loserElo - winnerElo) / 400));
+            const margin = Math.max(1, Number(scoreW || 0) - Number(scoreL || 0));
+            const marginMultiplier = 1 + (Math.log(margin + 1) / Math.log(2)) * 0.25;
+            const winnerChange = Math.max(1, Math.round(k * marginMultiplier * (1 - expectedWinner)));
+            return { winnerChange, loserChange: -winnerChange };
+        }
+
+        async function getPlayersMap() {
+            const { data, error } = await supabase.from('players').select('*').order('name', { ascending: true });
+            if (error) throw new Error(error.message);
+            const map = new Map();
+            (data || []).forEach(p => map.set(normalizeName(p.name), p));
+            return map;
+        }
+
+        async function updatePlayerRecord(player) {
+            const { error } = await supabase
+                .from('players')
+                .update({
+                    elo: Math.round(player.elo),
+                    wins: player.wins,
+                    losses: player.losses,
+                    total_games: player.totalGames,
+                    weekly_sum: Math.round(player.weeklySum),
+                    last_match_date: player.lastMatchDate || null
+                })
+                .eq('name', player.name);
+            if (error) throw new Error(error.message);
+        }
+
+        async function applyMatchResultAndPersist(matchRow) {
+            const playerMap = await getPlayersMap();
+            const winners = [matchRow.w1, matchRow.w2].filter(n => n && n !== 'Singles');
+            const losers = [matchRow.l1, matchRow.l2].filter(n => n && n !== 'Singles');
+            const winnerPlayers = winners.map(n => playerMap.get(normalizeName(n))).filter(Boolean);
+            const loserPlayers = losers.map(n => playerMap.get(normalizeName(n))).filter(Boolean);
+            if (!winnerPlayers.length || !loserPlayers.length) throw new Error('Match players not found in players table.');
+
+            const winnerAvg = winnerPlayers.reduce((sum, p) => sum + Number(p.elo || DEFAULT_ELO), 0) / winnerPlayers.length;
+            const loserAvg = loserPlayers.reduce((sum, p) => sum + Number(p.elo || DEFAULT_ELO), 0) / loserPlayers.length;
+            const isProvisional = [...winnerPlayers, ...loserPlayers].some(p => Number(p.total_games || 0) < 10);
+            const eloChange = calculateElo(winnerAvg, loserAvg, matchRow.score_w, matchRow.score_l, isProvisional);
+
+            for (const p of winnerPlayers) {
+                p.elo = Number(p.elo || DEFAULT_ELO) + eloChange.winnerChange;
+                p.wins = Number(p.wins || 0) + 1;
+                p.total_games = Number(p.total_games || 0) + 1;
+                p.weekly_sum = Number(p.weekly_sum || 0) + eloChange.winnerChange;
+                p.last_match_date = matchRow.match_date;
+            }
+            for (const p of loserPlayers) {
+                p.elo = Number(p.elo || DEFAULT_ELO) + eloChange.loserChange;
+                p.losses = Number(p.losses || 0) + 1;
+                p.total_games = Number(p.total_games || 0) + 1;
+                p.weekly_sum = Number(p.weekly_sum || 0) + eloChange.loserChange;
+                p.last_match_date = matchRow.match_date;
+            }
+
+            await Promise.all([...winnerPlayers, ...loserPlayers].map(p => updatePlayerRecord({
+                name: p.name,
+                elo: p.elo,
+                wins: Number(p.wins || 0),
+                losses: Number(p.losses || 0),
+                totalGames: Number(p.total_games || 0),
+                weeklySum: Number(p.weekly_sum || 0),
+                lastMatchDate: p.last_match_date
+            })));
+
+            return {
+                change_w1: winners[0] ? eloChange.winnerChange : 0,
+                change_w2: winners[1] ? eloChange.winnerChange : 0,
+                change_l1: losers[0] ? eloChange.loserChange : 0,
+                change_l2: losers[1] ? eloChange.loserChange : 0
+            };
+        }
+
+        async function recalculateAllEloFromScratch() {
+            const [{ data: players, error: playersError }, { data: matches, error: matchesError }] = await Promise.all([
+                supabase.from('players').select('*').order('name', { ascending: true }),
+                supabase.from('matches').select('*').order('match_date', { ascending: true }).order('created_at', { ascending: true })
+            ]);
+            if (playersError) throw new Error(playersError.message);
+            if (matchesError) throw new Error(matchesError.message);
+
+            const stats = new Map();
+            (players || []).forEach(p => {
+                stats.set(normalizeName(p.name), {
+                    name: p.name,
+                    elo: Number(p.elo || DEFAULT_ELO),
+                    wins: 0,
+                    losses: 0,
+                    totalGames: 0,
+                    weeklySum: 0,
+                    lastMatchDate: null
+                });
+            });
+
+            for (const m of (matches || [])) {
+                const winners = [m.w1, m.w2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
+                const losers = [m.l1, m.l2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
+                if (!winners.length || !losers.length) continue;
+                const winnerAvg = winners.reduce((s, p) => s + p.elo, 0) / winners.length;
+                const loserAvg = losers.reduce((s, p) => s + p.elo, 0) / losers.length;
+                const isProv = [...winners, ...losers].some(p => p.totalGames < 10);
+                const changes = calculateElo(winnerAvg, loserAvg, m.score_w, m.score_l, isProv);
+
+                winners.forEach(p => {
+                    p.elo += changes.winnerChange;
+                    p.wins += 1;
+                    p.totalGames += 1;
+                    p.weeklySum += changes.winnerChange;
+                    p.lastMatchDate = m.match_date;
+                });
+                losers.forEach(p => {
+                    p.elo += changes.loserChange;
+                    p.losses += 1;
+                    p.totalGames += 1;
+                    p.weeklySum += changes.loserChange;
+                    p.lastMatchDate = m.match_date;
+                });
+
+                await supabase.from('matches').update({
+                    change_w1: winners[0] ? changes.winnerChange : 0,
+                    change_w2: winners[1] ? changes.winnerChange : 0,
+                    change_l1: losers[0] ? changes.loserChange : 0,
+                    change_l2: losers[1] ? changes.loserChange : 0
+                }).eq('id', m.id);
+            }
+
+            await Promise.all(Array.from(stats.values()).map(updatePlayerRecord));
+        }
+
+        async function processAdminAction(d) {
+            if (d.type !== 'match') throw new Error('Unsupported admin action type.');
+            const matchRow = {
+                match_date: d.matchDate,
+                w1: d.w1,
+                w2: d.w2 || 'Singles',
+                l1: d.l1,
+                l2: d.l2 || 'Singles',
+                score_w: Number(d.sW || 0),
+                score_l: Number(d.sL || 0),
+                change_w1: 0,
+                change_w2: 0,
+                change_l1: 0,
+                change_l2: 0
+            };
+
+            const changes = await applyMatchResultAndPersist(matchRow);
+            matchRow.change_w1 = changes.change_w1;
+            matchRow.change_w2 = changes.change_w2;
+            matchRow.change_l1 = changes.change_l1;
+            matchRow.change_l2 = changes.change_l2;
+
+            const { error } = await supabase.from('matches').insert(matchRow);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function deleteMatchFromSheet(match) {
+            const { error } = await supabase
+                .from('matches')
+                .delete()
+                .eq('match_date', match.date)
+                .eq('w1', match.w1)
+                .eq('w2', match.w2 || 'Singles')
+                .eq('l1', match.l1)
+                .eq('l2', match.l2 || 'Singles')
+                .eq('score_w', Number(match.sW || 0))
+                .eq('score_l', Number(match.sL || 0));
+            if (error) throw new Error(error.message);
+            await recalculateAllEloFromScratch();
+            return refreshAllData();
+        }
+
+        async function startLiveScramble(plan) {
+            const { error: clearError } = await supabase.from('live_scramble').delete().not('id', 'is', null);
+            if (clearError) throw new Error(clearError.message);
+            if (plan && plan.length) {
+                const rows = plan.map(r => ({
+                    round: Number(r.round || 0),
+                    court: Number(r.court || 0),
+                    p1: r.p1 || '',
+                    p2: r.p2 || 'Singles',
+                    p3: r.p3 || '',
+                    p4: r.p4 || 'Singles',
+                    score_a: null,
+                    score_b: null
+                }));
+                const { error } = await supabase.from('live_scramble').insert(rows);
+                if (error) throw new Error(error.message);
+            }
+            return refreshAllData();
+        }
+
+        async function clearLiveScramble() {
+            const { error } = await supabase.from('live_scramble').delete().not('id', 'is', null);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function updateLiveScore(payload) {
+            const realId = liveScrambleIdMap[String(payload.id)] || payload.id;
+            const { error } = await supabase
+                .from('live_scramble')
+                .update({ score_a: Number(payload.sA), score_b: Number(payload.sB) })
+                .eq('id', realId);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        function splitCourtSizes(count) {
+            for (let courts = Math.ceil(count / 5); courts <= Math.floor(count / 4); courts++) {
+                const base = Math.floor(count / courts);
+                const extra = count % courts;
+                if (base < 4 || base > 5) continue;
+                const sizes = [];
+                for (let i = 0; i < courts; i++) sizes.push(base + (i < extra ? 1 : 0));
+                if (sizes.every(s => s >= 4 && s <= 5)) return sizes;
+            }
+            throw new Error('Unable to split selected players into courts of 4-5.');
+        }
+
+        function generateCourtRoundGame(players, round) {
+            const patterns4 = [[0,1,2,3], [0,2,1,3], [0,3,1,2]];
+            const patterns5 = [[0,1,2,3], [0,2,4,1], [0,3,4,2], [0,4,1,3], [1,2,3,4]];
+            if (players.length === 4) return patterns4[(round - 1) % patterns4.length].map(i => players[i]);
+            return patterns5[(round - 1) % patterns5.length].map(i => players[i]);
+        }
+
+        async function getActiveLadderSessionRaw() {
+            const { data, error } = await supabase
+                .from('ladder_session')
+                .select('*')
+                .eq('status', 'Active')
+                .order('created_at', { ascending: false })
+                .limit(1);
+            if (error) throw new Error(error.message);
+            return data && data.length ? data[0] : null;
+        }
+
+        async function getCurrentLadderState() {
+            const session = await getActiveLadderSessionRaw();
+            if (!session) return { session: null, courts: [], games: [] };
+
+            const [courtsRes, gamesRes] = await Promise.all([
+                supabase.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
+                supabase.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }).order('id', { ascending: true })
+            ]);
+            if (courtsRes.error) throw new Error(courtsRes.error.message);
+            if (gamesRes.error) throw new Error(gamesRes.error.message);
+
+            const mapped = mapGlobalData({
+                players: [],
+                matches: [],
+                events: [],
+                signups: [],
+                locations: [],
+                pendingUsers: [],
+                ladderSession: session,
+                ladderCourts: courtsRes.data || [],
+                ladderGames: gamesRes.data || [],
+                liveScramble: []
+            });
+
+            return {
+                session: mapped.ladderSession,
+                courts: mapped.ladderCourts,
+                games: mapped.ladderGames
+            };
+        }
+
+        async function startLadderSessionData(payload) {
+            const active = await getActiveLadderSessionRaw();
+            if (active) {
+                await supabase.from('ladder_games').delete().eq('session_id', active.id);
+                await supabase.from('ladder_courts').delete().eq('session_id', active.id);
+                await supabase.from('ladder_session').update({ status: 'Finished' }).eq('id', active.id);
+            }
+
+            const playerMap = await getPlayersMap();
+            const selectedPlayers = (payload.players || []).map(name => ({
+                name,
+                elo: Number((playerMap.get(normalizeName(name)) || {}).elo || DEFAULT_ELO)
+            })).sort((a, b) => b.elo - a.elo);
+
+            const sizes = splitCourtSizes(selectedPlayers.length);
+            const courts = [];
+            let cursor = 0;
+            sizes.forEach((size, index) => {
+                courts.push({ court: index + 1, players: selectedPlayers.slice(cursor, cursor + size).map(p => p.name) });
+                cursor += size;
+            });
+
+            const { data: insertedSession, error: sessionError } = await supabase
+                .from('ladder_session')
+                .insert({ status: 'Active', total_rounds: Number(payload.totalRounds || 1), current_round: 1, players: courts.map(c => c.players) })
+                .select()
+                .single();
+            if (sessionError) throw new Error(sessionError.message);
+
+            const courtRows = courts.flatMap(c => c.players.map(playerName => ({
+                session_id: insertedSession.id,
+                court: c.court,
+                player_name: playerName,
+                round_points: 0
+            })));
+            const { error: courtsError } = await supabase.from('ladder_courts').insert(courtRows);
+            if (courtsError) throw new Error(courtsError.message);
+
+            const firstRoundGames = courts.map(c => {
+                const game = generateCourtRoundGame(c.players, 1);
+                return {
+                    session_id: insertedSession.id,
+                    court: c.court,
+                    round: 1,
+                    p1: game[0],
+                    p2: game[1] || 'Singles',
+                    p3: game[2],
+                    p4: game[3] || 'Singles',
+                    score_a: null,
+                    score_b: null
+                };
+            });
+            const { error: gamesError } = await supabase.from('ladder_games').insert(firstRoundGames);
+            if (gamesError) throw new Error(gamesError.message);
+
+            clearLeagueCache();
+            return getCurrentLadderState();
+        }
+
+        async function updateLadderScore(payload) {
+            const gameUuid = ladderGameIdMap[String(payload.gameId)] || payload.gameId;
+            const { data: game, error: gameReadError } = await supabase.from('ladder_games').select('*').eq('id', gameUuid).single();
+            if (gameReadError) throw new Error(gameReadError.message);
+
+            const scoreA = Number(payload.scoreA);
+            const scoreB = Number(payload.scoreB);
+            const { error } = await supabase
+                .from('ladder_games')
+                .update({ score_a: scoreA, score_b: scoreB })
+                .eq('id', gameUuid);
+            if (error) throw new Error(error.message);
+
+            const teamA = [game.p1, game.p2].filter(n => n && n !== 'Singles');
+            const teamB = [game.p3, game.p4].filter(n => n && n !== 'Singles');
+            const winners = scoreA > scoreB ? teamA : teamB;
+            const losers = scoreA > scoreB ? teamB : teamA;
+
+            for (const name of winners) {
+                const { data: row, error: rowErr } = await supabase
+                    .from('ladder_courts')
+                    .select('*')
+                    .eq('session_id', game.session_id)
+                    .eq('court', game.court)
+                    .eq('player_name', name)
+                    .single();
+                if (!rowErr && row) await supabase.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 2 }).eq('id', row.id);
+            }
+
+            for (const name of losers) {
+                const { data: row, error: rowErr } = await supabase
+                    .from('ladder_courts')
+                    .select('*')
+                    .eq('session_id', game.session_id)
+                    .eq('court', game.court)
+                    .eq('player_name', name)
+                    .single();
+                if (!rowErr && row) await supabase.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 1 }).eq('id', row.id);
+            }
+
+            clearLeagueCache();
+            return getCurrentLadderState();
+        }
+
+        async function endLadderRound() {
+            const session = await getActiveLadderSessionRaw();
+            if (!session) throw new Error('No active ladder session found.');
+
+            const [{ data: roundGames, error: gamesErr }, { data: courtRows, error: courtsErr }] = await Promise.all([
+                supabase.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }),
+                supabase.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true })
+            ]);
+            if (gamesErr) throw new Error(gamesErr.message);
+            if (courtsErr) throw new Error(courtsErr.message);
+
+            const scoredGames = (roundGames || []).filter(g => g.score_a !== null && g.score_b !== null);
+            for (const g of scoredGames) {
+                const matchRow = {
+                    match_date: new Date().toISOString().slice(0, 10),
+                    w1: Number(g.score_a) > Number(g.score_b) ? g.p1 : g.p3,
+                    w2: Number(g.score_a) > Number(g.score_b) ? (g.p2 || 'Singles') : (g.p4 || 'Singles'),
+                    l1: Number(g.score_a) > Number(g.score_b) ? g.p3 : g.p1,
+                    l2: Number(g.score_a) > Number(g.score_b) ? (g.p4 || 'Singles') : (g.p2 || 'Singles'),
+                    score_w: Math.max(Number(g.score_a), Number(g.score_b)),
+                    score_l: Math.min(Number(g.score_a), Number(g.score_b)),
+                    change_w1: 0,
+                    change_w2: 0,
+                    change_l1: 0,
+                    change_l2: 0
+                };
+                const changes = await applyMatchResultAndPersist(matchRow);
+                Object.assign(matchRow, changes);
+                await supabase.from('matches').insert(matchRow);
+            }
+
+            const grouped = {};
+            (courtRows || []).forEach(r => {
+                if (!grouped[r.court]) grouped[r.court] = [];
+                grouped[r.court].push(r);
+            });
+            const courts = Object.keys(grouped).map(Number).sort((a, b) => a - b);
+            courts.forEach(c => grouped[c].sort((a, b) => Number(b.round_points || 0) - Number(a.round_points || 0)));
+
+            const promotions = [];
+            const relegations = [];
+
+            for (let i = 1; i < courts.length; i++) {
+                const upperCourt = courts[i - 1];
+                const lowerCourt = courts[i];
+                const upCandidate = grouped[lowerCourt][0];
+                const downCandidate = grouped[upperCourt][grouped[upperCourt].length - 1];
+                if (!upCandidate || !downCandidate) continue;
+
+                promotions.push({ player: upCandidate.player_name, fromCourt: lowerCourt });
+                relegations.push({ player: downCandidate.player_name, fromCourt: upperCourt });
+
+                await supabase.from('ladder_courts').update({ court: upperCourt }).eq('id', upCandidate.id);
+                await supabase.from('ladder_courts').update({ court: lowerCourt }).eq('id', downCandidate.id);
+            }
+
+            const finished = Number(session.current_round) >= Number(session.total_rounds);
+
+            if (finished) {
+                await supabase.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
+                clearLeagueCache();
+                await refreshAllData();
+                return { finished: true, promotions, relegations, state: { session: null, courts: [], games: [] } };
+            }
+
+            const nextRound = Number(session.current_round) + 1;
+            await supabase.from('ladder_session').update({ current_round: nextRound }).eq('id', session.id);
+            await supabase.from('ladder_courts').update({ round_points: 0 }).eq('session_id', session.id);
+
+            const { data: nextCourtRows, error: nextCourtsErr } = await supabase
+                .from('ladder_courts')
+                .select('*')
+                .eq('session_id', session.id)
+                .order('court', { ascending: true })
+                .order('player_name', { ascending: true });
+            if (nextCourtsErr) throw new Error(nextCourtsErr.message);
+
+            const courtToPlayers = {};
+            (nextCourtRows || []).forEach(r => {
+                if (!courtToPlayers[r.court]) courtToPlayers[r.court] = [];
+                courtToPlayers[r.court].push(r.player_name);
+            });
+
+            const nextGames = Object.keys(courtToPlayers).map(Number).sort((a, b) => a - b).map(court => {
+                const game = generateCourtRoundGame(courtToPlayers[court], nextRound);
+                return {
+                    session_id: session.id,
+                    court,
+                    round: nextRound,
+                    p1: game[0],
+                    p2: game[1] || 'Singles',
+                    p3: game[2],
+                    p4: game[3] || 'Singles',
+                    score_a: null,
+                    score_b: null
+                };
+            });
+            await supabase.from('ladder_games').insert(nextGames);
+
+            clearLeagueCache();
+            await refreshAllData();
+            return { finished: false, promotions, relegations, state: await getCurrentLadderState() };
+        }
+
+        async function clearLadderSession() {
+            const session = await getActiveLadderSessionRaw();
+            if (session) {
+                await supabase.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
+            }
+            clearLeagueCache();
+            await refreshAllData();
+            return { session: null, courts: [], games: [] };
+        }
+
+        async function addEvent(data) {
+            const { error } = await supabase.from('events').insert({
+                title: data.title,
+                event_date: data.date,
+                event_time: data.time || null,
+                location: data.location,
+                max_players: Number(data.max || 0),
+                member_open_date: data.memberDate || null,
+                public_open_date: data.publicDate || null,
+                status: 'Active',
+                signup_deadline: data.deadline || null,
+                duration: data.duration === '' ? null : Number(data.duration),
+                member_price: Number(data.memberPrice || 0),
+                non_member_price: Number(data.nonMemberPrice || 0),
+                newcomers_only: !!data.newcomersOnly,
+                under18_only: !!data.under18Only
+            });
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function setMemberStatus(payload) {
+            const membership = payload.isMember ? 'Member' : 'Non-Member';
+            const { error } = await supabase.from('players').update({ membership }).eq('name', payload.playerName);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function signupForEvent(payload) {
+            const { error } = await supabase.from('signups').insert({
+                event_id: payload.eventId,
+                player_name: payload.name,
+                player_type: payload.type || '',
+                email: payload.dob || '',
+                status: 'Confirmed',
+                payment_status: 'Unpaid'
+            });
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function signupAsReserve(payload) {
+            const { error } = await supabase.from('signups').insert({
+                event_id: payload.eventId,
+                player_name: payload.name,
+                player_type: payload.type || '',
+                email: payload.dob || '',
+                status: 'Reserve',
+                payment_status: 'Unpaid'
+            });
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function cancelSignup(payload) {
+            const { error } = await supabase
+                .from('signups')
+                .delete()
+                .eq('event_id', payload.eventId)
+                .eq('player_name', payload.name);
+            if (error) throw new Error(error.message);
+
+            if (payload.removedByAdmin) {
+                const { data: reserves, error: reserveErr } = await supabase
+                    .from('signups')
+                    .select('*')
+                    .eq('event_id', payload.eventId)
+                    .eq('status', 'Reserve')
+                    .order('created_at', { ascending: true })
+                    .limit(1);
+                if (reserveErr) throw new Error(reserveErr.message);
+                if (reserves && reserves.length > 0) {
+                    await supabase.from('signups').update({ status: 'Confirmed' }).eq('id', reserves[0].id);
+                }
+            }
+            return refreshAllData();
+        }
+
+        async function markSignupPaid(payload) {
+            const { error } = await supabase
+                .from('signups')
+                .update({ payment_status: 'Paid' })
+                .eq('event_id', payload.eventId)
+                .eq('player_name', payload.name);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        function hashPassword(password) {
+            return btoa(unescape(encodeURIComponent(password)));
+        }
+
+        async function registerUser(data) {
+            const { data: existing, error: existingErr } = await supabase
+                .from('users')
+                .select('id')
+                .eq('username', data.username)
+                .limit(1);
+            if (existingErr) throw new Error(existingErr.message);
+            if (existing && existing.length > 0) throw new Error('Username already exists.');
+
+            const { error } = await supabase.from('users').insert({
+                username: data.username,
+                password_hash: hashPassword(data.password),
+                first_name: data.firstName,
+                surname: data.surname,
+                email: data.email || null,
+                role: 'Non-Member',
+                gender: data.gender || null,
+                starting_elo: Number(data.startingElo || DEFAULT_ELO),
+                is_under18: !!data.isUnder18,
+                consent_verified: false,
+                status: 'Pending'
+            });
+            if (error) throw new Error(error.message);
+            clearLeagueCache();
+            return true;
+        }
+
+        async function loginUser(payload) {
+            const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('username', payload.username)
+                .eq('status', 'Approved')
+                .limit(1);
+            if (error) throw new Error(error.message);
+            if (!data || data.length === 0) throw new Error('Invalid username or password.');
+
+            const user = data[0];
+            if (user.password_hash !== hashPassword(payload.password)) throw new Error('Invalid username or password.');
+
+            return {
+                username: user.username,
+                firstName: user.first_name,
+                surname: user.surname,
+                email: user.email || '',
+                role: user.role || 'Non-Member',
+                isUnder18: !!user.is_under18
+            };
+        }
+
+        async function updateUserStatus(payload) {
+            const username = payload.username;
+            const action = payload.action;
+
+            if (action === 'Approve') {
+                const { data: user, error: userErr } = await supabase.from('users').select('*').eq('username', username).single();
+                if (userErr) throw new Error(userErr.message);
+                await supabase.from('users').update({ status: 'Approved' }).eq('username', username);
+                const fullName = `${user.first_name} ${user.surname}`.trim();
+                const { data: existingPlayer } = await supabase.from('players').select('id').eq('name', fullName).limit(1);
+                if (!existingPlayer || existingPlayer.length === 0) {
+                    await supabase.from('players').insert({
+                        name: fullName,
+                        elo: Number(user.starting_elo || DEFAULT_ELO),
+                        wins: 0,
+                        losses: 0,
+                        total_games: 0,
+                        gender: user.gender || null,
+                        weekly_sum: 0,
+                        membership: user.role === 'Member' || user.role === 'Admin' ? 'Member' : 'Non-Member',
+                        is_hidden: false,
+                        is_under18: !!user.is_under18
+                    });
+                }
+            } else if (action === 'Delete') {
+                await supabase.from('users').delete().eq('username', username);
+            } else if (action === 'VerifyConsent') {
+                await supabase.from('users').update({ consent_verified: true }).eq('username', username);
+            } else {
+                throw new Error('Unsupported action.');
+            }
+
+            return refreshAllData();
+        }
+
+        async function removePlayerFromSheet(payload) {
+            const playerName = payload.playerName;
+            await supabase.from('players').delete().eq('name', playerName);
+
+            const { data: users, error } = await supabase.from('users').select('id, first_name, surname');
+            if (error) throw new Error(error.message);
+            const userToDelete = (users || []).find(u => normalizeName(`${u.first_name} ${u.surname}`) === normalizeName(playerName));
+            if (userToDelete) await supabase.from('users').delete().eq('id', userToDelete.id);
+
+            return refreshAllData();
+        }
+
+        async function updatePlayerName(payload) {
+            const oldName = payload.oldName;
+            const newName = payload.newName;
+
+            await supabase.from('players').update({ name: newName }).eq('name', oldName);
+            await supabase.from('matches').update({ w1: newName }).eq('w1', oldName);
+            await supabase.from('matches').update({ w2: newName }).eq('w2', oldName);
+            await supabase.from('matches').update({ l1: newName }).eq('l1', oldName);
+            await supabase.from('matches').update({ l2: newName }).eq('l2', oldName);
+            await supabase.from('signups').update({ player_name: newName }).eq('player_name', oldName);
+
+            return refreshAllData();
+        }
+
+        async function sendEmail(templateId, templateParams) {
+            // TODO: Configure this template in your EmailJS dashboard and replace template ID constants above.
+            return emailjs.send(EMAILJS_SERVICE_ID, templateId, templateParams);
+        }
+
+        async function requestPasswordReset(payload) {
+            const identifier = payload.identifier;
+            const { data: users, error } = await supabase
+                .from('users')
+                .select('*')
+                .or(`username.eq.${identifier},email.eq.${identifier}`)
+                .limit(1);
+            if (error) throw new Error(error.message);
+            if (!users || users.length === 0) throw new Error('No account found for that username/email.');
+
+            const user = users[0];
+            const token = String(Math.floor(100000 + Math.random() * 900000));
+            const expiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+            const { error: updateErr } = await supabase
+                .from('users')
+                .update({ reset_token: token, reset_token_expiry: expiry })
+                .eq('id', user.id);
+            if (updateErr) throw new Error(updateErr.message);
+
+            if (user.email) {
+                await sendEmail(EMAILJS_TEMPLATE_PASSWORD_RESET, {
+                    username: user.username,
+                    email: user.email,
+                    token: token,
+                    expiry: expiry
+                });
+            }
+            return true;
+        }
+
+        async function resetPassword(payload) {
+            const { identifier, token, newPassword } = payload;
+            const { data: users, error } = await supabase
+                .from('users')
+                .select('*')
+                .or(`username.eq.${identifier},email.eq.${identifier}`)
+                .limit(1);
+            if (error) throw new Error(error.message);
+            if (!users || users.length === 0) throw new Error('Account not found.');
+
+            const user = users[0];
+            const expiryTime = user.reset_token_expiry ? new Date(user.reset_token_expiry).getTime() : 0;
+            if (String(user.reset_token || '') !== String(token) || expiryTime < Date.now()) {
+                throw new Error('Invalid or expired reset code.');
+            }
+
+            const { error: updateErr } = await supabase
+                .from('users')
+                .update({
+                    password_hash: hashPassword(newPassword),
+                    reset_token: null,
+                    reset_token_expiry: null
+                })
+                .eq('id', user.id);
+            if (updateErr) throw new Error(updateErr.message);
+
+            return true;
+        }
+
+        async function cancelEvent(payload) {
+            const { eventId, message } = payload;
+            const [{ data: eventRows, error: eventErr }, { data: signupRows, error: signupErr }] = await Promise.all([
+                supabase.from('events').select('*').eq('id', eventId).limit(1),
+                supabase.from('signups').select('*').eq('event_id', eventId)
+            ]);
+            if (eventErr) throw new Error(eventErr.message);
+            if (signupErr) throw new Error(signupErr.message);
+
+            const event = eventRows && eventRows.length ? eventRows[0] : null;
+
+            const { error } = await supabase.from('events').update({ status: 'Cancelled' }).eq('id', eventId);
+            if (error) throw new Error(error.message);
+
+            const recipients = (signupRows || []).filter(s => s.email);
+            await Promise.all(recipients.map(r =>
+                sendEmail(EMAILJS_TEMPLATE_EVENT_CANCEL, {
+                    event_title: event ? event.title : 'Event',
+                    event_date: event ? event.event_date : '',
+                    player_name: r.player_name,
+                    email: r.email,
+                    message: message || ''
+                })
+            ));
+
+            return refreshAllData();
+        }
+
+        async function sendContactEmail(payload) {
+            await sendEmail(EMAILJS_TEMPLATE_CONTACT, {
+                from_name: payload.name,
+                from_email: payload.email,
+                message: payload.message
+            });
+            return true;
+        }
+
+        async function sendAccidentReport(data) {
+            await sendEmail(EMAILJS_TEMPLATE_ACCIDENT, data);
+            return true;
         }
         // --- ENHANCED SOCIAL ROTATIONS (MORE ROUNDS) ---
         // --- MATHEMATICALLY VERIFIED SOCIAL ROTATIONS ---
@@ -1016,16 +2212,6 @@
             }
             window.scrollTo({top: 0, behavior: 'smooth'});
         }
-
-        function loadLadderState() {
-            api('getLadderState')
-                .then(res => {
-                    ladderState = res;
-                    renderLadderSession();
-                })
-                .catch(err => triggerError(err.message));
-        }
-
         function updateScrambleAccess() {
             const restricted = document.getElementById('scrambleRestricted');
             const content = document.getElementById('scrambleMainContent');
@@ -1362,7 +2548,7 @@
                 }
             }
             
-            api('processAdminAction', d)
+            processAdminAction(d)
                 .then(res => { 
                     btn.disabled = false; btn.innerText = oldTxt; 
                     render(res); 
@@ -1433,7 +2619,7 @@
             }
 
             // 4. Send the randomized plan to Google
-            api('startLiveScramble', plan)
+            startLiveScramble(plan)
                 .then(res => {
                     if (btn) { btn.disabled = false; btn.innerText = "Generate Rotation"; btn.style.opacity = "1"; }
                     render(res);
@@ -1458,7 +2644,7 @@
             btn.disabled = true;
             btn.innerText = "Wiping Data...";
 
-            api('clearLiveScramble')
+            clearLiveScramble()
                 .then(res => {
                     render(res);
                     triggerToast("Session Wiped.");
@@ -1523,7 +2709,7 @@
             const b = document.getElementById('matchFinalDeleteBtn'); 
             b.disabled = true; b.innerText = "Deleting...";
             
-            api('deleteMatchFromSheet', { date: matchToDelete.date, w1: matchToDelete.w1, w2: matchToDelete.w2, l1: matchToDelete.l1, l2: matchToDelete.l2, sW: matchToDelete.sW, sL: matchToDelete.sL })
+            deleteMatchFromSheet({ date: matchToDelete.date, w1: matchToDelete.w1, w2: matchToDelete.w2, l1: matchToDelete.l1, l2: matchToDelete.l2, sW: matchToDelete.sW, sL: matchToDelete.sL })
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
         }
@@ -1544,7 +2730,7 @@
             const b = document.getElementById('editNameSubmitBtn'); 
             b.disabled = true; b.innerText = "Updating...";
             
-            api('updatePlayerName', { oldName: o, newName: n })
+            updatePlayerName({ oldName: o, newName: n })
                 .then(r => { render(r); triggerToast("Name Updated!"); closeEditNameModal(); b.disabled = false; b.innerText = "Update Name"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Update Name"; }); // Removed adminPin
         }
@@ -1564,7 +2750,7 @@
             btn.disabled = true;
             btn.innerText = "Sending...";
 
-            api('sendContactEmail', { name: name, email: email, message: message })
+            sendContactEmail({ name: name, email: email, message: message })
                 .then(() => {
                     triggerToast("Message Sent!");
                     // Clear the form
@@ -1748,7 +2934,7 @@
             
             triggerToast("Processing " + action + "...");
             
-            api('updateUserStatus', { username: username, action: action })
+            updateUserStatus({ username: username, action: action })
                 .then(res => {
                     render(res);
                     triggerToast("User " + action + "d successfully");
@@ -1861,7 +3047,7 @@
                 btn.style.opacity = "0.5";
             }
 
-            api('updateLiveScore', { id: id, sA: sA, sB: sB })
+            updateLiveScore({ id: id, sA: sA, sB: sB })
                 .then(res => {
                     render(res);
                     triggerToast("Score Checked In!");
@@ -1947,7 +3133,7 @@
             btn.disabled = true;
             btn.innerText = "Starting...";
 
-            api('startLadderSession', { players: selected, totalRounds: totalRounds })
+            startLadderSessionData({ players: selected, totalRounds: totalRounds })
                 .then(res => {
                     ladderState = res;
                     renderLadderSession();
@@ -2073,7 +3259,7 @@
             btn.disabled = true;
             btn.innerText = "Saving...";
 
-            api('updateLadderScore', { gameId: gameId, scoreA: sA, scoreB: sB })
+            updateLadderScore({ gameId: gameId, scoreA: sA, scoreB: sB })
                 .then(res => {
                     ladderState = res;
                     renderLadderSession();
@@ -2097,11 +3283,11 @@
             btn.disabled = true;
             btn.innerText = "Processing...";
 
-            api('endLadderRound')
+            endLadderRound()
                 .then(res => {
                     showLadderRoundResult(res);
                     // Refresh main league data (Elo/standings) since ladder games updated Matches
-                    api('getLeagueData').then(render).catch(err => triggerError(err.message));
+                    refreshAllData().catch(err => triggerError(err.message));
                     btn.disabled = false;
                 })
                 .catch(err => {
@@ -2169,7 +3355,7 @@
             btn.disabled = true;
             btn.innerText = "Ending Session...";
 
-            api('clearLadderSession')
+            clearLadderSession()
                 .then(res => {
                     ladderState = res;
                     renderLadderSession();
@@ -2315,7 +3501,7 @@
             const btn = document.getElementById('evtSubmitBtn');
             btn.disabled = true; btn.innerText = "Creating...";
 
-            api('addEvent', data)
+            addEvent(data)
                 .then(res => {
                     render(res);
                     triggerToast("Event Created!");
@@ -2366,7 +3552,7 @@
         function toggleMember(name, newStatus) {
             if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
 
-            api('setMemberStatus', { playerName: name, isMember: newStatus })
+            setMemberStatus({ playerName: name, isMember: newStatus })
                 .then(res => {
                     globalData = res;
                     renderMemberList();
@@ -2688,10 +3874,10 @@
             };
 
             if (asReserve) {
-                api('signupAsReserve', { eventId, name: fullName, dob: email, type: currentUser.role })
+                signupAsReserve({ eventId, name: fullName, dob: email, type: currentUser.role })
                     .then(onSuccess).catch(onFailure);
             } else {
-                api('signupForEvent', { eventId, name: fullName, dob: email, type: currentUser.role })
+                signupForEvent({ eventId, name: fullName, dob: email, type: currentUser.role })
                     .then(onSuccess).catch(onFailure);
             }
         }
@@ -2734,7 +3920,7 @@
             btn.disabled = true;
             btn.innerText = "Cancelling...";
             
-            api('cancelSignup', { eventId: eventId, name: fullName })
+            cancelSignup({ eventId: eventId, name: fullName })
                 .then(res => {
                     render(res);
                     triggerToast("Registration Cancelled");
@@ -2780,7 +3966,7 @@
             btn.disabled = true;
             btn.innerText = "Saving...";
 
-            api('markSignupPaid', { eventId: eventId, name: fullName })
+            markSignupPaid({ eventId: eventId, name: fullName })
                 .then(res => {
                     render(res);
                     triggerToast("Payment Confirmed — Thank You!");
@@ -2803,11 +3989,11 @@
             };
 
             if (asReserve) {
-                api('signupAsReserve', { eventId, name, dob, type })
+                signupAsReserve({ eventId, name, dob, type })
                     .then(res => { render(res); triggerToast(successMsg); resetBtn(); })
                     .catch(err => { triggerError(err.message); resetBtn(); });
             } else {
-                api('signupForEvent', { eventId, name, dob, type })
+                signupForEvent({ eventId, name, dob, type })
                     .then(res => { render(res); triggerToast(successMsg); resetBtn(); })
                     .catch(err => { triggerError(err.message); resetBtn(); });
             }
@@ -2888,7 +4074,7 @@
             btn.innerText = "Submitting...";
             btn.disabled = true;
 
-            api('registerUser', data)
+            registerUser(data)
                 .then(() => {
                     // Show the nice custom modal
                     triggerSuccess("Application Submitted", "An admin will review your account soon.");
@@ -2923,7 +4109,7 @@
             btn.innerText = "Verifying...";
             btn.disabled = true;
 
-            api('loginUser', { username: user, password: pass })
+            loginUser({ username: user, password: pass })
                 .then(userData => {
                 currentUser = userData;
                 sessionStorage.setItem('pickleUser', JSON.stringify(userData));
@@ -3056,7 +4242,7 @@
             btn.disabled = true;
             btn.innerText = "Sending...";
 
-            api('requestPasswordReset', { identifier: identifier })
+            requestPasswordReset({ identifier: identifier })
                 .then(() => {
                     btn.disabled = false;
                     btn.innerText = "Send Reset Code";
@@ -3089,7 +4275,7 @@
             btn.disabled = true;
             btn.innerText = "Updating...";
 
-            api('resetPassword', { identifier: identifier, token: token, newPassword: newPassword })
+            resetPassword({ identifier: identifier, token: token, newPassword: newPassword })
                 .then(() => {
                     triggerSuccess("Password Updated!", "You can now log in with your new password.");
                     closeResetPasswordModal();
@@ -3140,7 +4326,7 @@
             btn.disabled = true;
             btn.innerText = "Cancelling...";
             
-            api('cancelEvent', { eventId: eventId, message: message })
+            cancelEvent({ eventId: eventId, message: message })
                 .then(res => {
                     render(res);
                     triggerToast("Event Cancelled. Attendees notified by email.");
@@ -3240,7 +4426,7 @@
             btn.disabled = true;
             btn.innerText = "Removing...";
 
-            api('cancelSignup', { eventId: adminRemoveTarget.eventId, name: adminRemoveTarget.name, removedByAdmin: true })
+            cancelSignup({ eventId: adminRemoveTarget.eventId, name: adminRemoveTarget.name, removedByAdmin: true })
                 .then(res => {
                     render(res);
                     triggerToast(adminRemoveTarget.name + " removed from event.");
@@ -3264,7 +4450,7 @@
             btn.disabled = true;
             btn.innerText = "Removing...";
 
-            api('removePlayerFromSheet', { playerName: playerToFullDelete })
+            removePlayerFromSheet({ playerName: playerToFullDelete })
                 .then(res => {
                     render(res);
                     renderMemberList();
@@ -3301,7 +4487,7 @@
             btn.disabled = true;
             btn.innerText = "Finishing...";
 
-            api('clearLiveScramble')
+            clearLiveScramble()
                 .then(res => {
                     render(res);
                     triggerToast("Scramble Session Ended!");
@@ -3408,7 +4594,7 @@
             btn.disabled = true;
             btn.innerText = "Submitting...";
 
-            api('sendAccidentReport', data)
+            sendAccidentReport(data)
                 .then(() => {
                     triggerSuccess("Report Submitted", "Your accident report has been submitted and a copy sent to the club. Thank you.");
                     closeAccidentReportModal();
@@ -3445,15 +4631,28 @@
             }); 
         });
 
-        window.onload = () => {
+        window.onload = async () => {
             const saved = sessionStorage.getItem('pickleUser');
             if (saved) {
                 currentUser = JSON.parse(saved);
                 startAdminSession();
             }
-            api('getLeagueData')
-                .then(data => { render(data); updateUIForLogin(); initModalOverlays(); })
-                .catch(err => triggerError(err.message));
+
+            const cached = getCachedLeagueData();
+            if (cached) {
+                render(cached);
+                updateUIForLogin();
+                initModalOverlays();
+            }
+
+            try {
+                const data = await loadAllData({ useCache: !cached });
+                render(data);
+                updateUIForLogin();
+                initModalOverlays();
+            } catch (err) {
+                triggerError(err.message);
+            }
         };
     </script>
     <div id="successToast" class="fixed left-1/2 transform -translate-x-1/2 opacity-0 -translate-y-10 pointer-events-none transition-all duration-500 ease-out" style="width: max-content; z-index: 9999999 !important; top: 160px !important;">
