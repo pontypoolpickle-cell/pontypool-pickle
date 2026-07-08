@@ -82,7 +82,6 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -1127,17 +1126,6 @@
         const SUPABASE_ANON_KEY = 'sb_publishable_qFG6VEHtM9eMy_6WR86QxQ_fi7Wzed8';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // TODO: Replace with your EmailJS credentials
-        const EMAILJS_SERVICE_ID = 'service_zya6iux';
-        const EMAILJS_PUBLIC_KEY = 'SZDe8YYGMz7qa_iI-';
-        // TODO: Replace template IDs below with your configured EmailJS templates
-        const EMAILJS_TEMPLATE_CONTACT = 'template_aijlfkk';
-		const EMAILJS_TEMPLATE_EVENT_SIGNUP = 'template_k6gr01c';
-        const EMAILJS_TEMPLATE_ACCIDENT = 'YOUR_ACCIDENT_TEMPLATE_ID';
-        const EMAILJS_TEMPLATE_PASSWORD_RESET = 'YOUR_PASSWORD_RESET_TEMPLATE_ID';
-        const EMAILJS_TEMPLATE_EVENT_CANCEL = 'YOUR_EVENT_CANCEL_TEMPLATE_ID';
-        emailjs.init(EMAILJS_PUBLIC_KEY);
-
         const CACHE_KEY = 'pickle_global_data_cache_v1';
         const CACHE_TTL_MS = 5 * 60 * 1000;
         const DEFAULT_ELO = 1200;
@@ -2070,7 +2058,20 @@
                         is_under18: !!user.is_under18
                     });
                 }
+                await sendEmail('account_approved', {
+                    firstName: user.first_name,
+                    email: user.email,
+                    username: user.username,
+                    loginUrl: window.location.href
+                });
             } else if (action === 'Delete') {
+                const { data: userToNotify } = await supabaseClient.from('users').select('*').eq('username', username).single();
+                if (userToNotify && userToNotify.email) {
+                    await sendEmail('account_declined', {
+                        firstName: userToNotify.first_name,
+                        email: userToNotify.email
+                    });
+                }
                 await supabaseClient.from('users').delete().eq('username', username);
             } else if (action === 'VerifyConsent') {
                 await supabaseClient.from('users').update({ consent_verified: true }).eq('username', username);
@@ -2128,11 +2129,10 @@
             if (updateErr) throw new Error(updateErr.message);
 
             if (user.email) {
-                await sendEmail(EMAILJS_TEMPLATE_PASSWORD_RESET, {
-                    username: user.username,
+                await sendEmail('password_reset', {
+                    firstName: user.first_name,
                     email: user.email,
-                    token: token,
-                    expiry: expiry
+                    token: token
                 });
             }
             return true;
@@ -2183,11 +2183,13 @@
 
             const recipients = (signupRows || []).filter(s => s.email);
             await Promise.all(recipients.map(r =>
-                sendEmail(EMAILJS_TEMPLATE_EVENT_CANCEL, {
-                    event_title: event ? event.title : 'Event',
-                    event_date: event ? event.event_date : '',
-                    player_name: r.player_name,
+                sendEmail('event_cancelled', {
+                    name: r.player_name,
                     email: r.email,
+                    eventTitle: event ? event.title : 'Event',
+                    eventDate: event ? event.event_date : '',
+                    eventTime: event ? event.event_time : '',
+                    eventLocation: event ? event.location : '',
                     message: message || ''
                 })
             ));
@@ -2196,16 +2198,12 @@
         }
 
         async function sendContactEmail(payload) {
-            await sendEmail(EMAILJS_TEMPLATE_CONTACT, {
-                from_name: payload.name,
-                from_email: payload.email,
-                message: payload.message
-            });
+            await sendEmail('contact', { name: payload.name, email: payload.email, message: payload.message });
             return true;
         }
 
         async function sendAccidentReport(data) {
-            await sendEmail(EMAILJS_TEMPLATE_ACCIDENT, data);
+            await sendEmail('accident_report', data);
             return true;
         }
         // --- ENHANCED SOCIAL ROTATIONS (MORE ROUNDS) ---
@@ -3900,6 +3898,27 @@
             const successMsg = asReserve ? "Added to Reserve List!" : "Registration Successful!";
 
             const onSuccess = (res) => {
+                const eventRow = globalData.events.find(e => e[0] === eventId);
+                if (!asReserve) {
+                    sendEmail('event_signup', {
+                        name: fullName,
+                        email: email,
+                        eventTitle: eventRow ? eventRow[1] : '',
+                        eventDate: eventRow ? eventRow[2] : '',
+                        eventTime: eventRow ? eventRow[3] : '',
+                        eventLocation: eventRow ? eventRow[8] : '',
+                        isFree: eventRow ? (!Number(eventRow[11]) && !Number(eventRow[12])) : true
+                    });
+                } else {
+                    sendEmail('reserve_signup', {
+                        name: fullName,
+                        email: email,
+                        eventTitle: eventRow ? eventRow[1] : '',
+                        eventDate: eventRow ? eventRow[2] : '',
+                        eventTime: eventRow ? eventRow[3] : '',
+                        eventLocation: eventRow ? eventRow[8] : ''
+                    });
+                }
                 closeCalendarEventModal();
                 render(res);
                 triggerToast(successMsg);
@@ -4130,6 +4149,19 @@
                     
                     btn.innerText = "Submit for Approval";
                     btn.disabled = false;
+                    sendEmail('new_member_admin', {
+                        firstName: data.firstName,
+                        surname: data.surname,
+                        username: data.username,
+                        email: data.email,
+                        isUnder18: data.isUnder18
+                    });
+                    sendEmail(data.isUnder18 ? 'application_received_u18' : 'application_received_adult', {
+                        firstName: data.firstName,
+                        surname: data.surname,
+                        username: data.username,
+                        email: data.email
+                    });
                     closeAuthModals();
                 })
                 .catch(err => {
@@ -4469,12 +4501,23 @@
 
             cancelSignup({ eventId: adminRemoveTarget.eventId, name: adminRemoveTarget.name, removedByAdmin: true })
                 .then(res => {
+                    const signup = globalData.signups.find(s => s[0] === adminRemoveTarget.eventId && s[1] === adminRemoveTarget.name);
+                    const eventRow = globalData.events.find(e => e[0] === adminRemoveTarget.eventId);
+                    if (signup && signup[4]) {
+                        sendEmail('admin_removed', {
+                            name: adminRemoveTarget.name,
+                            email: signup[4],
+                            eventTitle: eventRow ? eventRow[1] : adminRemoveTarget.eventTitle,
+                            eventDate: eventRow ? eventRow[2] : '',
+                            eventTime: eventRow ? eventRow[3] : '',
+                            eventLocation: eventRow ? eventRow[8] : ''
+                        });
+                    }
                     render(res);
                     triggerToast(adminRemoveTarget.name + " removed from event.");
                     closeAdminRemoveSignupModal();
                     btn.disabled = false;
                     btn.innerText = "Confirm Remove";
-                    // Re-open the signups modal with refreshed data
                     openEventSignupsModal(adminRemoveTarget.eventId, adminRemoveTarget.eventTitle);
                 })
                 .catch(err => {
