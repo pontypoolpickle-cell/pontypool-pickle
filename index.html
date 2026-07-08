@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <head>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
@@ -952,6 +953,25 @@
     </main>
 
     <script>
+	function toggleMobileMenu() {
+		const menu = document.getElementById('mobileMenu');
+		const icon = document.getElementById('hamburgerIcon');
+		const close = document.getElementById('hamburgerClose');
+		if (menu.classList.contains('hidden')) {
+			menu.classList.remove('hidden');
+			icon.classList.add('hidden');
+			close.classList.remove('hidden');
+		} else {
+			menu.classList.add('hidden');
+			icon.classList.remove('hidden');
+			close.classList.add('hidden');
+		}
+	}
+	function closeMobileMenu() {
+		document.getElementById('mobileMenu').classList.add('hidden');
+		document.getElementById('hamburgerIcon').classList.remove('hidden');
+		document.getElementById('hamburgerClose').classList.add('hidden');
+	}
       let globalData = { history: [], standings: [], names: [] };
         const MEMBER_PRICE_PER_HOUR = 2.50;
         const NON_MEMBER_PRICE_PER_HOUR = 4.00;
@@ -1105,13 +1125,14 @@
 
         const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_qFG6VEHtM9eMy_6WR86QxQ_fi7Wzed8';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // TODO: Replace with your EmailJS credentials
-        const EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID';
-        const EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';
+        const EMAILJS_SERVICE_ID = 'service_zya6iux';
+        const EMAILJS_PUBLIC_KEY = 'SZDe8YYGMz7qa_iI-';
         // TODO: Replace template IDs below with your configured EmailJS templates
-        const EMAILJS_TEMPLATE_CONTACT = 'YOUR_CONTACT_TEMPLATE_ID';
+        const EMAILJS_TEMPLATE_CONTACT = 'template_aijlfkk';
+		const EMAILJS_TEMPLATE_EVENT_SIGNUP = 'template_k6gr01c';
         const EMAILJS_TEMPLATE_ACCIDENT = 'YOUR_ACCIDENT_TEMPLATE_ID';
         const EMAILJS_TEMPLATE_PASSWORD_RESET = 'YOUR_PASSWORD_RESET_TEMPLATE_ID';
         const EMAILJS_TEMPLATE_EVENT_CANCEL = 'YOUR_EVENT_CANCEL_TEMPLATE_ID';
@@ -1122,6 +1143,25 @@
         const DEFAULT_ELO = 1200;
         let liveScrambleIdMap = {};
         let ladderGameIdMap = {};
+		
+		const SUPABASE_EMAIL_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co/functions/v1/send-email';
+
+		async function sendEmail(type, data) {
+		  try {
+			const response = await fetch(SUPABASE_EMAIL_URL, {
+			  method: 'POST',
+			  headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+			  },
+			  body: JSON.stringify({ type, data })
+			});
+			const result = await response.json();
+			if (!result.success) console.warn('Email send failed:', result.error);
+		  } catch (err) {
+			console.warn('Email error:', err);
+		  }
+		}
 
         function normalizeName(name) {
             return String(name || '').trim().toLowerCase();
@@ -1307,14 +1347,14 @@
                 ladderSessionRes,
                 scrambleRes
             ] = await Promise.all([
-                supabase.from('players').select('*').order('name', { ascending: true }),
-                supabase.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
-                supabase.from('events').select('*').order('event_date', { ascending: true }),
-                supabase.from('signups').select('*').order('created_at', { ascending: true }),
-                supabase.from('locations').select('*').order('name', { ascending: true }),
-                supabase.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
-                supabase.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: false }).limit(1),
-                supabase.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true })
+                supabaseClient.from('players').select('*').order('name', { ascending: true }),
+                supabaseClient.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
+                supabaseClient.from('events').select('*').order('event_date', { ascending: true }),
+                supabaseClient.from('signups').select('*').order('created_at', { ascending: true }),
+                supabaseClient.from('locations').select('*').order('name', { ascending: true }),
+                supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
+                supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: false }).limit(1),
+                supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true })
             ]);
 
             const firstError = [playersRes, matchesRes, eventsRes, signupsRes, locationsRes, pendingUsersRes, ladderSessionRes, scrambleRes].find(r => r.error);
@@ -1326,8 +1366,8 @@
 
             if (ladderSession) {
                 const [courtsRes, gamesRes] = await Promise.all([
-                    supabase.from('ladder_courts').select('*').eq('session_id', ladderSession.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
-                    supabase.from('ladder_games').select('*').eq('session_id', ladderSession.id).eq('round', ladderSession.current_round).order('court', { ascending: true }).order('id', { ascending: true })
+                    supabaseClient.from('ladder_courts').select('*').eq('session_id', ladderSession.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
+                    supabaseClient.from('ladder_games').select('*').eq('session_id', ladderSession.id).eq('round', ladderSession.current_round).order('court', { ascending: true }).order('id', { ascending: true })
                 ]);
                 if (courtsRes.error) throw new Error(courtsRes.error.message);
                 if (gamesRes.error) throw new Error(gamesRes.error.message);
@@ -1377,7 +1417,7 @@
         }
 
         async function getPlayersMap() {
-            const { data, error } = await supabase.from('players').select('*').order('name', { ascending: true });
+            const { data, error } = await supabaseClient.from('players').select('*').order('name', { ascending: true });
             if (error) throw new Error(error.message);
             const map = new Map();
             (data || []).forEach(p => map.set(normalizeName(p.name), p));
@@ -1385,7 +1425,7 @@
         }
 
         async function updatePlayerRecord(player) {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('players')
                 .update({
                     elo: Math.round(player.elo),
@@ -1447,8 +1487,8 @@
 
         async function recalculateAllEloFromScratch() {
             const [{ data: players, error: playersError }, { data: matches, error: matchesError }] = await Promise.all([
-                supabase.from('players').select('*').order('name', { ascending: true }),
-                supabase.from('matches').select('*').order('match_date', { ascending: true }).order('created_at', { ascending: true })
+                supabaseClient.from('players').select('*').order('name', { ascending: true }),
+                supabaseClient.from('matches').select('*').order('match_date', { ascending: true }).order('created_at', { ascending: true })
             ]);
             if (playersError) throw new Error(playersError.message);
             if (matchesError) throw new Error(matchesError.message);
@@ -1490,7 +1530,7 @@
                     p.lastMatchDate = m.match_date;
                 });
 
-                await supabase.from('matches').update({
+                await supabaseClient.from('matches').update({
                     change_w1: winners[0] ? changes.winnerChange : 0,
                     change_w2: winners[1] ? changes.winnerChange : 0,
                     change_l1: losers[0] ? changes.loserChange : 0,
@@ -1523,13 +1563,13 @@
             matchRow.change_l1 = changes.change_l1;
             matchRow.change_l2 = changes.change_l2;
 
-            const { error } = await supabase.from('matches').insert(matchRow);
+            const { error } = await supabaseClient.from('matches').insert(matchRow);
             if (error) throw new Error(error.message);
             return refreshAllData();
         }
 
         async function deleteMatchFromSheet(match) {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('matches')
                 .delete()
                 .eq('match_date', match.date)
@@ -1545,7 +1585,7 @@
         }
 
         async function startLiveScramble(plan) {
-            const { error: clearError } = await supabase.from('live_scramble').delete().not('id', 'is', null);
+            const { error: clearError } = await supabaseClient.from('live_scramble').delete().not('id', 'is', null);
             if (clearError) throw new Error(clearError.message);
             if (plan && plan.length) {
                 const rows = plan.map(r => ({
@@ -1558,21 +1598,21 @@
                     score_a: null,
                     score_b: null
                 }));
-                const { error } = await supabase.from('live_scramble').insert(rows);
+                const { error } = await supabaseClient.from('live_scramble').insert(rows);
                 if (error) throw new Error(error.message);
             }
             return refreshAllData();
         }
 
         async function clearLiveScramble() {
-            const { error } = await supabase.from('live_scramble').delete().not('id', 'is', null);
+            const { error } = await supabaseClient.from('live_scramble').delete().not('id', 'is', null);
             if (error) throw new Error(error.message);
             return refreshAllData();
         }
 
         async function updateLiveScore(payload) {
             const realId = liveScrambleIdMap[String(payload.id)] || payload.id;
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('live_scramble')
                 .update({ score_a: Number(payload.sA), score_b: Number(payload.sB) })
                 .eq('id', realId);
@@ -1600,7 +1640,7 @@
         }
 
         async function getActiveLadderSessionRaw() {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('ladder_session')
                 .select('*')
                 .eq('status', 'Active')
@@ -1615,8 +1655,8 @@
             if (!session) return { session: null, courts: [], games: [] };
 
             const [courtsRes, gamesRes] = await Promise.all([
-                supabase.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
-                supabase.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }).order('id', { ascending: true })
+                supabaseClient.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
+                supabaseClient.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }).order('id', { ascending: true })
             ]);
             if (courtsRes.error) throw new Error(courtsRes.error.message);
             if (gamesRes.error) throw new Error(gamesRes.error.message);
@@ -1644,9 +1684,9 @@
         async function startLadderSessionData(payload) {
             const active = await getActiveLadderSessionRaw();
             if (active) {
-                await supabase.from('ladder_games').delete().eq('session_id', active.id);
-                await supabase.from('ladder_courts').delete().eq('session_id', active.id);
-                await supabase.from('ladder_session').update({ status: 'Finished' }).eq('id', active.id);
+                await supabaseClient.from('ladder_games').delete().eq('session_id', active.id);
+                await supabaseClient.from('ladder_courts').delete().eq('session_id', active.id);
+                await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', active.id);
             }
 
             const playerMap = await getPlayersMap();
@@ -1663,7 +1703,7 @@
                 cursor += size;
             });
 
-            const { data: insertedSession, error: sessionError } = await supabase
+            const { data: insertedSession, error: sessionError } = await supabaseClient
                 .from('ladder_session')
                 .insert({ status: 'Active', total_rounds: Number(payload.totalRounds || 1), current_round: 1, players: courts.map(c => c.players) })
                 .select()
@@ -1676,7 +1716,7 @@
                 player_name: playerName,
                 round_points: 0
             })));
-            const { error: courtsError } = await supabase.from('ladder_courts').insert(courtRows);
+            const { error: courtsError } = await supabaseClient.from('ladder_courts').insert(courtRows);
             if (courtsError) throw new Error(courtsError.message);
 
             const firstRoundGames = courts.map(c => {
@@ -1693,7 +1733,7 @@
                     score_b: null
                 };
             });
-            const { error: gamesError } = await supabase.from('ladder_games').insert(firstRoundGames);
+            const { error: gamesError } = await supabaseClient.from('ladder_games').insert(firstRoundGames);
             if (gamesError) throw new Error(gamesError.message);
 
             clearLeagueCache();
@@ -1702,12 +1742,12 @@
 
         async function updateLadderScore(payload) {
             const gameUuid = ladderGameIdMap[String(payload.gameId)] || payload.gameId;
-            const { data: game, error: gameReadError } = await supabase.from('ladder_games').select('*').eq('id', gameUuid).single();
+            const { data: game, error: gameReadError } = await supabaseClient.from('ladder_games').select('*').eq('id', gameUuid).single();
             if (gameReadError) throw new Error(gameReadError.message);
 
             const scoreA = Number(payload.scoreA);
             const scoreB = Number(payload.scoreB);
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('ladder_games')
                 .update({ score_a: scoreA, score_b: scoreB })
                 .eq('id', gameUuid);
@@ -1719,25 +1759,25 @@
             const losers = scoreA > scoreB ? teamB : teamA;
 
             for (const name of winners) {
-                const { data: row, error: rowErr } = await supabase
+                const { data: row, error: rowErr } = await supabaseClient
                     .from('ladder_courts')
                     .select('*')
                     .eq('session_id', game.session_id)
                     .eq('court', game.court)
                     .eq('player_name', name)
                     .single();
-                if (!rowErr && row) await supabase.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 2 }).eq('id', row.id);
+                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 2 }).eq('id', row.id);
             }
 
             for (const name of losers) {
-                const { data: row, error: rowErr } = await supabase
+                const { data: row, error: rowErr } = await supabaseClient
                     .from('ladder_courts')
                     .select('*')
                     .eq('session_id', game.session_id)
                     .eq('court', game.court)
                     .eq('player_name', name)
                     .single();
-                if (!rowErr && row) await supabase.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 1 }).eq('id', row.id);
+                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 1 }).eq('id', row.id);
             }
 
             clearLeagueCache();
@@ -1749,8 +1789,8 @@
             if (!session) throw new Error('No active ladder session found.');
 
             const [{ data: roundGames, error: gamesErr }, { data: courtRows, error: courtsErr }] = await Promise.all([
-                supabase.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }),
-                supabase.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true })
+                supabaseClient.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }),
+                supabaseClient.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true })
             ]);
             if (gamesErr) throw new Error(gamesErr.message);
             if (courtsErr) throw new Error(courtsErr.message);
@@ -1772,7 +1812,7 @@
                 };
                 const changes = await applyMatchResultAndPersist(matchRow);
                 Object.assign(matchRow, changes);
-                await supabase.from('matches').insert(matchRow);
+                await supabaseClient.from('matches').insert(matchRow);
             }
 
             const grouped = {};
@@ -1796,24 +1836,24 @@
                 promotions.push({ player: upCandidate.player_name, fromCourt: lowerCourt });
                 relegations.push({ player: downCandidate.player_name, fromCourt: upperCourt });
 
-                await supabase.from('ladder_courts').update({ court: upperCourt }).eq('id', upCandidate.id);
-                await supabase.from('ladder_courts').update({ court: lowerCourt }).eq('id', downCandidate.id);
+                await supabaseClient.from('ladder_courts').update({ court: upperCourt }).eq('id', upCandidate.id);
+                await supabaseClient.from('ladder_courts').update({ court: lowerCourt }).eq('id', downCandidate.id);
             }
 
             const finished = Number(session.current_round) >= Number(session.total_rounds);
 
             if (finished) {
-                await supabase.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
+                await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
                 clearLeagueCache();
                 await refreshAllData();
                 return { finished: true, promotions, relegations, state: { session: null, courts: [], games: [] } };
             }
 
             const nextRound = Number(session.current_round) + 1;
-            await supabase.from('ladder_session').update({ current_round: nextRound }).eq('id', session.id);
-            await supabase.from('ladder_courts').update({ round_points: 0 }).eq('session_id', session.id);
+            await supabaseClient.from('ladder_session').update({ current_round: nextRound }).eq('id', session.id);
+            await supabaseClient.from('ladder_courts').update({ round_points: 0 }).eq('session_id', session.id);
 
-            const { data: nextCourtRows, error: nextCourtsErr } = await supabase
+            const { data: nextCourtRows, error: nextCourtsErr } = await supabaseClient
                 .from('ladder_courts')
                 .select('*')
                 .eq('session_id', session.id)
@@ -1841,7 +1881,7 @@
                     score_b: null
                 };
             });
-            await supabase.from('ladder_games').insert(nextGames);
+            await supabaseClient.from('ladder_games').insert(nextGames);
 
             clearLeagueCache();
             await refreshAllData();
@@ -1851,7 +1891,7 @@
         async function clearLadderSession() {
             const session = await getActiveLadderSessionRaw();
             if (session) {
-                await supabase.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
+                await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
             }
             clearLeagueCache();
             await refreshAllData();
@@ -1859,7 +1899,7 @@
         }
 
         async function addEvent(data) {
-            const { error } = await supabase.from('events').insert({
+            const { error } = await supabaseClient.from('events').insert({
                 title: data.title,
                 event_date: data.date,
                 event_time: data.time || null,
@@ -1881,13 +1921,13 @@
 
         async function setMemberStatus(payload) {
             const membership = payload.isMember ? 'Member' : 'Non-Member';
-            const { error } = await supabase.from('players').update({ membership }).eq('name', payload.playerName);
+            const { error } = await supabaseClient.from('players').update({ membership }).eq('name', payload.playerName);
             if (error) throw new Error(error.message);
             return refreshAllData();
         }
 
         async function signupForEvent(payload) {
-            const { error } = await supabase.from('signups').insert({
+            const { error } = await supabaseClient.from('signups').insert({
                 event_id: payload.eventId,
                 player_name: payload.name,
                 player_type: payload.type || '',
@@ -1900,7 +1940,7 @@
         }
 
         async function signupAsReserve(payload) {
-            const { error } = await supabase.from('signups').insert({
+            const { error } = await supabaseClient.from('signups').insert({
                 event_id: payload.eventId,
                 player_name: payload.name,
                 player_type: payload.type || '',
@@ -1913,7 +1953,7 @@
         }
 
         async function cancelSignup(payload) {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('signups')
                 .delete()
                 .eq('event_id', payload.eventId)
@@ -1921,7 +1961,7 @@
             if (error) throw new Error(error.message);
 
             if (payload.removedByAdmin) {
-                const { data: reserves, error: reserveErr } = await supabase
+                const { data: reserves, error: reserveErr } = await supabaseClient
                     .from('signups')
                     .select('*')
                     .eq('event_id', payload.eventId)
@@ -1930,14 +1970,14 @@
                     .limit(1);
                 if (reserveErr) throw new Error(reserveErr.message);
                 if (reserves && reserves.length > 0) {
-                    await supabase.from('signups').update({ status: 'Confirmed' }).eq('id', reserves[0].id);
+                    await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', reserves[0].id);
                 }
             }
             return refreshAllData();
         }
 
         async function markSignupPaid(payload) {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('signups')
                 .update({ payment_status: 'Paid' })
                 .eq('event_id', payload.eventId)
@@ -1947,11 +1987,17 @@
         }
 
         function hashPassword(password) {
-            return btoa(unescape(encodeURIComponent(password)));
-        }
+			var hash = 0;
+			for (var i = 0; i < password.length; i++) {
+				var char = password.charCodeAt(i);
+				hash = ((hash << 5) - hash) + char;
+				hash = hash & hash;
+			}
+			return "p" + Math.abs(hash).toString(16);
+		}
 
         async function registerUser(data) {
-            const { data: existing, error: existingErr } = await supabase
+            const { data: existing, error: existingErr } = await supabaseClient
                 .from('users')
                 .select('id')
                 .eq('username', data.username)
@@ -1959,7 +2005,7 @@
             if (existingErr) throw new Error(existingErr.message);
             if (existing && existing.length > 0) throw new Error('Username already exists.');
 
-            const { error } = await supabase.from('users').insert({
+            const { error } = await supabaseClient.from('users').insert({
                 username: data.username,
                 password_hash: hashPassword(data.password),
                 first_name: data.firstName,
@@ -1978,7 +2024,7 @@
         }
 
         async function loginUser(payload) {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('users')
                 .select('*')
                 .eq('username', payload.username)
@@ -2005,13 +2051,13 @@
             const action = payload.action;
 
             if (action === 'Approve') {
-                const { data: user, error: userErr } = await supabase.from('users').select('*').eq('username', username).single();
+                const { data: user, error: userErr } = await supabaseClient.from('users').select('*').eq('username', username).single();
                 if (userErr) throw new Error(userErr.message);
-                await supabase.from('users').update({ status: 'Approved' }).eq('username', username);
+                await supabaseClient.from('users').update({ status: 'Approved' }).eq('username', username);
                 const fullName = `${user.first_name} ${user.surname}`.trim();
-                const { data: existingPlayer } = await supabase.from('players').select('id').eq('name', fullName).limit(1);
+                const { data: existingPlayer } = await supabaseClient.from('players').select('id').eq('name', fullName).limit(1);
                 if (!existingPlayer || existingPlayer.length === 0) {
-                    await supabase.from('players').insert({
+                    await supabaseClient.from('players').insert({
                         name: fullName,
                         elo: Number(user.starting_elo || DEFAULT_ELO),
                         wins: 0,
@@ -2025,9 +2071,9 @@
                     });
                 }
             } else if (action === 'Delete') {
-                await supabase.from('users').delete().eq('username', username);
+                await supabaseClient.from('users').delete().eq('username', username);
             } else if (action === 'VerifyConsent') {
-                await supabase.from('users').update({ consent_verified: true }).eq('username', username);
+                await supabaseClient.from('users').update({ consent_verified: true }).eq('username', username);
             } else {
                 throw new Error('Unsupported action.');
             }
@@ -2037,12 +2083,12 @@
 
         async function removePlayerFromSheet(payload) {
             const playerName = payload.playerName;
-            await supabase.from('players').delete().eq('name', playerName);
+            await supabaseClient.from('players').delete().eq('name', playerName);
 
-            const { data: users, error } = await supabase.from('users').select('id, first_name, surname');
+            const { data: users, error } = await supabaseClient.from('users').select('id, first_name, surname');
             if (error) throw new Error(error.message);
             const userToDelete = (users || []).find(u => normalizeName(`${u.first_name} ${u.surname}`) === normalizeName(playerName));
-            if (userToDelete) await supabase.from('users').delete().eq('id', userToDelete.id);
+            if (userToDelete) await supabaseClient.from('users').delete().eq('id', userToDelete.id);
 
             return refreshAllData();
         }
@@ -2051,24 +2097,19 @@
             const oldName = payload.oldName;
             const newName = payload.newName;
 
-            await supabase.from('players').update({ name: newName }).eq('name', oldName);
-            await supabase.from('matches').update({ w1: newName }).eq('w1', oldName);
-            await supabase.from('matches').update({ w2: newName }).eq('w2', oldName);
-            await supabase.from('matches').update({ l1: newName }).eq('l1', oldName);
-            await supabase.from('matches').update({ l2: newName }).eq('l2', oldName);
-            await supabase.from('signups').update({ player_name: newName }).eq('player_name', oldName);
+            await supabaseClient.from('players').update({ name: newName }).eq('name', oldName);
+            await supabaseClient.from('matches').update({ w1: newName }).eq('w1', oldName);
+            await supabaseClient.from('matches').update({ w2: newName }).eq('w2', oldName);
+            await supabaseClient.from('matches').update({ l1: newName }).eq('l1', oldName);
+            await supabaseClient.from('matches').update({ l2: newName }).eq('l2', oldName);
+            await supabaseClient.from('signups').update({ player_name: newName }).eq('player_name', oldName);
 
             return refreshAllData();
         }
 
-        async function sendEmail(templateId, templateParams) {
-            // TODO: Configure this template in your EmailJS dashboard and replace template ID constants above.
-            return emailjs.send(EMAILJS_SERVICE_ID, templateId, templateParams);
-        }
-
         async function requestPasswordReset(payload) {
             const identifier = payload.identifier;
-            const { data: users, error } = await supabase
+            const { data: users, error } = await supabaseClient
                 .from('users')
                 .select('*')
                 .or(`username.eq.${identifier},email.eq.${identifier}`)
@@ -2080,7 +2121,7 @@
             const token = String(Math.floor(100000 + Math.random() * 900000));
             const expiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-            const { error: updateErr } = await supabase
+            const { error: updateErr } = await supabaseClient
                 .from('users')
                 .update({ reset_token: token, reset_token_expiry: expiry })
                 .eq('id', user.id);
@@ -2099,7 +2140,7 @@
 
         async function resetPassword(payload) {
             const { identifier, token, newPassword } = payload;
-            const { data: users, error } = await supabase
+            const { data: users, error } = await supabaseClient
                 .from('users')
                 .select('*')
                 .or(`username.eq.${identifier},email.eq.${identifier}`)
@@ -2113,7 +2154,7 @@
                 throw new Error('Invalid or expired reset code.');
             }
 
-            const { error: updateErr } = await supabase
+            const { error: updateErr } = await supabaseClient
                 .from('users')
                 .update({
                     password_hash: hashPassword(newPassword),
@@ -2129,15 +2170,15 @@
         async function cancelEvent(payload) {
             const { eventId, message } = payload;
             const [{ data: eventRows, error: eventErr }, { data: signupRows, error: signupErr }] = await Promise.all([
-                supabase.from('events').select('*').eq('id', eventId).limit(1),
-                supabase.from('signups').select('*').eq('event_id', eventId)
+                supabaseClient.from('events').select('*').eq('id', eventId).limit(1),
+                supabaseClient.from('signups').select('*').eq('event_id', eventId)
             ]);
             if (eventErr) throw new Error(eventErr.message);
             if (signupErr) throw new Error(signupErr.message);
 
             const event = eventRows && eventRows.length ? eventRows[0] : null;
 
-            const { error } = await supabase.from('events').update({ status: 'Cancelled' }).eq('id', eventId);
+            const { error } = await supabaseClient.from('events').update({ status: 'Cancelled' }).eq('id', eventId);
             if (error) throw new Error(error.message);
 
             const recipients = (signupRows || []).filter(s => s.email);
