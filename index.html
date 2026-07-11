@@ -82,6 +82,7 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -718,43 +719,60 @@
         </div>
         <!-- RATING PAGE -->
         <div id="rating-page" class="tab-content hidden space-y-6">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">Skill Ratings</h2>
-                
-                <!-- NEW ICON FILTER BAR -->
-                <div class="flex items-center space-x-2 bg-white p-2 rounded-full shadow-sm border border-gray-200">
-                  <span class="text-[10px] font-black uppercase text-gray-400 pl-3 tracking-widest">Filter</span>
-                  <!-- Everyone Icon (Group) -->
-                  <button onclick="setGenderFilter('Everyone')" class="filter-icon-btn gender-Everyone active" title="Everyone">
-                      <img src="https://img.icons8.com/?size=100&id=yHtsKRVMNfox&format=png&color=000000">
-                  </button>
-                  <button onclick="setGenderFilter('Male')" class="filter-icon-btn gender-Male" title="Male">
-                      <img src="https://img.icons8.com/?size=100&id=YtnFdkYn0RsE&format=png&color=000000">
-                  </button>
-                  <button onclick="setGenderFilter('Female')" class="filter-icon-btn gender-Female" title="Female">
-                      <img src="https://img.icons8.com/?size=100&id=8vsjJt13MQHk&format=png&color=000000">
-                  </button>
-                </div>
-            </div>
-            <div class="card overflow-x-auto shadow-2xl">
-              <table class="w-full text-left">
-                <thead class="bg-gray-100 text-[10px] md:text-xs font-black uppercase border-b">
-                    <tr>
-                        <th class="px-2 py-4 md:p-6">Rank</th>
-                        <th class="px-2 py-4 md:p-6 text-left">Player</th>
-                        <th class="px-1 py-4 md:p-4 text-center">W</th>
-                        <th class="px-1 py-4 md:p-4 text-center">L</th>
-                        <th class="px-1 py-4 md:p-4 text-center">
-                            <span class="md:hidden">GP</span>
-                            <span class="hidden md:inline">Played</span>
-                        </th>
-                        <th class="px-2 py-4 md:p-6 text-center text-white bg-black">Rating</th>
-                    </tr>
-                </thead>
-                <tbody id="ratingBody" class="divide-y"></tbody>
-              </table>
-            </div>
-        </div>
+			<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+				<h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">Skill Ratings</h2>
+				<div class="flex items-center space-x-2 bg-white p-2 rounded-full shadow-sm border border-gray-200">
+				  <span class="text-[10px] font-black uppercase text-gray-400 pl-3 tracking-widest">Filter</span>
+				  <button onclick="setGenderFilter('Everyone')" class="filter-icon-btn gender-Everyone active" title="Everyone">
+					  <img src="https://img.icons8.com/?size=100&id=yHtsKRVMNfox&format=png&color=000000">
+				  </button>
+				  <button onclick="setGenderFilter('Male')" class="filter-icon-btn gender-Male" title="Male">
+					  <img src="https://img.icons8.com/?size=100&id=YtnFdkYn0RsE&format=png&color=000000">
+				  </button>
+				  <button onclick="setGenderFilter('Female')" class="filter-icon-btn gender-Female" title="Female">
+					  <img src="https://img.icons8.com/?size=100&id=8vsjJt13MQHk&format=png&color=000000">
+				  </button>
+				</div>
+			</div>
+
+			<!-- RESTRICTED ACCESS MESSAGE -->
+			<div id="ratingsRestricted" class="card p-12 text-center space-y-6 border-t-8 border-black">
+				<div class="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+					<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+					</svg>
+				</div>
+				<div class="space-y-2">
+					<h3 class="text-2xl font-black uppercase italic">Members Only Access</h3>
+					<p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">
+						Skill ratings are only visible to club members.
+					</p>
+				</div>
+				<div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+					<button onclick="openAuthModal()" class="btn-red px-8 py-3 rounded-full font-black uppercase text-sm shadow-lg">Login / Sign Up</button>
+				</div>
+			</div>
+
+			<!-- MAIN RATINGS CONTENT -->
+			<div id="ratingsMainContent" class="hidden card overflow-x-auto shadow-2xl">
+			  <table class="w-full text-left">
+				<thead class="bg-gray-100 text-[10px] md:text-xs font-black uppercase border-b">
+					<tr>
+						<th class="px-2 py-4 md:p-6">Rank</th>
+						<th class="px-2 py-4 md:p-6 text-left">Player</th>
+						<th class="px-1 py-4 md:p-4 text-center">W</th>
+						<th class="px-1 py-4 md:p-4 text-center">L</th>
+						<th class="px-1 py-4 md:p-4 text-center">
+							<span class="md:hidden">GP</span>
+							<span class="hidden md:inline">Played</span>
+						</th>
+						<th class="px-2 py-4 md:p-6 text-center text-white bg-black">Rating</th>
+					</tr>
+				</thead>
+				<tbody id="ratingBody" class="divide-y"></tbody>
+			  </table>
+			</div>
+		</div>
 
         <!-- EVENTS PAGE -->
         <div id="events-page" class="tab-content hidden space-y-6 px-4 pb-20">
@@ -952,6 +970,18 @@
     </main>
 
     <script>
+	function formatEventDate(dateStr) {
+		if (!dateStr) return '';
+		const date = new Date(dateStr + 'T00:00:00');
+		const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+		const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+		const day = date.getDate();
+		const suffix = day === 1 || day === 11 || day === 21 || day === 31 ? 'st' :
+					   day === 2 || day === 12 || day === 22 ? 'nd' :
+					   day === 3 || day === 13 || day === 23 ? 'rd' : 'th';
+		return `${days[date.getDay()]} ${day}${suffix} ${months[date.getMonth()]} ${date.getFullYear()}`;
+	}
+	
 	function toggleMobileMenu() {
 		const menu = document.getElementById('mobileMenu');
 		const icon = document.getElementById('hamburgerIcon');
@@ -1126,6 +1156,17 @@
         const SUPABASE_ANON_KEY = 'sb_publishable_qFG6VEHtM9eMy_6WR86QxQ_fi7Wzed8';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        // TODO: Replace with your EmailJS credentials
+        const EMAILJS_SERVICE_ID = 'service_zya6iux';
+        const EMAILJS_PUBLIC_KEY = 'SZDe8YYGMz7qa_iI-';
+        // TODO: Replace template IDs below with your configured EmailJS templates
+        const EMAILJS_TEMPLATE_CONTACT = 'template_aijlfkk';
+		const EMAILJS_TEMPLATE_EVENT_SIGNUP = 'template_k6gr01c';
+        const EMAILJS_TEMPLATE_ACCIDENT = 'YOUR_ACCIDENT_TEMPLATE_ID';
+        const EMAILJS_TEMPLATE_PASSWORD_RESET = 'YOUR_PASSWORD_RESET_TEMPLATE_ID';
+        const EMAILJS_TEMPLATE_EVENT_CANCEL = 'YOUR_EVENT_CANCEL_TEMPLATE_ID';
+        emailjs.init(EMAILJS_PUBLIC_KEY);
+
         const CACHE_KEY = 'pickle_global_data_cache_v1';
         const CACHE_TTL_MS = 5 * 60 * 1000;
         const DEFAULT_ELO = 1200;
@@ -1135,20 +1176,21 @@
 		const SUPABASE_EMAIL_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co/functions/v1/send-email';
 
 		async function sendEmail(type, data) {
-		  try {
-			const response = await fetch(SUPABASE_EMAIL_URL, {
-			  method: 'POST',
-			  headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-			  },
-			  body: JSON.stringify({ type, data })
-			});
-			const result = await response.json();
-			if (!result.success) console.warn('Email send failed:', result.error);
-		  } catch (err) {
-			console.warn('Email error:', err);
-		  }
+			try {
+				const response = await fetch(SUPABASE_EMAIL_URL, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+						'apikey': SUPABASE_ANON_KEY
+					},
+					body: JSON.stringify({ type, data })
+				});
+				const result = await response.json();
+				if (!result.success) console.warn('Email send failed:', result.error);
+			} catch (err) {
+				console.warn('Email error:', err);
+			}
 		}
 
         function normalizeName(name) {
@@ -1288,8 +1330,8 @@
                     s.payment_status || 'Unpaid'
                 ]),
                 names: players
-                    .filter(p => !p.is_hidden && ['Member', 'Admin'].includes(p.membership || 'Non-Member'))
-                    .map(p => p.name),
+					.filter(p => !p.is_hidden)
+					.map(p => p.name),
                 locations: locations.map(l => l.name).filter(Boolean),
                 pendingUsers: pendingUsers.map(u => [
                     u.username,
@@ -1474,25 +1516,35 @@
         }
 
         async function recalculateAllEloFromScratch() {
-            const [{ data: players, error: playersError }, { data: matches, error: matchesError }] = await Promise.all([
-                supabaseClient.from('players').select('*').order('name', { ascending: true }),
-                supabaseClient.from('matches').select('*').order('match_date', { ascending: true }).order('created_at', { ascending: true })
-            ]);
-            if (playersError) throw new Error(playersError.message);
-            if (matchesError) throw new Error(matchesError.message);
+			const [{ data: players, error: playersError }, { data: matches, error: matchesError }, { data: users, error: usersError }] = await Promise.all([
+				supabaseClient.from('players').select('*').order('name', { ascending: true }),
+				supabaseClient.from('matches').select('*').order('match_date', { ascending: true }).order('created_at', { ascending: true }),
+				supabaseClient.from('users').select('first_name, surname, starting_elo')
+			]);
+			if (playersError) throw new Error(playersError.message);
+			if (matchesError) throw new Error(matchesError.message);
+			if (usersError) throw new Error(usersError.message);
 
-            const stats = new Map();
-            (players || []).forEach(p => {
-                stats.set(normalizeName(p.name), {
-                    name: p.name,
-                    elo: Number(p.elo || DEFAULT_ELO),
-                    wins: 0,
-                    losses: 0,
-                    totalGames: 0,
-                    weeklySum: 0,
-                    lastMatchDate: null
-                });
-            });
+			// Build a map of name -> starting_elo from users table
+			const startingEloMap = new Map();
+			(users || []).forEach(u => {
+				const fullName = `${u.first_name || ''} ${u.surname || ''}`.trim();
+				if (fullName) startingEloMap.set(normalizeName(fullName), Number(u.starting_elo || DEFAULT_ELO));
+			});
+
+			const stats = new Map();
+			(players || []).forEach(p => {
+				const startElo = startingEloMap.get(normalizeName(p.name)) || DEFAULT_ELO;
+				stats.set(normalizeName(p.name), {
+					name: p.name,
+					elo: startElo,
+					wins: 0,
+					losses: 0,
+					totalGames: 0,
+					weeklySum: 0,
+					lastMatchDate: null
+				});
+			});
 
             for (const m of (matches || [])) {
                 const winners = [m.w1, m.w2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
@@ -1620,12 +1672,14 @@
             throw new Error('Unable to split selected players into courts of 4-5.');
         }
 
-        function generateCourtRoundGame(players, round) {
-            const patterns4 = [[0,1,2,3], [0,2,1,3], [0,3,1,2]];
-            const patterns5 = [[0,1,2,3], [0,2,4,1], [0,3,4,2], [0,4,1,3], [1,2,3,4]];
-            if (players.length === 4) return patterns4[(round - 1) % patterns4.length].map(i => players[i]);
-            return patterns5[(round - 1) % patterns5.length].map(i => players[i]);
-        }
+        function generateCourtRoundGames(players, round) {
+			const patterns4 = [[0,1,2,3], [0,2,1,3], [0,3,1,2]];
+			const patterns5 = [[0,1,2,3], [0,2,4,1], [0,3,4,2], [0,4,1,3], [1,2,3,4]];
+			const patterns = players.length === 5 ? patterns5 : patterns4;
+			// Shuffle starting position based on round so it's not always the same order
+			const shifted = [...patterns.slice((round - 1) % patterns.length), ...patterns.slice(0, (round - 1) % patterns.length)];
+			return shifted.map(p => p.map(i => players[i]));
+		}
 
         async function getActiveLadderSessionRaw() {
             const { data, error } = await supabaseClient
@@ -1707,20 +1761,19 @@
             const { error: courtsError } = await supabaseClient.from('ladder_courts').insert(courtRows);
             if (courtsError) throw new Error(courtsError.message);
 
-            const firstRoundGames = courts.map(c => {
-                const game = generateCourtRoundGame(c.players, 1);
-                return {
-                    session_id: insertedSession.id,
-                    court: c.court,
-                    round: 1,
-                    p1: game[0],
-                    p2: game[1] || 'Singles',
-                    p3: game[2],
-                    p4: game[3] || 'Singles',
-                    score_a: null,
-                    score_b: null
-                };
-            });
+            const firstRoundGames = courts.flatMap(c => {
+				return generateCourtRoundGames(c.players, 1).map(game => ({
+					session_id: insertedSession.id,
+					court: c.court,
+					round: 1,
+					p1: game[0],
+					p2: game[1],
+					p3: game[2],
+					p4: game[3],
+					score_a: null,
+					score_b: null
+				}));
+			});
             const { error: gamesError } = await supabaseClient.from('ladder_games').insert(firstRoundGames);
             if (gamesError) throw new Error(gamesError.message);
 
@@ -1855,20 +1908,13 @@
                 courtToPlayers[r.court].push(r.player_name);
             });
 
-            const nextGames = Object.keys(courtToPlayers).map(Number).sort((a, b) => a - b).map(court => {
-                const game = generateCourtRoundGame(courtToPlayers[court], nextRound);
-                return {
-                    session_id: session.id,
-                    court,
-                    round: nextRound,
-                    p1: game[0],
-                    p2: game[1] || 'Singles',
-                    p3: game[2],
-                    p4: game[3] || 'Singles',
-                    score_a: null,
-                    score_b: null
-                };
-            });
+            const nextGames = Object.keys(courtToPlayers).map(Number).sort((a, b) => a - b).flatMap(court => {
+				return generateCourtRoundGames(courtToPlayers[court], nextRound).map(game => ({
+					session_id: session.id, court, round: nextRound,
+					p1: game[0], p2: game[1], p3: game[2], p4: game[3],
+					score_a: null, score_b: null
+				}));
+			});
             await supabaseClient.from('ladder_games').insert(nextGames);
 
             clearLeagueCache();
@@ -2058,20 +2104,7 @@
                         is_under18: !!user.is_under18
                     });
                 }
-                await sendEmail('account_approved', {
-                    firstName: user.first_name,
-                    email: user.email,
-                    username: user.username,
-                    loginUrl: window.location.href
-                });
             } else if (action === 'Delete') {
-                const { data: userToNotify } = await supabaseClient.from('users').select('*').eq('username', username).single();
-                if (userToNotify && userToNotify.email) {
-                    await sendEmail('account_declined', {
-                        firstName: userToNotify.first_name,
-                        email: userToNotify.email
-                    });
-                }
                 await supabaseClient.from('users').delete().eq('username', username);
             } else if (action === 'VerifyConsent') {
                 await supabaseClient.from('users').update({ consent_verified: true }).eq('username', username);
@@ -2130,10 +2163,10 @@
 
             if (user.email) {
                 await sendEmail('password_reset', {
-                    firstName: user.first_name,
-                    email: user.email,
-                    token: token
-                });
+					firstName: user.first_name,
+					email: user.email,
+					token: token
+				});
             }
             return true;
         }
@@ -2183,29 +2216,33 @@
 
             const recipients = (signupRows || []).filter(s => s.email);
             await Promise.all(recipients.map(r =>
-                sendEmail('event_cancelled', {
-                    name: r.player_name,
-                    email: r.email,
-                    eventTitle: event ? event.title : 'Event',
-                    eventDate: event ? event.event_date : '',
-                    eventTime: event ? event.event_time : '',
-                    eventLocation: event ? event.location : '',
-                    message: message || ''
-                })
-            ));
+				sendEmail('event_cancelled', {
+					name: r.player_name,
+					email: r.email,
+					eventTitle: event ? event.title : 'Event',
+					eventDate: event ? event.event_date : '',
+					eventTime: event ? event.event_time : '',
+					eventLocation: event ? event.location : '',
+					message: message || ''
+				})
+			));
 
             return refreshAllData();
         }
 
         async function sendContactEmail(payload) {
-            await sendEmail('contact', { name: payload.name, email: payload.email, message: payload.message });
-            return true;
-        }
+			await sendEmail('contact', {
+				name: payload.name,
+				email: payload.email,
+				message: payload.message
+			});
+			return true;
+		}
 
         async function sendAccidentReport(data) {
-            await sendEmail('accident_report', data);
-            return true;
-        }
+			await sendEmail('accident_report', data);
+			return true;
+		}
         // --- ENHANCED SOCIAL ROTATIONS (MORE ROUNDS) ---
         // --- MATHEMATICALLY VERIFIED SOCIAL ROTATIONS ---
         // --- BALANCED SOCIAL ROTATIONS ---
@@ -2248,9 +2285,26 @@
                 // Trigger specific logic for the Scramble page
                 if(id === 'scramble-page') updateScrambleAccess();
                 if(id === 'ladders-page') { updateLaddersAccess(); if (currentUser) renderLadderSession(); }
+				if(id === 'rating-page') updateRatingsAccess();
             }
             window.scrollTo({top: 0, behavior: 'smooth'});
         }
+		function updateRatingsAccess() {
+			const restricted = document.getElementById('ratingsRestricted');
+			const content = document.getElementById('ratingsMainContent');
+			const filterBar = document.querySelector('.gender-Everyone')?.closest('.flex.items-center.space-x-2');
+
+			if (currentUser) {
+				restricted.classList.add('hidden');
+				content.classList.remove('hidden');
+				if (filterBar) filterBar.classList.remove('hidden');
+			} else {
+				restricted.classList.remove('hidden');
+				content.classList.add('hidden');
+				if (filterBar) filterBar.classList.add('hidden');
+			}
+		}
+		
         function updateScrambleAccess() {
             const restricted = document.getElementById('scrambleRestricted');
             const content = document.getElementById('scrambleMainContent');
@@ -3611,7 +3665,7 @@
         }
 
         function renderCalendar() {
-            const events = globalData.events || [];
+            const events = (globalData.events || []).filter(e => (e[7] || '').toString().trim() !== 'Cancelled');
             const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
             const titleEl = document.getElementById('calendarMonthTitle');
             if (titleEl) titleEl.textContent = monthNames[calendarCurrentMonth] + " " + calendarCurrentYear;
@@ -3810,7 +3864,7 @@
                             ${status === 'Cancelled' ? `<span class="bg-rose-600 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">Cancelled</span>` : ''}
                         </div>
                         <p class="text-xl font-black uppercase leading-tight">${event[1]}</p>
-                        <p class="text-xs text-gray-400 font-bold mt-1">${event[2]}${event[3] ? ' @ ' + event[3] : ''}</p>
+                        <p class="text-xs text-gray-400 font-bold mt-1">${formatEventDate(event[2])}${event[3] ? ' @ ' + event[3] : ''}</p>
                     </div>
                     <button onclick="closeCalendarEventModal()" class="text-gray-400 hover:text-white transition flex-shrink-0 mt-1">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -3822,7 +3876,7 @@
                     ${event[8] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[8]}</p></div>` : ''}
                     ${event[10] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[10]} ${Number(event[10]) === 1 ? 'hour' : 'hours'}</p></div>` : ''}
                     ${maxPlayers ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold ${isFull ? 'text-rose-600' : 'text-gray-600'}">${signups.length} / ${maxPlayers} signed up${spotsLeft > 0 ? ' — ' + spotsLeft + ' spots left' : ' — FULL'}</p></div>` : ''}
-                    ${event[9] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><p class="text-xs font-bold text-gray-600">Sign up by ${event[9]}</p></div>` : ''}
+                    ${event[9] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><p class="text-xs font-bold text-gray-600">Sign up by ${formatEventDate(event[9])}</p></div>` : ''}
                     ${!newcomersOnly && !under18Only ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">£${userPrice || nonMemberPrice} <span class="text-gray-400">(Members £${memberPrice} / Non-members £${nonMemberPrice})</span></p></div>` : ''}
                 </div>
 
@@ -3860,7 +3914,7 @@
 
 
                     ${!newcomersOnly && !under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] !== 'Paid' ? `
-                        <button onclick="openPaymentModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}', '${userPrice}')" class="w-full bg-rose-600 text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-black transition">💳 Make Payment</button>
+                        <button onclick="openPaymentModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}', '${userPrice}')" style="background-color: #e11d48 !important; color: #ffffff !important;" class="w-full py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-black transition">💳 Make Payment</button>
                     ` : ''}
                     ${!newcomersOnly && !under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] === 'Paid' ? `
                         <span class="w-full inline-block text-center bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest">💳 Paid</span>
@@ -3898,27 +3952,6 @@
             const successMsg = asReserve ? "Added to Reserve List!" : "Registration Successful!";
 
             const onSuccess = (res) => {
-                const eventRow = globalData.events.find(e => e[0] === eventId);
-                if (!asReserve) {
-                    sendEmail('event_signup', {
-                        name: fullName,
-                        email: email,
-                        eventTitle: eventRow ? eventRow[1] : '',
-                        eventDate: eventRow ? eventRow[2] : '',
-                        eventTime: eventRow ? eventRow[3] : '',
-                        eventLocation: eventRow ? eventRow[8] : '',
-                        isFree: eventRow ? (!Number(eventRow[11]) && !Number(eventRow[12])) : true
-                    });
-                } else {
-                    sendEmail('reserve_signup', {
-                        name: fullName,
-                        email: email,
-                        eventTitle: eventRow ? eventRow[1] : '',
-                        eventDate: eventRow ? eventRow[2] : '',
-                        eventTime: eventRow ? eventRow[3] : '',
-                        eventLocation: eventRow ? eventRow[8] : ''
-                    });
-                }
                 closeCalendarEventModal();
                 render(res);
                 triggerToast(successMsg);
@@ -4001,6 +4034,7 @@
         }
 
         function openPaymentModal(eventId, title, amount) {
+			closeCalendarEventModal();
             document.getElementById('paymentEventId').value = eventId;
             document.getElementById('paymentEventTitle').value = title;
             document.getElementById('paymentAmountText').innerText = amount ? ("£" + amount) : "Amount on event listing";
@@ -4149,19 +4183,6 @@
                     
                     btn.innerText = "Submit for Approval";
                     btn.disabled = false;
-                    sendEmail('new_member_admin', {
-                        firstName: data.firstName,
-                        surname: data.surname,
-                        username: data.username,
-                        email: data.email,
-                        isUnder18: data.isUnder18
-                    });
-                    sendEmail(data.isUnder18 ? 'application_received_u18' : 'application_received_adult', {
-                        firstName: data.firstName,
-                        surname: data.surname,
-                        username: data.username,
-                        email: data.email
-                    });
                     closeAuthModals();
                 })
                 .catch(err => {
@@ -4242,6 +4263,7 @@
             updateScrambleAccess();
             updateLaddersAccess();
             renderEvents();
+			updateRatingsAccess();
         }
 
         function toggleMobileMenu() {
@@ -4501,23 +4523,12 @@
 
             cancelSignup({ eventId: adminRemoveTarget.eventId, name: adminRemoveTarget.name, removedByAdmin: true })
                 .then(res => {
-                    const signup = globalData.signups.find(s => s[0] === adminRemoveTarget.eventId && s[1] === adminRemoveTarget.name);
-                    const eventRow = globalData.events.find(e => e[0] === adminRemoveTarget.eventId);
-                    if (signup && signup[4]) {
-                        sendEmail('admin_removed', {
-                            name: adminRemoveTarget.name,
-                            email: signup[4],
-                            eventTitle: eventRow ? eventRow[1] : adminRemoveTarget.eventTitle,
-                            eventDate: eventRow ? eventRow[2] : '',
-                            eventTime: eventRow ? eventRow[3] : '',
-                            eventLocation: eventRow ? eventRow[8] : ''
-                        });
-                    }
                     render(res);
                     triggerToast(adminRemoveTarget.name + " removed from event.");
                     closeAdminRemoveSignupModal();
                     btn.disabled = false;
                     btn.innerText = "Confirm Remove";
+                    // Re-open the signups modal with refreshed data
                     openEventSignupsModal(adminRemoveTarget.eventId, adminRemoveTarget.eventTitle);
                 })
                 .catch(err => {
