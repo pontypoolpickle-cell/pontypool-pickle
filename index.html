@@ -1970,6 +1970,21 @@
                 payment_status: 'Unpaid'
             });
             if (error) throw new Error(error.message);
+            if (payload.dob && payload.dob.indexOf('@') !== -1) {
+                const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+                if (eventRow) {
+                    const isFree = !!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]));
+                    sendEmail('event_signup', {
+                        name: payload.name,
+                        email: payload.dob,
+                        eventTitle: eventRow[1],
+                        eventDate: eventRow[2],
+                        eventTime: eventRow[3] || 'TBC',
+                        eventLocation: eventRow[8] || 'TBC',
+                        isFree: isFree
+                    });
+                }
+            }
             return refreshAllData();
         }
 
@@ -1983,10 +1998,34 @@
                 payment_status: 'Unpaid'
             });
             if (error) throw new Error(error.message);
+            if (payload.dob && payload.dob.indexOf('@') !== -1) {
+                const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+                if (eventRow) {
+                    sendEmail('reserve_signup', {
+                        name: payload.name,
+                        email: payload.dob,
+                        eventTitle: eventRow[1],
+                        eventDate: eventRow[2],
+                        eventTime: eventRow[3] || 'TBC',
+                        eventLocation: eventRow[8] || 'TBC'
+                    });
+                }
+            }
             return refreshAllData();
         }
 
         async function cancelSignup(payload) {
+            let removedSignupEmail = null;
+            if (payload.removedByAdmin) {
+                const { data: removedSignup } = await supabaseClient
+                    .from('signups')
+                    .select('email')
+                    .eq('event_id', payload.eventId)
+                    .eq('player_name', payload.name)
+                    .limit(1);
+                if (removedSignup && removedSignup.length > 0) removedSignupEmail = removedSignup[0].email;
+            }
+
             const { error } = await supabaseClient
                 .from('signups')
                 .delete()
@@ -1995,6 +2034,18 @@
             if (error) throw new Error(error.message);
 
             if (payload.removedByAdmin) {
+                if (removedSignupEmail && removedSignupEmail.indexOf('@') !== -1) {
+                    const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+                    sendEmail('admin_removed', {
+                        name: payload.name,
+                        email: removedSignupEmail,
+                        eventTitle: eventRow ? eventRow[1] : '',
+                        eventDate: eventRow ? eventRow[2] : '',
+                        eventTime: eventRow ? eventRow[3] : '',
+                        eventLocation: eventRow ? eventRow[8] : ''
+                    });
+                }
+
                 const { data: reserves, error: reserveErr } = await supabaseClient
                     .from('signups')
                     .select('*')
@@ -2005,6 +2056,17 @@
                 if (reserveErr) throw new Error(reserveErr.message);
                 if (reserves && reserves.length > 0) {
                     await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', reserves[0].id);
+                    if (reserves[0].email && reserves[0].email.indexOf('@') !== -1) {
+                        const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+                        sendEmail('reserve_promoted', {
+                            name: reserves[0].player_name,
+                            email: reserves[0].email,
+                            eventTitle: eventRow ? eventRow[1] : '',
+                            eventDate: eventRow ? eventRow[2] : '',
+                            eventTime: eventRow ? eventRow[3] : '',
+                            eventLocation: eventRow ? eventRow[8] : ''
+                        });
+                    }
                 }
             }
             return refreshAllData();
@@ -2054,6 +2116,23 @@
             });
             if (error) throw new Error(error.message);
             clearLeagueCache();
+
+            sendEmail('new_member_admin', {
+                firstName: data.firstName,
+                surname: data.surname,
+                username: data.username,
+                email: data.email || 'Not provided',
+                isUnder18: !!data.isUnder18
+            });
+            if (data.email) {
+                sendEmail(data.isUnder18 ? 'application_received_u18' : 'application_received_adult', {
+                    firstName: data.firstName,
+                    surname: data.surname,
+                    username: data.username,
+                    email: data.email
+                });
+            }
+
             return true;
         }
 
@@ -2104,8 +2183,23 @@
                         is_under18: !!user.is_under18
                     });
                 }
+                if (user.email) {
+                    sendEmail('account_approved', {
+                        firstName: user.first_name,
+                        email: user.email,
+                        username: user.username,
+                        loginUrl: window.location.href
+                    });
+                }
             } else if (action === 'Delete') {
+                const { data: userToDecline } = await supabaseClient.from('users').select('*').eq('username', username).single();
                 await supabaseClient.from('users').delete().eq('username', username);
+                if (userToDecline && userToDecline.email) {
+                    sendEmail('account_declined', {
+                        firstName: userToDecline.first_name,
+                        email: userToDecline.email
+                    });
+                }
             } else if (action === 'VerifyConsent') {
                 await supabaseClient.from('users').update({ consent_verified: true }).eq('username', username);
             } else {
