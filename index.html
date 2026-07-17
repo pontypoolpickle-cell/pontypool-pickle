@@ -252,8 +252,8 @@
             </div>
             <div class="px-4">
                 <button onclick="showTab('membership-page')"
-                   class="w-full card p-8 md:p-10 bg-black border-l-8 shadow-xl max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-6 hover:shadow-2xl transition group text-left"
-                   style="border-color: var(--ponty-gold) !important;">
+                   class="w-full card p-8 md:p-10 border-l-8 shadow-xl max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-6 hover:shadow-2xl transition group text-left"
+                   style="background-color: #000000 !important; border-color: var(--ponty-gold) !important;">
                     <div class="flex-shrink-0">
                         <img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" alt="Membership" class="h-16 md:h-20 w-auto object-contain rounded">
                     </div>
@@ -697,8 +697,8 @@
             </div>
 
             <!-- NOT FOR PROFIT NOTE -->
-            <div class="card p-8 bg-black text-white shadow-2xl text-center" style="border: 2px solid var(--ponty-gold) !important;">
-                <p class="text-lg leading-relaxed">
+            <div class="card p-8 shadow-2xl text-center" style="background-color: #000000 !important; border: 2px solid var(--ponty-gold) !important;">
+                <p class="text-lg leading-relaxed" style="color: #ffffff !important;">
                     Pontypool Pickleball Club is a <strong style="color: var(--ponty-gold-light) !important;">not-for-profit</strong> club. Every penny raised through membership goes straight back into the club — equipment, court bookings, and growing the game in Pontypool. Thank you for your support! 🙏
                 </p>
             </div>
@@ -2179,9 +2179,24 @@
 		}
 
         // --- MEMBERSHIP SYSTEM ---
+        // Public-facing wording shown on the Membership page - deliberately does NOT
+        // include the actual discount code so non-members can't see/use it.
         const MEMBERSHIP_PERKS = [
             'Priority access to all future events',
-            'Discount code for our collaboration with the UK Pickleball Shop (pickleball.co.uk) — code PPPB at checkout',
+            'Discount code for our collaboration with the UK Pickleball Shop (pickleball.co.uk) — available to members upon request',
+            'Membership rate for all future events',
+            'Membership T-shirts exclusive to members (coming soon)',
+            'Extra ad-hoc pickleball sessions',
+            'Priority access to internal club tournament events',
+            'Discounted club apparel',
+            'Priority access to external leagues as a club'
+        ];
+
+        // Sent only via private email once someone is an actual member (activation/
+        // extension confirmation) - safe to include the real discount code here.
+        const MEMBERSHIP_PERKS_EMAIL = [
+            'Priority access to all future events',
+            'Discount code for our collaboration with the UK Pickleball Shop (pickleball.co.uk) — use code PPPB at checkout',
             'Membership rate for all future events',
             'Membership T-shirts exclusive to members (coming soon)',
             'Extra ad-hoc pickleball sessions',
@@ -2302,7 +2317,7 @@
                     durationWeeks: durationWeeks,
                     startDate: newStart,
                     endDate: newEnd,
-                    perks: MEMBERSHIP_PERKS
+                    perks: MEMBERSHIP_PERKS_EMAIL
                 });
             }
 
@@ -4545,8 +4560,8 @@
 
             if (!currentUser) {
                 widget.innerHTML = `
-                <div class="card p-8 text-center bg-black text-white shadow-2xl" style="border: 2px solid var(--ponty-gold) !important;">
-                    <p class="font-black uppercase text-lg mb-3">Log in to report a payment and become a member.</p>
+                <div class="card p-8 text-center shadow-2xl" style="background-color: #000000 !important; border: 2px solid var(--ponty-gold) !important;">
+                    <p class="font-black uppercase text-lg mb-3" style="color: #ffffff !important;">Log in to report a payment and become a member.</p>
                     <button onclick="openAuthModal()" class="btn-gold px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">Login / Sign Up</button>
                 </div>`;
                 return;
