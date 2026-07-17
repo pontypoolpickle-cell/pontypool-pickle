@@ -111,7 +111,6 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 </head>
 <body>
@@ -1316,17 +1315,6 @@
                 fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' })
             }
         });
-
-        // TODO: Replace with your EmailJS credentials
-        const EMAILJS_SERVICE_ID = 'service_zya6iux';
-        const EMAILJS_PUBLIC_KEY = 'SZDe8YYGMz7qa_iI-';
-        // TODO: Replace template IDs below with your configured EmailJS templates
-        const EMAILJS_TEMPLATE_CONTACT = 'template_aijlfkk';
-		const EMAILJS_TEMPLATE_EVENT_SIGNUP = 'template_k6gr01c';
-        const EMAILJS_TEMPLATE_ACCIDENT = 'YOUR_ACCIDENT_TEMPLATE_ID';
-        const EMAILJS_TEMPLATE_PASSWORD_RESET = 'YOUR_PASSWORD_RESET_TEMPLATE_ID';
-        const EMAILJS_TEMPLATE_EVENT_CANCEL = 'YOUR_EVENT_CANCEL_TEMPLATE_ID';
-        emailjs.init(EMAILJS_PUBLIC_KEY);
 
         const CACHE_KEY = 'pickle_global_data_cache_v1';
         const CACHE_TTL_MS = 5 * 60 * 1000;
