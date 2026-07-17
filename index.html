@@ -6,13 +6,26 @@
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet">
     <style>
-        :root { --ponty-red: #e11d48; --ponty-black: #000000; }
+        :root { --ponty-red: #e11d48; --ponty-black: #000000; --ponty-gold: #c9a227; --ponty-gold-light: #e9cf6b; }
         body { background-color: #f4f4f4; font-family: 'Inter', sans-serif; color: var(--ponty-black); }
         h1, h2, h3 { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: -0.01em; }
         .header-bg { background-color: var(--ponty-black); border-bottom: 4px solid var(--ponty-red); }
         .card { background: white; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-radius: 0.5rem; }
         .nav-link.active { color: var(--ponty-red); border-bottom: 3px solid var(--ponty-red); }
         .btn-red { background-color: var(--ponty-red); color: white; transition: all 0.2s; }
+        .btn-gold { background: linear-gradient(135deg, var(--ponty-gold-light) 0%, var(--ponty-gold) 100%); color: #1a1400; transition: all 0.2s; }
+        .btn-gold:hover { filter: brightness(1.08); }
+        .nav-link-gold { color: var(--ponty-gold-light) !important; font-weight: 900; }
+        .nav-link-gold.active { color: var(--ponty-gold-light) !important; border-bottom: 3px solid var(--ponty-gold) !important; }
+        .nav-link-gold:hover { color: #fff !important; }
+        .member-gold-badge { display: inline-block; width: 16px; height: 16px; border-radius: 50%; object-fit: cover; border: 1px solid var(--ponty-gold); box-shadow: 0 0 4px rgba(201, 162, 39, 0.6); vertical-align: middle; }
+        .membership-plan-card { border: 2px solid #eee; border-radius: 1rem; transition: all 0.2s; }
+        .membership-plan-card.selected { border-color: var(--ponty-gold); box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.25); }
+        .expiring-soon-row { background-color: #fff7e0 !important; }
+        .membership-admin-tab { background: #f3f4f6; color: #888; }
+        .membership-admin-tab.active { background: var(--ponty-gold); color: #1a1400; }
+        .membership-duration-option { border: 2px solid #eee; border-radius: 0.75rem; padding: 10px 4px; text-align: center; cursor: pointer; transition: all 0.15s; }
+        .membership-duration-option.selected { border-color: var(--ponty-gold); background: #fffbea; }
         
         /* New Filter Icon Styling */
         .filter-icon-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: 0.3s; color: #999; cursor: pointer; border: 1px solid transparent; }
@@ -122,6 +135,7 @@
                 <button onclick="showTab('events-page')" id="nav-events" class="nav-link py-1">Events</button>
                 <button onclick="showTab('rules-page')" id="nav-rules" class="nav-link py-1">Rules</button>
                 <button onclick="showTab('club-info-page')" id="nav-club-info" class="nav-link py-1">Club Info & Resources</button>
+                <button onclick="showTab('membership-page')" id="nav-membership" class="nav-link nav-link-gold py-1">⭐ Membership</button>
                 <button onclick="showTab('admin')" id="nav-admin" class="btn-red px-4 py-2 rounded font-black hidden">Admin</button>
                 <button onclick="openAuthModal()" id="nav-auth" class="bg-white text-black px-4 py-2 rounded-full font-black hover:bg-rose-600 hover:text-white transition">Login / Sign Up</button>
             </div>
@@ -151,6 +165,7 @@
                 <button onclick="showTab('ladders-page'); closeMobileMenu();" id="nav-ladders-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🪜 Ladders</button>
                 <button onclick="showTab('rules-page'); closeMobileMenu();" id="nav-rules-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">📋 Rules</button>
                 <button onclick="showTab('club-info-page'); closeMobileMenu();" id="nav-club-info-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">ℹ️ Club Info & Resources</button>
+                <button onclick="showTab('membership-page'); closeMobileMenu();" id="nav-membership-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 nav-link-gold transition">⭐ Membership</button>
                 <button onclick="showTab('admin'); closeMobileMenu();" id="nav-admin-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 text-rose-400 hover:text-rose-300 transition">⚙️ Admin</button>
 				<button onclick="openAuthModal(); closeMobileMenu();" id="nav-auth-m" class="text-left px-2 py-3 text-rose-400 hover:text-rose-300 transition">Login / Sign Up</button>
             </div>
@@ -235,6 +250,26 @@
                         </span>
                     </div>
                 </a>
+            </div>
+            <div class="px-4">
+                <button onclick="showTab('membership-page')"
+                   class="w-full card p-8 md:p-10 bg-black border-l-8 shadow-xl max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-6 hover:shadow-2xl transition group text-left"
+                   style="border-color: var(--ponty-gold) !important;">
+                    <div class="flex-shrink-0">
+                        <img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" alt="Membership" class="h-16 md:h-20 w-auto object-contain rounded">
+                    </div>
+                    <div class="text-center md:text-left flex-grow">
+                        <p class="text-[10px] font-black uppercase tracking-widest mb-2" style="color: var(--ponty-gold-light) !important;">Support the Club</p>
+                        <h3 class="text-2xl md:text-3xl font-black italic uppercase tracking-tight text-white group-hover:opacity-80 transition">
+                            Click here to find out about Membership
+                        </h3>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <span class="btn-gold px-6 py-3 rounded-full font-black uppercase text-sm tracking-widest shadow-lg inline-block whitespace-nowrap">
+                            View Membership →
+                        </span>
+                    </div>
+                </button>
             </div>
             <div class="mt-16 text-center space-y-8 px-4">
                 <div class="card p-8 md:p-12 bg-white border-b-8 border-rose-600 shadow-2xl max-w-4xl mx-auto">
@@ -494,22 +529,9 @@
                         <p class="text-gray-700 leading-relaxed">If you cancel within 24 hours of the event, a refund will only be issued if a reserve player is found to take your spot.</p>
                     </div>
                     <div class="bg-rose-50 rounded-xl p-6 border-l-4 border-rose-600">
-                        <h4 class="font-black text-lg uppercase italic text-rose-600 mb-2">Become a Member — £20</h4>
-                        <p class="text-gray-700 leading-relaxed">Members get priority access to event signups and pricing. Pay £20 to the account details below, then send us a message via the Contact Us page so an admin can activate your membership.</p>
-                        <div class="bg-white rounded-lg p-4 mt-4 space-y-2 border border-rose-100">
-                            <div class="flex justify-between text-sm">
-                                <span class="font-bold text-gray-500">Name:</span>
-                                <span class="font-black">Pontypool Pickleball</span>
-                            </div>
-                            <div class="flex justify-between text-sm">
-                                <span class="font-bold text-gray-500">Sort Code:</span>
-                                <span class="font-black">51-61-02</span>
-                            </div>
-                            <div class="flex justify-between text-sm">
-                                <span class="font-bold text-gray-500">Account No:</span>
-                                <span class="font-black">76584135</span>
-                            </div>
-                        </div>
+                        <h4 class="font-black text-lg uppercase italic text-rose-600 mb-2">Become a Member</h4>
+                        <p class="text-gray-700 leading-relaxed">Members get priority access to event signups, discounted pricing, and more. Head over to the Membership page to see pricing and perks.</p>
+                        <button onclick="showTab('membership-page')" class="btn-gold px-6 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg mt-4">⭐ View Membership</button>
                     </div>
                 </div>
             </div>
@@ -625,6 +647,63 @@
             </div>
             </div>
         </div>       
+        <!-- MEMBERSHIP PAGE -->
+        <div id="membership-page" class="tab-content hidden max-w-4xl mx-auto space-y-12 px-4 pb-20">
+            <div class="text-center space-y-4">
+                <img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" alt="Pontypool Pickleball Club Gold Logo" class="h-24 w-24 object-contain mx-auto rounded-full shadow-lg">
+                <h2 class="text-5xl md:text-6xl font-black italic uppercase leading-none text-black">
+                    Club <span style="color: var(--ponty-gold) !important;">Membership</span>
+                </h2>
+                <p class="text-lg font-bold text-gray-500 max-w-2xl mx-auto uppercase tracking-wide">Support the club and unlock priority access, discounts, and more.</p>
+            </div>
+
+            <!-- STATUS WIDGET (dynamic) -->
+            <div id="membershipStatusWidget"></div>
+
+            <!-- PERKS -->
+            <div class="space-y-6">
+                <div class="border-b-4 pb-2" style="border-color: var(--ponty-gold) !important;">
+                    <h2 class="text-4xl font-black italic uppercase">Member Perks</h2>
+                </div>
+                <div class="card p-8 border-t-8 shadow-2xl bg-white" style="border-color: var(--ponty-gold) !important;">
+                    <ul id="membershipPerksList" class="space-y-3 text-gray-700 font-medium"></ul>
+                </div>
+            </div>
+
+            <!-- PRICING -->
+            <div class="space-y-6">
+                <div class="border-b-4 pb-2" style="border-color: var(--ponty-gold) !important;">
+                    <h2 class="text-4xl font-black italic uppercase">How to Become a Member</h2>
+                </div>
+                <p class="text-gray-700 leading-relaxed">Choose a duration below, send payment via bank transfer using the details underneath, then click <strong>I've Paid</strong> and give us the payment reference so we can match it against the statement. An admin will review and activate your membership shortly after.</p>
+                <div id="membershipPlansContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+
+                <div class="card p-6 border-t-4 shadow-lg bg-white" style="border-color: var(--ponty-gold) !important;">
+                    <h4 class="font-black text-sm uppercase italic text-gray-500 mb-3">Bank Transfer Details</h4>
+                    <div class="bg-gray-50 rounded-lg p-4 space-y-2 border border-gray-100">
+                        <div class="flex justify-between text-sm">
+                            <span class="font-bold text-gray-500">Name:</span>
+                            <span class="font-black">Pontypool Pickleball</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="font-bold text-gray-500">Sort Code:</span>
+                            <span class="font-black">51-61-02</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="font-bold text-gray-500">Account No:</span>
+                            <span class="font-black">76584135</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NOT FOR PROFIT NOTE -->
+            <div class="card p-8 bg-black text-white shadow-2xl text-center" style="border: 2px solid var(--ponty-gold) !important;">
+                <p class="text-lg leading-relaxed">
+                    Pontypool Pickleball Club is a <strong style="color: var(--ponty-gold-light) !important;">not-for-profit</strong> club. Every penny raised through membership goes straight back into the club — equipment, court bookings, and growing the game in Pontypool. Thank you for your support! 🙏
+                </p>
+            </div>
+        </div>
         <!-- SCRAMBLE PAGE -->
         <div id="scramble-page" class="tab-content hidden space-y-6">
             <div class="flex justify-between items-end">
@@ -899,7 +978,7 @@
                     <!-- Row 1: Side by Side -->
                     <div class="grid grid-cols-2 gap-4 mb-4">
                         <button onclick="openEventModal()" class="w-full bg-white text-black border-2 border-black py-4 rounded-xl font-black uppercase hover:bg-gray-200 transition shadow-lg">+ Create Event</button>
-                        <button onclick="openMembershipModal()" class="w-full bg-black text-white border-2 border-rose-600 py-4 rounded-xl font-black uppercase shadow-lg">⭐ Manage Members</button>
+                        <button onclick="openMembershipModal()" class="w-full bg-black text-white border-2 py-4 rounded-xl font-black uppercase shadow-lg" style="border-color: var(--ponty-gold) !important;">⭐ Manage Membership</button>
                     </div>
 
                     <!-- Row 2: Centered Underneath -->
@@ -996,7 +1075,7 @@
 	// UI and is not affected by device locale settings. The underlying value
 	// (read via .value elsewhere in this file) is kept as "Y-m-d" exactly like
 	// a native date input, so no other logic needs to change.
-	const DATE_INPUT_IDS = ['scrambleDate', 'historySearchDate', 'matchDate', 'evtDate', 'evtMemberDate', 'evtPublicDate', 'evtDeadline', 'arIncidentDate'];
+	const DATE_INPUT_IDS = ['scrambleDate', 'historySearchDate', 'matchDate', 'evtDate', 'evtMemberDate', 'evtPublicDate', 'evtDeadline', 'arIncidentDate', 'membershipActivateStartDate', 'membershipAdjustStartDate', 'membershipAdjustEndDate'];
 
 	function initDatePickers() {
 		if (typeof flatpickr === 'undefined') return;
@@ -1152,6 +1231,27 @@
           created_at timestamptz default now()
         );
 
+        -- Membership fields (added for the Membership feature) --
+        alter table users add column if not exists membership_status text default 'None';
+        alter table users add column if not exists membership_duration_weeks numeric;
+        alter table users add column if not exists membership_requested_duration_weeks numeric;
+        alter table users add column if not exists membership_start_date date;
+        alter table users add column if not exists membership_end_date date;
+        alter table users add column if not exists membership_last_reminder_sent date;
+        alter table users add column if not exists membership_payment_ref text;
+
+        -- Membership pricing table (admin-configurable) --
+        create table if not exists membership_plans (
+          duration_weeks integer primary key,
+          price numeric not null,
+          label text
+        );
+        insert into membership_plans (duration_weeks, price, label) values
+          (13, 10, '13 Weeks'),
+          (26, 15, '26 Weeks'),
+          (52, 20, '52 Weeks')
+        on conflict (duration_weeks) do nothing;
+
         -- Locations table
         create table locations (
           id uuid primary key default gen_random_uuid(),
@@ -1269,7 +1369,16 @@
 
         function clearLeagueCache() {}
 
-        function toPlayerView(row) {
+        function todayStr() {
+            return new Date().toISOString().slice(0, 10);
+        }
+
+        function isMembershipActive(u) {
+            return !!(u && u.membership_status === 'Active' && u.membership_end_date && u.membership_end_date >= todayStr());
+        }
+
+        function toPlayerView(row, memberMap) {
+            const membershipUser = memberMap ? memberMap.get(normalizeName(row.name)) : null;
             return {
                 name: row.name,
                 elo: Number(row.elo || DEFAULT_ELO),
@@ -1281,7 +1390,28 @@
                 lastMatchDate: row.last_match_date || '',
                 membership: row.membership || 'Non-Member',
                 isHidden: !!row.is_hidden,
-                isUnder18: !!row.is_under18
+                isUnder18: !!row.is_under18,
+                isActiveMember: isMembershipActive(membershipUser),
+                membershipEndDate: membershipUser ? membershipUser.membership_end_date : null
+            };
+        }
+
+        function toMembershipView(u) {
+            const fullName = `${u.first_name || ''} ${u.surname || ''}`.trim();
+            return {
+                id: u.id,
+                username: u.username,
+                name: fullName,
+                email: u.email || '',
+                role: u.role || 'Non-Member',
+                status: u.membership_status || 'None',
+                durationWeeks: u.membership_duration_weeks || null,
+                requestedDurationWeeks: u.membership_requested_duration_weeks || null,
+                startDate: u.membership_start_date || null,
+                endDate: u.membership_end_date || null,
+                lastReminderSent: u.membership_last_reminder_sent || null,
+                paymentRef: u.membership_payment_ref || '',
+                isActive: isMembershipActive(u)
             };
         }
 
@@ -1294,6 +1424,14 @@
             const pendingUsers = payload.pendingUsers || [];
 			const ladderSessionsRaw = payload.ladderSessions || [];
             const scrambleRows = payload.liveScramble || [];
+            const membersRaw = payload.members || [];
+            const membershipPlansRaw = payload.membershipPlans || [];
+
+            const memberMap = new Map();
+            membersRaw.forEach(u => {
+                const fullName = normalizeName(`${u.first_name || ''} ${u.surname || ''}`);
+                if (fullName) memberMap.set(fullName, u);
+            });
 
             liveScrambleIdMap = {};
             const activeScramble = scrambleRows.map((r, i) => {
@@ -1313,7 +1451,9 @@
             });
 
             return {
-                standings: players.map(toPlayerView),
+                standings: players.map(p => toPlayerView(p, memberMap)),
+                members: membersRaw.map(toMembershipView),
+                membershipPlans: membershipPlansRaw.map(p => ({ durationWeeks: Number(p.duration_weeks), price: Number(p.price), label: p.label || (p.duration_weeks + ' Weeks') })),
                 history: matches
                     .map(m => ({
                         date: m.match_date,
@@ -1420,7 +1560,9 @@
                 locationsRes,
                 pendingUsersRes,
                 ladderSessionRes,
-                scrambleRes
+                scrambleRes,
+                membersRes,
+                membershipPlansRes
             ] = await Promise.all([
                 supabaseClient.from('players').select('*').order('name', { ascending: true }),
                 supabaseClient.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -1429,7 +1571,9 @@
                 supabaseClient.from('locations').select('*').order('name', { ascending: true }),
                 supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
                 supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
-                supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true })
+                supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true }),
+                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref').eq('status', 'Approved').order('first_name', { ascending: true }),
+                supabaseClient.from('membership_plans').select('*').order('duration_weeks', { ascending: true })
             ]);
 
             const activeSessions = ladderSessionRes.data || [];
@@ -1451,7 +1595,9 @@
 				locations: locationsRes.data || [],
 				pendingUsers: pendingUsersRes.data || [],
 				ladderSessions,
-				liveScramble: scrambleRes.data || []
+				liveScramble: scrambleRes.data || [],
+				members: membersRes.data || [],
+				membershipPlans: membershipPlansRes.data || []
 			});
         }
 
@@ -2044,11 +2190,212 @@
 			}
 		}
 
-        async function setMemberStatus(payload) {
-            const membership = payload.isMember ? 'Member' : 'Non-Member';
-            const { error } = await supabaseClient.from('players').update({ membership }).eq('name', payload.playerName);
+        // --- MEMBERSHIP SYSTEM ---
+        const MEMBERSHIP_PERKS = [
+            'Priority access to all future events',
+            'Discount code for our collaboration with the UK Pickleball Shop (pickleball.co.uk) — code PPPB at checkout',
+            'Membership rate for all future events',
+            'Membership T-shirts exclusive to members (coming soon)',
+            'Extra ad-hoc pickleball sessions',
+            'Priority access to internal club tournament events',
+            'Discounted club apparel',
+            'Priority access to external leagues as a club'
+        ];
+
+        function addWeeksToDate(dateStr, weeks) {
+            const d = new Date(dateStr + 'T00:00:00');
+            d.setDate(d.getDate() + (Number(weeks) * 7));
+            return d.toISOString().slice(0, 10);
+        }
+
+        // Central place that keeps `role` (the field every access-gating check in this app
+        // reads) in sync with membership_end_date, whenever any membership field changes.
+        // Admins are exempt - they always keep member-level access regardless of membership.
+        async function applyMembershipFields(username, fields) {
+            const { data: userRow, error: fetchErr } = await supabaseClient
+                .from('users').select('id, role, membership_end_date').eq('username', username).single();
+            if (fetchErr) throw new Error(fetchErr.message);
+
+            const endDate = ('membership_end_date' in fields) ? fields.membership_end_date : userRow.membership_end_date;
+            const hasValidEnd = !!(endDate && endDate >= todayStr());
+            const update = Object.assign({}, fields);
+            if (userRow.role !== 'Admin') {
+                update.role = hasValidEnd ? 'Member' : 'Non-Member';
+            }
+            const { error } = await supabaseClient.from('users').update(update).eq('username', username);
+            if (error) throw new Error(error.message);
+        }
+
+        async function submitMembershipPaymentRequest(payload) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const durationWeeks = Number(payload.durationWeeks);
+            const paymentRef = String(payload.paymentRef || '').trim();
+            if (!durationWeeks) throw new Error('Please select a membership duration.');
+            if (!paymentRef) throw new Error('Please enter a payment reference so we can match it against the statement.');
+
+            const { data: userRow, error: fetchErr } = await supabaseClient.from('users').select('*').eq('username', currentUser.username).single();
+            if (fetchErr) throw new Error(fetchErr.message);
+
+            const isRenewal = !!(userRow.membership_end_date && userRow.membership_end_date >= todayStr());
+            const update = {
+                membership_requested_duration_weeks: durationWeeks,
+                membership_payment_ref: paymentRef
+            };
+            // A renewal submitted while still Active keeps full access (and the "Active"
+            // label) until approved. A first-time/lapsed request flips to Pending so the
+            // member can't repeatedly click the button while awaiting review.
+            if (!isRenewal) update.membership_status = 'Pending';
+
+            const { error } = await supabaseClient.from('users').update(update).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+
+            sendEmail('membership_payment_notification', {
+                name: `${userRow.first_name} ${userRow.surname}`.trim(),
+                username: userRow.username,
+                email: userRow.email || '',
+                durationWeeks: durationWeeks,
+                paymentRef: paymentRef,
+                isRenewal: isRenewal
+            });
+
+            await refreshCurrentUserMembership();
+            return refreshAllData();
+        }
+
+        async function cancelMembershipRequest() {
+            if (!currentUser) throw new Error('Please log in first.');
+            const { data: userRow, error: fetchErr } = await supabaseClient.from('users').select('*').eq('username', currentUser.username).single();
+            if (fetchErr) throw new Error(fetchErr.message);
+
+            const hasValidEnd = !!(userRow.membership_end_date && userRow.membership_end_date >= todayStr());
+            const status = userRow.membership_end_date ? (hasValidEnd ? 'Active' : 'Expired') : 'None';
+
+            const { error } = await supabaseClient.from('users').update({
+                membership_requested_duration_weeks: null,
+                membership_payment_ref: null,
+                membership_status: status
+            }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+
+            await refreshCurrentUserMembership();
+            return refreshAllData();
+        }
+
+        async function activateMembership(payload) {
+            const { data: userRow, error: fetchErr } = await supabaseClient.from('users').select('*').eq('id', payload.userId).single();
+            if (fetchErr) throw new Error(fetchErr.message);
+
+            const durationWeeks = Number(userRow.membership_requested_duration_weeks || payload.durationWeeks);
+            if (!durationWeeks) throw new Error('This request has no requested duration - ask the member to resubmit.');
+
+            const isExtension = !!(userRow.membership_end_date && userRow.membership_end_date >= todayStr());
+            let newStart, newEnd;
+            if (isExtension) {
+                newStart = userRow.membership_start_date;
+                newEnd = addWeeksToDate(userRow.membership_end_date, durationWeeks);
+            } else {
+                newStart = payload.startDate || todayStr();
+                newEnd = addWeeksToDate(newStart, durationWeeks);
+            }
+
+            await applyMembershipFields(userRow.username, {
+                membership_status: 'Active',
+                membership_duration_weeks: durationWeeks,
+                membership_start_date: newStart,
+                membership_end_date: newEnd,
+                membership_requested_duration_weeks: null,
+                membership_last_reminder_sent: null
+            });
+
+            if (userRow.email) {
+                sendEmail(isExtension ? 'membership_extended' : 'membership_activated', {
+                    firstName: userRow.first_name,
+                    email: userRow.email,
+                    durationWeeks: durationWeeks,
+                    startDate: newStart,
+                    endDate: newEnd,
+                    perks: MEMBERSHIP_PERKS
+                });
+            }
+
+            return refreshAllData();
+        }
+
+        async function declineMembershipRequest(payload) {
+            const { data: userRow, error: fetchErr } = await supabaseClient.from('users').select('*').eq('id', payload.userId).single();
+            if (fetchErr) throw new Error(fetchErr.message);
+
+            const hasValidEnd = !!(userRow.membership_end_date && userRow.membership_end_date >= todayStr());
+            const status = userRow.membership_end_date ? (hasValidEnd ? 'Active' : 'Expired') : 'None';
+
+            const { error } = await supabaseClient.from('users').update({
+                membership_requested_duration_weeks: null,
+                membership_payment_ref: null,
+                membership_status: status
+            }).eq('id', payload.userId);
+            if (error) throw new Error(error.message);
+
+            if (userRow.email) {
+                sendEmail('membership_declined', {
+                    firstName: userRow.first_name,
+                    email: userRow.email,
+                    reason: payload.reason || ''
+                });
+            }
+
+            return refreshAllData();
+        }
+
+        async function adjustMembership(payload) {
+            const startDate = payload.startDate || null;
+            const endDate = payload.endDate || null;
+            const hasValidEnd = !!(endDate && endDate >= todayStr());
+            const status = endDate ? (hasValidEnd ? 'Active' : 'Expired') : 'None';
+
+            await applyMembershipFields(payload.username, {
+                membership_start_date: startDate,
+                membership_end_date: endDate,
+                membership_status: status,
+                membership_duration_weeks: payload.durationWeeks != null ? Number(payload.durationWeeks) : undefined
+            });
+
+            return refreshAllData();
+        }
+
+        async function saveMembershipPricing(prices) {
+            const rows = Object.keys(prices).map(w => ({ duration_weeks: Number(w), price: Number(prices[w]) }));
+            const { error } = await supabaseClient.from('membership_plans').upsert(rows, { onConflict: 'duration_weeks' });
             if (error) throw new Error(error.message);
             return refreshAllData();
+        }
+
+        // Near-real-time refresh: re-pulls the logged-in member's own row so activations /
+        // expiries made elsewhere (e.g. by an admin) show up without needing to log out.
+        async function refreshCurrentUserMembership() {
+            if (!currentUser) return;
+            const { data: userRow, error } = await supabaseClient.from('users').select('*').eq('username', currentUser.username).maybeSingle();
+            if (error || !userRow) return;
+
+            let role = userRow.role || 'Non-Member';
+            let status = userRow.membership_status || 'None';
+            if (role !== 'Admin' && status === 'Active' && userRow.membership_end_date && userRow.membership_end_date < todayStr()) {
+                await applyMembershipFields(currentUser.username, { membership_status: 'Expired' }).catch(() => {});
+                status = 'Expired';
+                role = 'Non-Member';
+            }
+
+            currentUser = Object.assign({}, currentUser, {
+                role: role,
+                membershipStatus: status,
+                membershipDurationWeeks: userRow.membership_duration_weeks || null,
+                membershipRequestedDurationWeeks: userRow.membership_requested_duration_weeks || null,
+                membershipStartDate: userRow.membership_start_date || null,
+                membershipEndDate: userRow.membership_end_date || null,
+                membershipPaymentRef: userRow.membership_payment_ref || ''
+            });
+            sessionStorage.setItem('pickleUser', JSON.stringify(currentUser));
+            updateUIForLogin();
+            renderMembershipPage();
         }
 
         async function signupForEvent(payload) {
@@ -2247,13 +2594,27 @@
             const user = data[0];
             if (user.password_hash !== hashPassword(payload.password)) throw new Error('Invalid username or password.');
 
+            // Client-side safety net: auto-expire a lapsed membership as soon as the member
+            // logs in. The authoritative check lives in the scheduled Supabase Edge Function.
+            if (user.role !== 'Admin' && user.membership_status === 'Active' && user.membership_end_date && user.membership_end_date < todayStr()) {
+                await applyMembershipFields(user.username, { membership_status: 'Expired' }).catch(() => {});
+                user.membership_status = 'Expired';
+                user.role = 'Non-Member';
+            }
+
             return {
                 username: user.username,
                 firstName: user.first_name,
                 surname: user.surname,
                 email: user.email || '',
                 role: user.role || 'Non-Member',
-                isUnder18: !!user.is_under18
+                isUnder18: !!user.is_under18,
+                membershipStatus: user.membership_status || 'None',
+                membershipDurationWeeks: user.membership_duration_weeks || null,
+                membershipRequestedDurationWeeks: user.membership_requested_duration_weeks || null,
+                membershipStartDate: user.membership_start_date || null,
+                membershipEndDate: user.membership_end_date || null,
+                membershipPaymentRef: user.membership_payment_ref || ''
             };
         }
 
@@ -2582,6 +2943,7 @@
             filterHistory();
             renderAdminHistory();
             renderEvents();
+            renderMembershipPage();
 
             // Populate location dropdown
             const locationSelect = document.getElementById('evtLocation');
@@ -2713,6 +3075,7 @@
                             <button onclick="openProfile('${p.name}')" class="font-black text-left text-xs md:text-lg hover:text-rose-600 transition underline decoration-rose-200 underline-offset-4">
                                 ${p.name}
                             </button>
+                            ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge ml-1" title="Active Member">` : ''}
                         </td>
                         <td class="px-1 py-4 md:p-4 text-center font-bold text-green-600 text-xs">${p.wins || 0}</td>
                         <td class="px-1 py-4 md:p-4 text-center font-bold text-red-600 text-xs">${p.losses || 0}</td>
@@ -3151,6 +3514,7 @@
                 <div class="flex items-center gap-2 mb-1">
                     <span class="skill-badge ${badgeClass}" style="font-size: 9px; padding: 3px 10px;">${badgeText}</span>
                     <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank}</span>
+                    ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
                 </div>
                 <h2 class="text-3xl font-black italic tracking-tight uppercase text-white">${p.name}</h2>
             `;
@@ -3910,9 +4274,17 @@
 				});
 		}
 
-        // --- MEMBERSHIP MODAL FUNCTIONS ---
+        // --- MEMBERSHIP MODAL FUNCTIONS (admin) ---
+        let membershipAdminTab = 'requests';
+        let membershipAdminSort = { field: 'endDate', dir: 'asc' };
+        let membershipActivateTarget = null;
+        let membershipDeclineTarget = null;
+        let membershipAdjustTarget = null;
+
         function openMembershipModal() {
-            renderMemberList();
+            if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
+            membershipAdminTab = 'requests';
+            renderMembershipAdminModal();
             openModal('membershipModal');
         }
 
@@ -3920,39 +4292,362 @@
             closeModal('membershipModal');
         }
 
-        function renderMemberList() {
-            const container = document.getElementById('memberListContainer');
-            // We sort the standings alphabetically for this list
-            const players = [...globalData.standings].sort((a,b) => a.name.localeCompare(b.name));
-
-            container.innerHTML = players.map(p => {
-            const isMember = p.membership === "Member";
-            return `
-                <div class="flex justify-between items-center py-3 gap-3">
-                    <span class="font-bold text-sm uppercase flex-grow">${p.name}</span>
-                    <button onclick="toggleMember('${p.name}', ${!isMember})" 
-                            class="px-4 py-1 rounded-full text-[10px] font-black uppercase transition-all ${isMember ? 'bg-yellow-400 text-black' : 'bg-gray-100 text-gray-400'}">
-                        ${isMember ? '⭐ Member' : 'Non-Member'}
-                    </button>
-                    <button onclick="confirmDeleteUserAndPlayer('${p.name}')"
-                            class="p-2 text-gray-300 hover:text-rose-600 transition" title="Remove player and user account">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                    </button>
-                </div>
-            `;
-        }).join('');
+        function setMembershipAdminTab(tab) {
+            membershipAdminTab = tab;
+            renderMembershipAdminModal();
         }
 
-        function toggleMember(name, newStatus) {
-            if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
+        function getMembershipPlanPrice(weeks) {
+            const plan = (globalData.membershipPlans || []).find(p => p.durationWeeks === Number(weeks));
+            return plan ? plan.price : null;
+        }
 
-            setMemberStatus({ playerName: name, isMember: newStatus })
+        function renderMembershipAdminModal() {
+            document.querySelectorAll('.membership-admin-tab').forEach(b => {
+                b.classList.toggle('active', b.dataset.tab === membershipAdminTab);
+            });
+            const body = document.getElementById('membershipAdminBody');
+            if (!body) return;
+            if (membershipAdminTab === 'requests') body.innerHTML = renderMembershipRequestsTab();
+            else if (membershipAdminTab === 'active') body.innerHTML = renderMembershipActiveTab();
+            else if (membershipAdminTab === 'pricing') body.innerHTML = renderMembershipPricingTab();
+            else body.innerHTML = renderMembershipAllPlayersTab();
+        }
+
+        function renderMembershipRequestsTab() {
+            const requests = (globalData.members || []).filter(m => m.requestedDurationWeeks != null).sort((a,b) => a.name.localeCompare(b.name));
+            if (requests.length === 0) {
+                return `<p class="text-center text-gray-400 italic py-10 text-sm">No pending payment requests.</p>`;
+            }
+            return `<div class="overflow-y-auto space-y-2" style="max-height: 420px;">` + requests.map(m => {
+                const price = getMembershipPlanPrice(m.requestedDurationWeeks);
+                return `
+                <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 flex flex-col md:flex-row md:items-center gap-3 justify-between">
+                    <div>
+                        <p class="font-black text-sm uppercase">${m.name} ${m.isActive ? '<span class="text-[9px] bg-black text-white px-2 py-0.5 rounded-full ml-1">RENEWAL</span>' : ''}</p>
+                        <p class="text-[10px] text-gray-400 font-bold uppercase">${m.requestedDurationWeeks} Weeks${price != null ? ' &bull; £' + price : ''} &bull; Ref: ${m.paymentRef || 'N/A'}</p>
+                    </div>
+                    <div class="flex gap-2 flex-shrink-0">
+                        <button onclick='openMembershipActivateModal(${JSON.stringify({ id: m.id, name: m.name, requestedDurationWeeks: m.requestedDurationWeeks, endDate: m.endDate })})' class="btn-gold px-4 py-2 rounded-full text-[10px] font-black uppercase">Activate</button>
+                        <button onclick='openMembershipDeclineModal(${JSON.stringify({ id: m.id, name: m.name })})' class="bg-rose-100 text-rose-600 px-4 py-2 rounded-full text-[10px] font-black uppercase hover:bg-rose-600 hover:text-white transition">Decline</button>
+                    </div>
+                </div>`;
+            }).join('') + `</div>`;
+        }
+
+        function setMembershipActiveSort(field) {
+            if (membershipAdminSort.field === field) {
+                membershipAdminSort.dir = membershipAdminSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                membershipAdminSort = { field, dir: 'asc' };
+            }
+            renderMembershipAdminModal();
+        }
+
+        function renderMembershipActiveTab() {
+            const dir = membershipAdminSort.dir === 'asc' ? 1 : -1;
+            const members = (globalData.members || []).filter(m => m.status === 'Active').sort((a, b) => {
+                if (membershipAdminSort.field === 'name') return a.name.localeCompare(b.name) * dir;
+                return String(a.endDate || '').localeCompare(String(b.endDate || '')) * dir;
+            });
+            if (members.length === 0) {
+                return `<p class="text-center text-gray-400 italic py-10 text-sm">No active members yet.</p>`;
+            }
+            const soonCutoff = addWeeksToDate(todayStr(), 1);
+            const arrow = dir => dir === 'asc' ? '▲' : '▼';
+            return `
+            <div class="flex gap-3 text-[10px] font-black uppercase text-gray-400 mb-1">
+                <button onclick="setMembershipActiveSort('name')" class="hover:text-black">Name ${membershipAdminSort.field==='name' ? arrow(membershipAdminSort.dir) : ''}</button>
+                <button onclick="setMembershipActiveSort('endDate')" class="hover:text-black">Expiry ${membershipAdminSort.field==='endDate' ? arrow(membershipAdminSort.dir) : ''}</button>
+            </div>
+            <div class="overflow-y-auto space-y-2" style="max-height: 380px;">` +
+            members.map(m => {
+                const isExpiringSoon = m.endDate && m.endDate <= soonCutoff;
+                return `
+                <div class="p-4 rounded-xl border border-gray-100 flex flex-col md:flex-row md:items-center gap-2 justify-between ${isExpiringSoon ? 'expiring-soon-row' : 'bg-gray-50'}">
+                    <div>
+                        <p class="font-black text-sm uppercase">${m.name} ${isExpiringSoon ? '<span class="text-[9px] bg-rose-600 text-white px-2 py-0.5 rounded-full ml-1">EXPIRING SOON</span>' : ''}</p>
+                        <p class="text-[10px] text-gray-400 font-bold uppercase">${m.durationWeeks || '?'} Weeks &bull; ${m.startDate || '?'} &rarr; ${m.endDate || '?'}</p>
+                    </div>
+                    <button onclick='openMembershipAdjustModal(${JSON.stringify({ username: m.username, name: m.name, startDate: m.startDate, endDate: m.endDate })})' class="px-4 py-2 rounded-full text-[10px] font-black uppercase bg-black text-white hover:bg-rose-600 transition flex-shrink-0">Adjust</button>
+                </div>`;
+            }).join('') + `</div>`;
+        }
+
+        function renderMembershipPricingTab() {
+            const plans = (globalData.membershipPlans && globalData.membershipPlans.length) ? globalData.membershipPlans : [{durationWeeks:13,price:10},{durationWeeks:26,price:15},{durationWeeks:52,price:20}];
+            return `
+            <p class="text-xs text-gray-500 font-bold uppercase">Update what members pay for each duration. Changes apply immediately on the public Membership page.</p>
+            <div class="space-y-3">
+                ${plans.map(p => `
+                    <div class="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <span class="font-black text-sm uppercase">${p.durationWeeks} Weeks</span>
+                        <div class="flex items-center gap-1">
+                            <span class="font-black text-gray-400">£</span>
+                            <input type="number" min="0" step="0.01" class="membership-price-input input-field border-2" data-weeks="${p.durationWeeks}" value="${p.price}" style="width: 100px;">
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <button onclick="executeSaveMembershipPricing()" id="membershipPricingSaveBtn" class="btn-gold w-full py-3 rounded font-black uppercase tracking-widest shadow-lg mt-2">Save Pricing</button>
+            `;
+        }
+
+        function executeSaveMembershipPricing() {
+            const prices = {};
+            document.querySelectorAll('.membership-price-input').forEach(input => { prices[input.dataset.weeks] = input.value; });
+            const btn = document.getElementById('membershipPricingSaveBtn');
+            btn.disabled = true; btn.innerText = "Saving...";
+            saveMembershipPricing(prices)
                 .then(res => {
                     globalData = res;
-                    renderMemberList();
-                    triggerToast(name + " Updated");
+                    renderMembershipAdminModal();
+                    renderMembershipPage();
+                    triggerToast("Pricing Updated!");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Save Pricing"; });
+        }
+
+        function renderMembershipAllPlayersTab() {
+            const players = [...globalData.standings].sort((a,b) => a.name.localeCompare(b.name));
+            return `
+            <input type="text" id="membershipAllPlayersSearch" oninput="filterMembershipAllPlayers()" placeholder="Search player..." class="input-field border-2 mb-2">
+            <div id="membershipAllPlayersList" class="overflow-y-auto space-y-2 divide-y" style="max-height: 340px;">
+                ${players.map(p => `
+                    <div class="flex justify-between items-center py-3 gap-3 membership-all-player-row" data-name="${p.name.toLowerCase()}">
+                        <span class="font-bold text-sm uppercase flex-grow">${p.name} ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}</span>
+                        <button onclick="confirmDeleteUserAndPlayer('${p.name}')"
+                                class="p-2 text-gray-300 hover:text-rose-600 transition" title="Remove player and user account">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </div>
+                `).join('')}
+            </div>
+            `;
+        }
+
+        function filterMembershipAllPlayers() {
+            const search = document.getElementById('membershipAllPlayersSearch').value.toLowerCase();
+            document.querySelectorAll('.membership-all-player-row').forEach(row => {
+                row.style.display = row.dataset.name.includes(search) ? '' : 'none';
+            });
+        }
+
+        function openMembershipActivateModal(target) {
+            membershipActivateTarget = target;
+            document.getElementById('membershipActivateName').innerText = target.name;
+            const isExtension = !!(target.endDate && target.endDate >= todayStr());
+            const price = getMembershipPlanPrice(target.requestedDurationWeeks);
+            document.getElementById('membershipActivateDetail').innerText = `${target.requestedDurationWeeks} Weeks${price != null ? ' (£' + price + ')' : ''}`;
+            const startWrap = document.getElementById('membershipActivateStartDateWrap');
+            const preview = document.getElementById('membershipActivatePreview');
+            if (isExtension) {
+                startWrap.classList.add('hidden');
+                preview.innerText = `This member is still active — activating will extend their expiry from ${target.endDate} to ${addWeeksToDate(target.endDate, target.requestedDurationWeeks)}.`;
+            } else {
+                startWrap.classList.remove('hidden');
+                setDateInputValue('membershipActivateStartDate', todayStr());
+                preview.innerText = `Membership will run from today to ${addWeeksToDate(todayStr(), target.requestedDurationWeeks)} (change the start date above if backdating).`;
+            }
+            openModal('membershipActivateModal');
+        }
+
+        function executeActivateMembership() {
+            if (!membershipActivateTarget) return;
+            const btn = document.getElementById('membershipActivateBtn');
+            btn.disabled = true; btn.innerText = "Activating...";
+            const startInput = document.getElementById('membershipActivateStartDate');
+            activateMembership({ userId: membershipActivateTarget.id, startDate: startInput ? startInput.value : null })
+                .then(res => {
+                    globalData = res;
+                    closeModal('membershipActivateModal');
+                    renderMembershipAdminModal();
+                    renderMembershipPage();
+                    triggerToast("Membership Activated!");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Confirm Activation"; });
+        }
+
+        function openMembershipDeclineModal(target) {
+            membershipDeclineTarget = target;
+            document.getElementById('membershipDeclineName').innerText = target.name;
+            document.getElementById('membershipDeclineReason').value = '';
+            openModal('membershipDeclineModal');
+        }
+
+        function executeDeclineMembership() {
+            if (!membershipDeclineTarget) return;
+            const btn = document.getElementById('membershipDeclineBtn');
+            btn.disabled = true; btn.innerText = "Declining...";
+            declineMembershipRequest({ userId: membershipDeclineTarget.id, reason: document.getElementById('membershipDeclineReason').value.trim() })
+                .then(res => {
+                    globalData = res;
+                    closeModal('membershipDeclineModal');
+                    renderMembershipAdminModal();
+                    triggerToast("Request Declined");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Confirm Decline"; });
+        }
+
+        function openMembershipAdjustModal(target) {
+            membershipAdjustTarget = target;
+            document.getElementById('membershipAdjustName').innerText = target.name;
+            setDateInputValue('membershipAdjustStartDate', target.startDate || '');
+            setDateInputValue('membershipAdjustEndDate', target.endDate || '');
+            openModal('membershipAdjustModal');
+        }
+
+        function executeAdjustMembership() {
+            if (!membershipAdjustTarget) return;
+            const btn = document.getElementById('membershipAdjustBtn');
+            btn.disabled = true; btn.innerText = "Saving...";
+            const startDate = document.getElementById('membershipAdjustStartDate').value;
+            const endDate = document.getElementById('membershipAdjustEndDate').value;
+            adjustMembership({ username: membershipAdjustTarget.username, startDate, endDate })
+                .then(res => {
+                    globalData = res;
+                    closeModal('membershipAdjustModal');
+                    renderMembershipAdminModal();
+                    renderMembershipPage();
+                    triggerToast("Membership Updated");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Save Changes"; });
+        }
+
+        // --- MEMBERSHIP PAGE (public) ---
+        let selectedMembershipDuration = null;
+
+        function getMembershipPlans() {
+            return (globalData.membershipPlans && globalData.membershipPlans.length)
+                ? globalData.membershipPlans
+                : [{ durationWeeks: 13, price: 10 }, { durationWeeks: 26, price: 15 }, { durationWeeks: 52, price: 20 }];
+        }
+
+        function renderMembershipPage() {
+            const perksList = document.getElementById('membershipPerksList');
+            if (perksList) {
+                perksList.innerHTML = MEMBERSHIP_PERKS.map(perk => `<li class="flex items-start gap-3"><span style="color: var(--ponty-gold) !important;" class="font-black">★</span><span>${perk}</span></li>`).join('');
+            }
+
+            const plans = getMembershipPlans();
+            const plansContainer = document.getElementById('membershipPlansContainer');
+            if (plansContainer) {
+                plansContainer.innerHTML = plans.map(p => `
+                    <div class="membership-plan-card p-6 text-center bg-white shadow-sm">
+                        <p class="text-3xl font-black italic">${p.durationWeeks}</p>
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">Weeks</p>
+                        <p class="text-2xl font-black" style="color: var(--ponty-gold) !important;">£${p.price}</p>
+                    </div>
+                `).join('');
+            }
+
+            renderMembershipStatusWidget();
+        }
+
+        function renderMembershipStatusWidget() {
+            const widget = document.getElementById('membershipStatusWidget');
+            if (!widget) return;
+            const plans = getMembershipPlans();
+
+            if (!currentUser) {
+                widget.innerHTML = `
+                <div class="card p-8 text-center bg-black text-white shadow-2xl" style="border: 2px solid var(--ponty-gold) !important;">
+                    <p class="font-black uppercase text-lg mb-3">Log in to report a payment and become a member.</p>
+                    <button onclick="openAuthModal()" class="btn-gold px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">Login / Sign Up</button>
+                </div>`;
+                return;
+            }
+
+            const status = currentUser.membershipStatus || 'None';
+            const endDate = currentUser.membershipEndDate || null;
+            const hasValidEnd = !!(endDate && endDate >= todayStr());
+            const requestedWeeks = currentUser.membershipRequestedDurationWeeks || null;
+
+            if (requestedWeeks) {
+                const price = plans.find(p => p.durationWeeks === Number(requestedWeeks));
+                widget.innerHTML = `
+                <div class="card p-8 text-center bg-white shadow-xl border-l-8 border-amber-400">
+                    <p class="font-black uppercase text-lg mb-1">⏳ Payment Pending Review</p>
+                    <p class="text-gray-500 font-bold text-sm mb-4">We've received your request for <strong>${requestedWeeks} weeks</strong>${price ? ' (£' + price.price + ')' : ''} with reference <strong>${currentUser.membershipPaymentRef || ''}</strong>. An admin will review it shortly.</p>
+                    ${hasValidEnd ? `<p class="text-green-600 font-bold text-xs uppercase mb-4">You're still an active member until ${endDate}.</p>` : ''}
+                    <button onclick="doCancelMembershipRequest()" class="text-xs font-bold uppercase text-gray-400 hover:text-rose-600 underline">Cancel Request</button>
+                </div>`;
+                return;
+            }
+
+            if (status === 'Active' && hasValidEnd) {
+                widget.innerHTML = `
+                <div class="card p-8 text-center bg-white shadow-xl border-l-8" style="border-color: var(--ponty-gold) !important;">
+                    <img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="w-10 h-10 rounded-full mx-auto mb-3 object-contain">
+                    <p class="font-black uppercase text-lg mb-1">You're a Member!</p>
+                    <p class="text-gray-500 font-bold text-sm mb-4">Your membership is active until <strong>${endDate}</strong>.</p>
+                    <button onclick="openMembershipPaymentModal(true)" class="btn-gold px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">Renew Membership</button>
+                </div>`;
+                return;
+            }
+
+            const expiredNotice = status === 'Expired' ? `<p class="text-rose-600 font-bold text-xs uppercase mb-4">Your membership expired${endDate ? ' on ' + endDate : ''}.</p>` : '';
+            widget.innerHTML = `
+            <div class="card p-8 text-center bg-white shadow-xl border-l-8 border-rose-600">
+                <p class="font-black uppercase text-lg mb-1">Not a Member Yet</p>
+                ${expiredNotice}
+                <p class="text-gray-500 font-bold text-sm mb-4">Select a duration below, send your payment, then click I've Paid.</p>
+                <button onclick="openMembershipPaymentModal(false)" class="btn-gold px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">I've Paid</button>
+            </div>`;
+        }
+
+        function openMembershipPaymentModal(isRenewal) {
+            if (!currentUser) return openAuthModal();
+            selectedMembershipDuration = null;
+            document.getElementById('membershipPaymentModalTitle').innerText = isRenewal ? 'Renew Membership' : "I've Paid";
+            document.getElementById('membershipPaymentRef').value = '';
+            const plans = getMembershipPlans();
+            const optionsEl = document.getElementById('membershipPaymentDurationOptions');
+            optionsEl.innerHTML = plans.map(p => `
+                <div class="membership-duration-option" data-weeks="${p.durationWeeks}" onclick="selectMembershipDuration(${p.durationWeeks})">
+                    <p class="font-black text-lg">${p.durationWeeks}</p>
+                    <p class="text-[9px] font-bold uppercase text-gray-400">Weeks</p>
+                    <p class="text-sm font-black" style="color: var(--ponty-gold) !important;">£${p.price}</p>
+                </div>
+            `).join('');
+            openModal('membershipPaymentModal');
+        }
+
+        function selectMembershipDuration(weeks) {
+            selectedMembershipDuration = weeks;
+            document.querySelectorAll('.membership-duration-option').forEach(el => {
+                el.classList.toggle('selected', Number(el.dataset.weeks) === weeks);
+            });
+        }
+
+        function executeSubmitMembershipPayment() {
+            if (!selectedMembershipDuration) return triggerError("Please select a membership duration.");
+            const paymentRef = document.getElementById('membershipPaymentRef').value.trim();
+            if (!paymentRef) return triggerError("Please enter a payment reference.");
+
+            const btn = document.getElementById('membershipPaymentSubmitBtn');
+            btn.disabled = true; btn.innerText = "Submitting...";
+            submitMembershipPaymentRequest({ durationWeeks: selectedMembershipDuration, paymentRef })
+                .then(res => {
+                    globalData = res;
+                    closeModal('membershipPaymentModal');
+                    triggerToast("Payment Reported — Awaiting Review");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Submit for Review"; });
+        }
+
+        function doCancelMembershipRequest() {
+            cancelMembershipRequest()
+                .then(res => {
+                    globalData = res;
+                    triggerToast("Request Cancelled");
                 })
                 .catch(err => triggerError(err.message));
         }
@@ -5116,7 +5811,7 @@
             removePlayerFromSheet({ playerName: playerToFullDelete })
                 .then(res => {
                     render(res);
-                    renderMemberList();
+                    if (document.getElementById('membershipAdminBody')) renderMembershipAdminModal();
                     triggerToast(playerToFullDelete + " Removed.");
                     closeDeleteUserModal();
                     btn.disabled = false;
@@ -5301,7 +5996,12 @@
             if (saved) {
                 currentUser = JSON.parse(saved);
                 startAdminSession();
+                refreshCurrentUserMembership();
             }
+
+            // Keep membership status/badges near-real-time for a logged-in member without
+            // requiring a log out/in, in case an admin activates/expires it elsewhere.
+            setInterval(() => { if (currentUser) refreshCurrentUserMembership(); }, 120000);
 
             const cached = getCachedLeagueData();
             if (cached) {
@@ -5546,22 +6246,106 @@
 
     <!-- MANAGE MEMBERSHIP MODAL -->
     <div id="membershipModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden p-4" style="z-index: 150 !important;">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-black" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="p-8 space-y-6">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden border-t-8" style="border-color: var(--ponty-gold) !important; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="p-6 md:p-8 space-y-4" style="overflow-y: auto;">
                 <div class="flex justify-between items-center">
-                    <h3 class="text-3xl font-black italic uppercase">Manage Members</h3>
+                    <h3 class="text-3xl font-black italic uppercase">⭐ Manage Membership</h3>
                     <button onclick="closeMembershipModal()" class="text-gray-400 hover:text-black">✕</button>
                 </div>
-                <p class="text-xs text-gray-500 uppercase font-bold">Click the star to toggle Member status for the early-access window.</p>
-                
-                <div id="memberListContainer" class="overflow-y-auto space-y-2 divide-y" style="max-height: 350px;">
-                    <!-- Player list with toggles injected here -->
+
+                <div class="flex flex-wrap gap-2 border-b pb-3" id="membershipAdminTabs">
+                    <button onclick="setMembershipAdminTab('requests')" data-tab="requests" class="membership-admin-tab px-4 py-2 rounded-full text-[10px] font-black uppercase transition">Pending Requests</button>
+                    <button onclick="setMembershipAdminTab('active')" data-tab="active" class="membership-admin-tab px-4 py-2 rounded-full text-[10px] font-black uppercase transition">Active Members</button>
+                    <button onclick="setMembershipAdminTab('pricing')" data-tab="pricing" class="membership-admin-tab px-4 py-2 rounded-full text-[10px] font-black uppercase transition">Pricing</button>
+                    <button onclick="setMembershipAdminTab('all')" data-tab="all" class="membership-admin-tab px-4 py-2 rounded-full text-[10px] font-black uppercase transition">All Players</button>
                 </div>
-                
+
+                <div id="membershipAdminBody" class="space-y-3" style="min-height: 200px;">
+                    <!-- Injected per-tab by JS -->
+                </div>
+
                 <button onclick="closeMembershipModal()" class="w-full bg-black text-white py-4 rounded font-black uppercase tracking-widest shadow-lg mt-4">Done</button>
             </div>
         </div>
     </div>
+
+    <!-- MEMBERSHIP ACTIVATE MODAL (admin) -->
+    <div id="membershipActivateModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 300 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8" style="border-color: var(--ponty-gold) !important;">
+            <div class="p-8 space-y-4">
+                <h3 class="text-2xl font-black uppercase italic">Activate Membership</h3>
+                <p class="text-sm font-bold" id="membershipActivateName"></p>
+                <p class="text-xs text-gray-400 font-bold uppercase" id="membershipActivateDetail"></p>
+                <div id="membershipActivateStartDateWrap">
+                    <label class="text-[10px] font-bold uppercase text-gray-400">Start Date</label>
+                    <input type="date" id="membershipActivateStartDate" class="input-field border-2">
+                </div>
+                <p class="text-xs font-bold text-gray-500" id="membershipActivatePreview"></p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeActivateMembership()" id="membershipActivateBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">Confirm Activation</button>
+                    <button onclick="closeModal('membershipActivateModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MEMBERSHIP DECLINE MODAL (admin) -->
+    <div id="membershipDeclineModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 300 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-rose-600">
+            <div class="p-8 space-y-4">
+                <h3 class="text-2xl font-black uppercase italic">Decline Request?</h3>
+                <p class="text-sm font-bold" id="membershipDeclineName"></p>
+                <textarea id="membershipDeclineReason" rows="3" placeholder="Optional note to include in the email (e.g. payment reference not found)" class="input-field border-2"></textarea>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeDeclineMembership()" id="membershipDeclineBtn" style="background-color: #e11d48 !important; color: #fff !important;" class="w-full py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-black transition">Confirm Decline</button>
+                    <button onclick="closeModal('membershipDeclineModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MEMBERSHIP ADJUST MODAL (admin) -->
+    <div id="membershipAdjustModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 300 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8" style="border-color: var(--ponty-gold) !important;">
+            <div class="p-8 space-y-4">
+                <h3 class="text-2xl font-black uppercase italic">Adjust Membership</h3>
+                <p class="text-sm font-bold" id="membershipAdjustName"></p>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-gray-400">Start Date</label>
+                    <input type="date" id="membershipAdjustStartDate" class="input-field border-2">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-gray-400">End Date</label>
+                    <input type="date" id="membershipAdjustEndDate" class="input-field border-2">
+                </div>
+                <p class="text-[10px] text-gray-400 font-bold uppercase">Tip: set End Date to yesterday to revoke access immediately.</p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeAdjustMembership()" id="membershipAdjustBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">Save Changes</button>
+                    <button onclick="closeModal('membershipAdjustModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MEMBERSHIP PAYMENT REPORT MODAL (member: new purchase / renew) -->
+    <div id="membershipPaymentModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 1500 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8" style="border-color: var(--ponty-gold) !important;">
+            <div class="p-8 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-2xl font-black uppercase italic" id="membershipPaymentModalTitle">I've Paid</h3>
+                    <button onclick="closeModal('membershipPaymentModal')" class="text-gray-400 hover:text-black">✕</button>
+                </div>
+                <div id="membershipPaymentDurationOptions" class="grid grid-cols-3 gap-2"></div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-gray-400">Payment Reference</label>
+                    <input type="text" id="membershipPaymentRef" placeholder="e.g. last 4 digits of transaction" class="input-field border-2">
+                    <p class="text-[10px] text-gray-400 font-bold uppercase mt-1">So we can match your payment against the bank statement.</p>
+                </div>
+                <button onclick="executeSubmitMembershipPayment()" id="membershipPaymentSubmitBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">Submit for Review</button>
+            </div>
+        </div>
+    </div>
+
     <!-- LOGIN MODAL -->
     <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 1000 !important;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-black p-8 space-y-6">
@@ -6345,6 +7129,7 @@
                 <div class="flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest">
                     <button onclick="showTab('rules-page')" style="color: #666 !important;" class="hover:text-white transition">Rules</button>
                     <button onclick="showTab('club-info-page')" style="color: #666 !important;" class="hover:text-white transition">Club Info & Resources</button>
+                    <button onclick="showTab('membership-page')" style="color: var(--ponty-gold-light) !important;" class="hover:text-white transition">⭐ Membership</button>
                 </div>
             </div>
             
