@@ -135,6 +135,7 @@
                 <button onclick="showTab('rules-page'); closeMobileMenu();" id="nav-rules-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">📋 Rules</button>
                 <button onclick="showTab('club-info-page'); closeMobileMenu();" id="nav-club-info-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">ℹ️ Club Info & Resources</button>
                 <button onclick="showTab('admin'); closeMobileMenu();" id="nav-admin-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 text-rose-400 hover:text-rose-300 transition">⚙️ Admin</button>
+				<button onclick="openAuthModal(); closeMobileMenu();" id="nav-auth-m" class="text-left px-2 py-3 text-rose-400 hover:text-rose-300 transition">Login / Sign Up</button>
             </div>
         </div>
     </nav>
@@ -622,10 +623,10 @@
                     </svg>
                 </div>
                 <div class="space-y-2">
-                    <h3 class="text-2xl font-black uppercase italic">Members Only Access</h3>
-                    <p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">
-                        Generating and managing live scrambles is reserved for club members. 
-                    </p>
+                    <h3 class="text-2xl font-black uppercase italic">Login Required</h3>
+					<p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">
+						Please log in to generate and manage live scramble sessions.
+					</p>
                 </div>
                 <div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
                     <button onclick="openAuthModal()" class="btn-red px-8 py-3 rounded-full font-black uppercase text-sm shadow-lg">Login / Sign Up</button>
@@ -658,9 +659,9 @@
         <!-- LADDERS PAGE -->
         <div id="ladders-page" class="tab-content hidden space-y-6">
             <div class="flex justify-between items-end">
-                <h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 italic uppercase">Ladders</h2>
-                <button id="ladderResetBtn" onclick="resetLadderSession()" class="text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-rose-600 hidden">Reset Session</button>
-            </div>
+				<h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">Ladders</h2>
+				<button id="ladderResetBtn" onclick="resetLadderSession()" class="text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-rose-600 hidden">Reset Session</button>
+			</div>
 
             <!-- RESTRICTED ACCESS MESSAGE -->
             <div id="laddersRestricted" class="card p-12 text-center space-y-6 border-t-8 border-black">
@@ -683,10 +684,17 @@
             <!-- MAIN CONTENT -->
             <div id="laddersMainContent" class="hidden space-y-6">
 
-                <!-- STEP 1: Setup -->
-                <div id="ladderStep1" class="card p-6">
-                    <h3 class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players Present Today</h3>
-                    <div id="ladderPlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
+				<!-- SESSION TABS -->
+				<div id="ladderTabsContainer" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1"></div>
+
+				<!-- STEP 1: Setup -->
+				<div id="ladderStep1" class="card p-6">
+					<h3 id="ladderStep1Heading" class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players Present Today</h3>
+
+					<label class="text-[10px] font-bold uppercase text-gray-400">Session Name</label>
+					<input type="text" id="ladderSessionName" placeholder="e.g. Mixed Ladder / Female Only Ladder" class="input-field border-2 mb-4">
+
+					<div id="ladderPlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                         <div>
@@ -721,6 +729,7 @@
         <div id="rating-page" class="tab-content hidden space-y-6">
 			<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
 				<h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">Skill Ratings</h2>
+				<input type="text" id="ratingsSearch" oninput="renderStandings()" placeholder="Search player..." class="input-field border-2 max-w-sm">
 				<div class="flex items-center space-x-2 bg-white p-2 rounded-full shadow-sm border border-gray-200">
 				  <span class="text-[10px] font-black uppercase text-gray-400 pl-3 tracking-widest">Filter</span>
 				  <button onclick="setGenderFilter('Everyone')" class="filter-icon-btn gender-Everyone active" title="Everyone">
@@ -775,47 +784,17 @@
 		</div>
 
         <!-- EVENTS PAGE -->
-        <div id="events-page" class="tab-content hidden space-y-6 px-4 pb-20">
+        <div id="events-page" class="tab-content hidden space-y-5 px-4 pb-20">
             <div class="flex justify-between items-center">
                 <h2 class="text-4xl md:text-5xl font-black border-l-8 border-rose-600 pl-4 italic uppercase">Events</h2>
                 <div id="calendarAdminBtn"></div>
             </div>
 
-            <!-- Calendar Navigation -->
-            <div class="flex items-center justify-between">
-                <button onclick="changeCalendarMonth(-1)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-black hover:text-white transition font-black text-lg">‹</button>
-                <p id="calendarMonthTitle" class="text-xl font-black uppercase tracking-widest"></p>
-                <button onclick="changeCalendarMonth(1)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-black hover:text-white transition font-black text-lg">›</button>
-            </div>
+            <!-- Filter Chips -->
+            <div id="eventFilterChips" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1"></div>
 
-            <!-- Key & Hint -->
-            <div class="bg-white border-2 border-gray-100 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <p class="text-[8px] font-bold uppercase text-gray-400 tracking-widest">Tap an event logo for more info & to sign up</p>
-                <div class="flex items-center gap-4 flex-shrink-0">
-                    <div class="flex items-center gap-2">
-                        <img src="https://i.postimg.cc/W1Wps66D/Logo-red.jpg" style="width:20px; height:20px; border-radius:50%; object-fit:cover; border:2px solid #e11d48;">
-                        <span class="text-[10px] font-black uppercase text-gray-500">Adult Event</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <img src="https://i.postimg.cc/zGtDqSSb/Logo-Blue.jpg" style="width:20px; height:20px; border-radius:50%; object-fit:cover; border:2px solid #3b82f6;">
-                        <span class="text-[10px] font-black uppercase text-gray-500">Junior Event</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Day Headers -->
-            <div class="grid grid-cols-7">
-                <div class="text-center text-[9px] font-black uppercase text-gray-400 py-1">Mon</div>
-                <div class="text-center text-[9px] font-black uppercase text-gray-400 py-1">Tue</div>
-                <div class="text-center text-[9px] font-black uppercase text-gray-400 py-1">Wed</div>
-                <div class="text-center text-[9px] font-black uppercase text-gray-400 py-1">Thu</div>
-                <div class="text-center text-[9px] font-black uppercase text-gray-400 py-1">Fri</div>
-                <div class="text-center text-[9px] font-black uppercase text-gray-400 py-1">Sat</div>
-                <div class="text-center text-[9px] font-black uppercase text-gray-400 py-1">Sun</div>
-            </div>
-
-            <!-- Calendar Grid -->
-            <div id="calendarGrid" class="grid grid-cols-7 gap-1"></div>
+            <!-- Events List -->
+            <div id="eventsListContainer" class="space-y-6"></div>
 
         </div>
 
@@ -976,9 +955,10 @@
 		const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 		const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 		const day = date.getDate();
-		const suffix = day === 1 || day === 11 || day === 21 || day === 31 ? 'st' :
-					   day === 2 || day === 12 || day === 22 ? 'nd' :
-					   day === 3 || day === 13 || day === 23 ? 'rd' : 'th';
+		const suffix = (day >= 11 && day <= 13) ? 'th' :
+					   day % 10 === 1 ? 'st' :
+					   day % 10 === 2 ? 'nd' :
+					   day % 10 === 3 ? 'rd' : 'th';
 		return `${days[date.getDay()]} ${day}${suffix} ${months[date.getMonth()]} ${date.getFullYear()}`;
 	}
 	
@@ -1049,22 +1029,24 @@
 
         -- Events table
         create table events (
-          id uuid primary key default gen_random_uuid(),
-          title text not null,
-          event_date date not null,
-          event_time text,
-          location text,
-          max_players integer,
-          member_open_date date,
-          public_open_date date,
-          status text default 'Active',
-          signup_deadline date,
-          duration numeric,
-          member_price numeric default 0,
-          non_member_price numeric default 0,
-          newcomers_only boolean default false,
-          under18_only boolean default false,
-          created_at timestamptz default now()
+			id uuid primary key default gen_random_uuid(),
+			title text not null,
+			event_date date not null,
+			event_time text,
+			location text,
+			max_players integer,
+			member_open_date date,
+			public_open_date date,
+			status text default 'Active',
+			signup_deadline date,
+			duration numeric,
+			member_price numeric default 0,
+			non_member_price numeric default 0,
+			newcomers_only boolean default false,
+			under18_only boolean default false,
+			female_only boolean default false,
+			all_ages boolean default false,
+			created_at timestamptz default now()
         );
 
         -- Signups table
@@ -1119,9 +1101,10 @@
         );
 
         -- Ladder session table
-        create table ladder_session (
-          id uuid primary key default gen_random_uuid(),
-          status text default 'Active',
+		create table ladder_session (
+		  id uuid primary key default gen_random_uuid(),
+		  name text,
+		  status text default 'Active',
           total_rounds integer,
           current_round integer default 1,
           players jsonb,
@@ -1202,28 +1185,11 @@
             return String(value).slice(0, 10);
         }
 
-        function getCachedLeagueData() {
-            try {
-                const cachedRaw = localStorage.getItem(CACHE_KEY);
-                if (!cachedRaw) return null;
-                const cached = JSON.parse(cachedRaw);
-                if (!cached || !cached.ts || !cached.data) return null;
-                if ((Date.now() - cached.ts) > CACHE_TTL_MS) return null;
-                return cached.data;
-            } catch (_) {
-                return null;
-            }
-        }
+        function getCachedLeagueData() { return null; }
 
-        function setCachedLeagueData(data) {
-            try {
-                localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
-            } catch (_) {}
-        }
+        function setCachedLeagueData(data) {}
 
-        function clearLeagueCache() {
-            try { localStorage.removeItem(CACHE_KEY); } catch (_) {}
-        }
+        function clearLeagueCache() {}
 
         function toPlayerView(row) {
             return {
@@ -1248,9 +1214,7 @@
             const signups = payload.signups || [];
             const locations = payload.locations || [];
             const pendingUsers = payload.pendingUsers || [];
-            const ladderSession = payload.ladderSession || null;
-            const ladderCourts = payload.ladderCourts || [];
-            const ladderGames = payload.ladderGames || [];
+			const ladderSessionsRaw = payload.ladderSessions || [];
             const scrambleRows = payload.liveScramble || [];
 
             liveScrambleIdMap = {};
@@ -1268,22 +1232,6 @@
                     Number(r.court || 0),
                     Number(r.round || 0)
                 ];
-            });
-
-            ladderGameIdMap = {};
-            const mappedLadderGames = ladderGames.map((g, i) => {
-                const displayId = i + 1;
-                ladderGameIdMap[String(displayId)] = g.id;
-                return {
-                    gameId: displayId,
-                    court: Number(g.court || 0),
-                    p1: g.p1 || '',
-                    p2: g.p2 || 'Singles',
-                    p3: g.p3 || '',
-                    p4: g.p4 || 'Singles',
-                    scoreA: g.score_a ?? '',
-                    scoreB: g.score_b ?? ''
-                };
             });
 
             return {
@@ -1318,8 +1266,10 @@
                     Number(e.member_price || 0),
                     Number(e.non_member_price || 0),
                     !!e.newcomers_only,
-                    !!e.under18_only
-                ]),
+					!!e.under18_only,
+					!!e.female_only,
+					!!e.all_ages
+					]),
                 signups: signups.map(s => [
                     s.event_id,
                     s.player_name,
@@ -1349,22 +1299,39 @@
                     '',
                     !!u.consent_verified
                 ]),
-                ladderSession: ladderSession ? {
-                    id: ladderSession.id,
-                    status: ladderSession.status,
-                    totalRounds: Number(ladderSession.total_rounds || 0),
-                    currentRound: Number(ladderSession.current_round || 1),
-                    players: ladderSession.players || []
-                } : null,
-                ladderCourts: ladderCourts.map(c => ({
-                    court: Number(c.court || 0),
-                    playerName: c.player_name || '',
-                    roundPoints: Number(c.round_points || 0)
-                })),
-                ladderGames: mappedLadderGames,
+                ladderSessions: ladderSessionsRaw.map(entry => mapLadderSession(entry.session, entry.courts, entry.games)),
                 activeScramble
             };
         }
+		
+		function mapLadderSession(session, courts, games) {
+			const mappedGames = (games || []).map(g => ({
+				gameId: g.id,
+				court: Number(g.court || 0),
+				p1: g.p1 || '',
+				p2: g.p2 || 'Singles',
+				p3: g.p3 || '',
+				p4: g.p4 || 'Singles',
+				scoreA: g.score_a ?? '',
+				scoreB: g.score_b ?? ''
+			}));
+			return {
+				session: {
+					id: session.id,
+					name: session.name || 'Ladder Session',
+					status: session.status,
+					totalRounds: Number(session.total_rounds || 0),
+					currentRound: Number(session.current_round || 1),
+					players: session.players || []
+				},
+				courts: (courts || []).map(c => ({
+					court: Number(c.court || 0),
+					playerName: c.player_name || '',
+					roundPoints: Number(c.round_points || 0)
+				})),
+				games: mappedGames
+			};
+		}
 
         async function fetchAllDataFromSupabase() {
             const [
@@ -1383,40 +1350,31 @@
                 supabaseClient.from('signups').select('*').order('created_at', { ascending: true }),
                 supabaseClient.from('locations').select('*').order('name', { ascending: true }),
                 supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
-                supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: false }).limit(1),
+                supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
                 supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true })
             ]);
 
-            const firstError = [playersRes, matchesRes, eventsRes, signupsRes, locationsRes, pendingUsersRes, ladderSessionRes, scrambleRes].find(r => r.error);
-            if (firstError && firstError.error) throw new Error(firstError.error.message);
+            const activeSessions = ladderSessionRes.data || [];
+			const ladderSessions = await Promise.all(activeSessions.map(async session => {
+				const [courtsRes, gamesRes] = await Promise.all([
+					supabaseClient.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
+					supabaseClient.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }).order('id', { ascending: true })
+				]);
+				if (courtsRes.error) throw new Error(courtsRes.error.message);
+				if (gamesRes.error) throw new Error(gamesRes.error.message);
+				return { session, courts: courtsRes.data || [], games: gamesRes.data || [] };
+			}));
 
-            const ladderSession = ladderSessionRes.data && ladderSessionRes.data.length ? ladderSessionRes.data[0] : null;
-            let ladderCourts = [];
-            let ladderGames = [];
-
-            if (ladderSession) {
-                const [courtsRes, gamesRes] = await Promise.all([
-                    supabaseClient.from('ladder_courts').select('*').eq('session_id', ladderSession.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
-                    supabaseClient.from('ladder_games').select('*').eq('session_id', ladderSession.id).eq('round', ladderSession.current_round).order('court', { ascending: true }).order('id', { ascending: true })
-                ]);
-                if (courtsRes.error) throw new Error(courtsRes.error.message);
-                if (gamesRes.error) throw new Error(gamesRes.error.message);
-                ladderCourts = courtsRes.data || [];
-                ladderGames = gamesRes.data || [];
-            }
-
-            return mapGlobalData({
-                players: playersRes.data || [],
-                matches: matchesRes.data || [],
-                events: eventsRes.data || [],
-                signups: signupsRes.data || [],
-                locations: locationsRes.data || [],
-                pendingUsers: pendingUsersRes.data || [],
-                ladderSession,
-                ladderCourts,
-                ladderGames,
-                liveScramble: scrambleRes.data || []
-            });
+			return mapGlobalData({
+				players: playersRes.data || [],
+				matches: matchesRes.data || [],
+				events: eventsRes.data || [],
+				signups: signupsRes.data || [],
+				locations: locationsRes.data || [],
+				pendingUsers: pendingUsersRes.data || [],
+				ladderSessions,
+				liveScramble: scrambleRes.data || []
+			});
         }
 
         async function loadAllData(options = {}) {
@@ -1680,88 +1638,73 @@
 			const shifted = [...patterns.slice((round - 1) % patterns.length), ...patterns.slice(0, (round - 1) % patterns.length)];
 			return shifted.map(p => p.map(i => players[i]));
 		}
+		
+		async function getAllActiveLadderSessionsRaw() {
+			const { data, error } = await supabaseClient
+				.from('ladder_session')
+				.select('*')
+				.eq('status', 'Active')
+				.order('created_at', { ascending: true });
+			if (error) throw new Error(error.message);
+			return data || [];
+		}
 
-        async function getActiveLadderSessionRaw() {
-            const { data, error } = await supabaseClient
-                .from('ladder_session')
-                .select('*')
-                .eq('status', 'Active')
-                .order('created_at', { ascending: false })
-                .limit(1);
-            if (error) throw new Error(error.message);
-            return data && data.length ? data[0] : null;
-        }
+		async function getLadderSessionRawById(sessionId) {
+			const { data, error } = await supabaseClient
+				.from('ladder_session')
+				.select('*')
+				.eq('id', sessionId)
+				.single();
+			if (error) throw new Error(error.message);
+			return data;
+		}
 
-        async function getCurrentLadderState() {
-            const session = await getActiveLadderSessionRaw();
-            if (!session) return { session: null, courts: [], games: [] };
+		async function getLadderStateForSession(sessionId) {
+			const session = await getLadderSessionRawById(sessionId);
+			if (!session || session.status !== 'Active') return null;
 
-            const [courtsRes, gamesRes] = await Promise.all([
-                supabaseClient.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
-                supabaseClient.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }).order('id', { ascending: true })
-            ]);
-            if (courtsRes.error) throw new Error(courtsRes.error.message);
-            if (gamesRes.error) throw new Error(gamesRes.error.message);
+			const [courtsRes, gamesRes] = await Promise.all([
+				supabaseClient.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true }).order('player_name', { ascending: true }),
+				supabaseClient.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }).order('id', { ascending: true })
+			]);
+			if (courtsRes.error) throw new Error(courtsRes.error.message);
+			if (gamesRes.error) throw new Error(gamesRes.error.message);
 
-            const mapped = mapGlobalData({
-                players: [],
-                matches: [],
-                events: [],
-                signups: [],
-                locations: [],
-                pendingUsers: [],
-                ladderSession: session,
-                ladderCourts: courtsRes.data || [],
-                ladderGames: gamesRes.data || [],
-                liveScramble: []
-            });
+			return mapLadderSession(session, courtsRes.data || [], gamesRes.data || []);
+		}
 
-            return {
-                session: mapped.ladderSession,
-                courts: mapped.ladderCourts,
-                games: mapped.ladderGames
-            };
-        }
+		async function startLadderSessionData(payload) {
+			const playerMap = await getPlayersMap();
+			const selectedPlayers = (payload.players || []).map(name => ({
+				name,
+				elo: Number((playerMap.get(normalizeName(name)) || {}).elo || DEFAULT_ELO)
+			})).sort((a, b) => b.elo - a.elo);
 
-        async function startLadderSessionData(payload) {
-            const active = await getActiveLadderSessionRaw();
-            if (active) {
-                await supabaseClient.from('ladder_games').delete().eq('session_id', active.id);
-                await supabaseClient.from('ladder_courts').delete().eq('session_id', active.id);
-                await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', active.id);
-            }
+			const sizes = splitCourtSizes(selectedPlayers.length);
+			const courts = [];
+			let cursor = 0;
+			sizes.forEach((size, index) => {
+				courts.push({ court: index + 1, players: selectedPlayers.slice(cursor, cursor + size).map(p => p.name) });
+				cursor += size;
+			});
 
-            const playerMap = await getPlayersMap();
-            const selectedPlayers = (payload.players || []).map(name => ({
-                name,
-                elo: Number((playerMap.get(normalizeName(name)) || {}).elo || DEFAULT_ELO)
-            })).sort((a, b) => b.elo - a.elo);
+			const { data: insertedSession, error: sessionError } = await supabaseClient
+				.from('ladder_session')
+				.insert({ name: payload.sessionName || 'Ladder Session', status: 'Active', total_rounds: Number(payload.totalRounds || 1), current_round: 1, players: courts.map(c => c.players) })
+				.select()
+				.single();
+			if (sessionError) throw new Error(sessionError.message);
 
-            const sizes = splitCourtSizes(selectedPlayers.length);
-            const courts = [];
-            let cursor = 0;
-            sizes.forEach((size, index) => {
-                courts.push({ court: index + 1, players: selectedPlayers.slice(cursor, cursor + size).map(p => p.name) });
-                cursor += size;
-            });
+			const courtRows = courts.flatMap(c => c.players.map(playerName => ({
+				session_id: insertedSession.id,
+				court: c.court,
+				player_name: playerName,
+				round_points: 0
+			})));
+			const { error: courtsError } = await supabaseClient.from('ladder_courts').insert(courtRows);
+			if (courtsError) throw new Error(courtsError.message);
 
-            const { data: insertedSession, error: sessionError } = await supabaseClient
-                .from('ladder_session')
-                .insert({ status: 'Active', total_rounds: Number(payload.totalRounds || 1), current_round: 1, players: courts.map(c => c.players) })
-                .select()
-                .single();
-            if (sessionError) throw new Error(sessionError.message);
-
-            const courtRows = courts.flatMap(c => c.players.map(playerName => ({
-                session_id: insertedSession.id,
-                court: c.court,
-                player_name: playerName,
-                round_points: 0
-            })));
-            const { error: courtsError } = await supabaseClient.from('ladder_courts').insert(courtRows);
-            if (courtsError) throw new Error(courtsError.message);
-
-            const firstRoundGames = courts.flatMap(c => {
+			const firstRoundGames = courts.flatMap(c => {
 				return generateCourtRoundGames(c.players, 1).map(game => ({
 					session_id: insertedSession.id,
 					court: c.court,
@@ -1774,15 +1717,15 @@
 					score_b: null
 				}));
 			});
-            const { error: gamesError } = await supabaseClient.from('ladder_games').insert(firstRoundGames);
-            if (gamesError) throw new Error(gamesError.message);
+			const { error: gamesError } = await supabaseClient.from('ladder_games').insert(firstRoundGames);
+			if (gamesError) throw new Error(gamesError.message);
 
-            clearLeagueCache();
-            return getCurrentLadderState();
-        }
+			clearLeagueCache();
+			return getLadderStateForSession(insertedSession.id);
+		}
 
         async function updateLadderScore(payload) {
-            const gameUuid = ladderGameIdMap[String(payload.gameId)] || payload.gameId;
+            const gameUuid = payload.gameId;
             const { data: game, error: gameReadError } = await supabaseClient.from('ladder_games').select('*').eq('id', gameUuid).single();
             if (gameReadError) throw new Error(gameReadError.message);
 
@@ -1822,12 +1765,12 @@
             }
 
             clearLeagueCache();
-            return getCurrentLadderState();
-        }
+				return getLadderStateForSession(game.session_id);
+			}
 
-        async function endLadderRound() {
-            const session = await getActiveLadderSessionRaw();
-            if (!session) throw new Error('No active ladder session found.');
+			async function endLadderRound(sessionId) {
+				const session = await getLadderSessionRawById(sessionId);
+				if (!session) throw new Error('Ladder session not found.');
 
             const [{ data: roundGames, error: gamesErr }, { data: courtRows, error: courtsErr }] = await Promise.all([
                 supabaseClient.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }),
@@ -1884,11 +1827,11 @@
             const finished = Number(session.current_round) >= Number(session.total_rounds);
 
             if (finished) {
-                await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
-                clearLeagueCache();
-                await refreshAllData();
-                return { finished: true, promotions, relegations, state: { session: null, courts: [], games: [] } };
-            }
+				await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
+				clearLeagueCache();
+				await refreshAllData();
+				return { finished: true, promotions, relegations, sessionId: session.id, state: null };
+			}
 
             const nextRound = Number(session.current_round) + 1;
             await supabaseClient.from('ladder_session').update({ current_round: nextRound }).eq('id', session.id);
@@ -1919,18 +1862,17 @@
 
             clearLeagueCache();
             await refreshAllData();
-            return { finished: false, promotions, relegations, state: await getCurrentLadderState() };
-        }
+            return { finished: false, promotions, relegations, sessionId: session.id, state: await getLadderStateForSession(session.id) };
+			}
 
-        async function clearLadderSession() {
-            const session = await getActiveLadderSessionRaw();
-            if (session) {
-                await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
-            }
-            clearLeagueCache();
-            await refreshAllData();
-            return { session: null, courts: [], games: [] };
-        }
+			async function clearLadderSession(sessionId) {
+				if (sessionId) {
+					await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', sessionId);
+				}
+				clearLeagueCache();
+				await refreshAllData();
+				return sessionId;
+			}
 
         async function addEvent(data) {
             const { error } = await supabaseClient.from('events').insert({
@@ -1946,12 +1888,83 @@
                 duration: data.duration === '' ? null : Number(data.duration),
                 member_price: Number(data.memberPrice || 0),
                 non_member_price: Number(data.nonMemberPrice || 0),
-                newcomers_only: !!data.newcomersOnly,
-                under18_only: !!data.under18Only
+				under18_only: !!data.under18Only,
+				female_only: !!data.femaleOnly,
+				all_ages: !!data.allAges
             });
             if (error) throw new Error(error.message);
             return refreshAllData();
         }
+		
+		async function updateEvent(eventId, data) {
+			const { error } = await supabaseClient.from('events').update({
+				title: data.title,
+				event_date: data.date,
+				event_time: data.time || null,
+				location: data.location,
+				max_players: Number(data.max || 0),
+				member_open_date: data.memberDate || null,
+				public_open_date: data.publicDate || null,
+				signup_deadline: data.deadline || null,
+				duration: data.duration === '' ? null : Number(data.duration),
+				member_price: Number(data.memberPrice || 0),
+				non_member_price: Number(data.nonMemberPrice || 0),
+				under18_only: !!data.under18Only,
+				female_only: !!data.femaleOnly,
+				all_ages: !!data.allAges
+			}).eq('id', eventId);
+			if (error) throw new Error(error.message);
+
+			await promoteReservesForEvent(eventId, Number(data.max || 0), {
+				title: data.title,
+				date: data.date,
+				time: data.time,
+				location: data.location
+			});
+
+			return refreshAllData();
+		}
+
+		async function promoteReservesForEvent(eventId, maxPlayers, eventDetails) {
+			if (!maxPlayers) return;
+
+			const { data: allSignups, error } = await supabaseClient
+				.from('signups')
+				.select('*')
+				.eq('event_id', eventId)
+				.order('created_at', { ascending: true });
+			if (error) throw new Error(error.message);
+
+			const confirmedCount = (allSignups || []).filter(s => s.status === 'Confirmed').length;
+			const spotsOpen = maxPlayers - confirmedCount;
+			if (spotsOpen <= 0) return;
+
+			// Members/Admins get priority; within the same priority tier, earliest reserved wins
+			// (Array.sort is stable, and allSignups is already ordered by created_at ascending)
+			const reserves = (allSignups || [])
+				.filter(s => s.status === 'Reserve')
+				.sort((a, b) => {
+					const aPriority = (a.player_type === 'Member' || a.player_type === 'Admin') ? 0 : 1;
+					const bPriority = (b.player_type === 'Member' || b.player_type === 'Admin') ? 0 : 1;
+					return aPriority - bPriority;
+				});
+
+			const toPromote = reserves.slice(0, spotsOpen);
+
+			for (const signup of toPromote) {
+				await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', signup.id);
+				if (signup.email && signup.email.indexOf('@') !== -1) {
+					sendEmail('reserve_promoted', {
+						name: signup.player_name,
+						email: signup.email,
+						eventTitle: eventDetails.title,
+						eventDate: eventDetails.date,
+						eventTime: eventDetails.time,
+						eventLocation: eventDetails.location
+					});
+				}
+			}
+		}
 
         async function setMemberStatus(payload) {
             const membership = payload.isMember ? 'Member' : 'Non-Member';
@@ -2015,62 +2028,69 @@
         }
 
         async function cancelSignup(payload) {
-            let removedSignupEmail = null;
-            if (payload.removedByAdmin) {
-                const { data: removedSignup } = await supabaseClient
-                    .from('signups')
-                    .select('email')
-                    .eq('event_id', payload.eventId)
-                    .eq('player_name', payload.name)
-                    .limit(1);
-                if (removedSignup && removedSignup.length > 0) removedSignupEmail = removedSignup[0].email;
-            }
+			let removedSignupEmail = null;
+			if (payload.removedByAdmin) {
+				const { data: removedSignup } = await supabaseClient
+					.from('signups')
+					.select('email')
+					.eq('event_id', payload.eventId)
+					.eq('player_name', payload.name)
+					.limit(1);
+				if (removedSignup && removedSignup.length > 0) removedSignupEmail = removedSignup[0].email;
+			}
 
-            const { error } = await supabaseClient
-                .from('signups')
-                .delete()
-                .eq('event_id', payload.eventId)
-                .eq('player_name', payload.name);
-            if (error) throw new Error(error.message);
+			const { error } = await supabaseClient
+				.from('signups')
+				.delete()
+				.eq('event_id', payload.eventId)
+				.eq('player_name', payload.name);
+			if (error) throw new Error(error.message);
 
-            if (payload.removedByAdmin) {
-                if (removedSignupEmail && removedSignupEmail.indexOf('@') !== -1) {
-                    const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-                    sendEmail('admin_removed', {
-                        name: payload.name,
-                        email: removedSignupEmail,
-                        eventTitle: eventRow ? eventRow[1] : '',
-                        eventDate: eventRow ? eventRow[2] : '',
-                        eventTime: eventRow ? eventRow[3] : '',
-                        eventLocation: eventRow ? eventRow[8] : ''
-                    });
-                }
+			if (payload.removedByAdmin) {
+				if (removedSignupEmail && removedSignupEmail.indexOf('@') !== -1) {
+					const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+					sendEmail('admin_removed', {
+						name: payload.name,
+						email: removedSignupEmail,
+						eventTitle: eventRow ? eventRow[1] : '',
+						eventDate: eventRow ? eventRow[2] : '',
+						eventTime: eventRow ? eventRow[3] : '',
+						eventLocation: eventRow ? eventRow[8] : ''
+					});
+				}
 
-                const { data: reserves, error: reserveErr } = await supabaseClient
-                    .from('signups')
-                    .select('*')
-                    .eq('event_id', payload.eventId)
-                    .eq('status', 'Reserve')
-                    .order('created_at', { ascending: true })
-                    .limit(1);
-                if (reserveErr) throw new Error(reserveErr.message);
-                if (reserves && reserves.length > 0) {
-                    await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', reserves[0].id);
-                    if (reserves[0].email && reserves[0].email.indexOf('@') !== -1) {
-                        const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-                        sendEmail('reserve_promoted', {
-                            name: reserves[0].player_name,
-                            email: reserves[0].email,
-                            eventTitle: eventRow ? eventRow[1] : '',
-                            eventDate: eventRow ? eventRow[2] : '',
-                            eventTime: eventRow ? eventRow[3] : '',
-                            eventLocation: eventRow ? eventRow[8] : ''
-                        });
-                    }
-                }
-            }
-            return refreshAllData();
-        }
+				const { data: reserves, error: reserveErr } = await supabaseClient
+						.from('signups')
+						.select('*')
+						.eq('event_id', payload.eventId)
+						.eq('status', 'Reserve')
+						.order('created_at', { ascending: true });
+					if (reserveErr) throw new Error(reserveErr.message);
+					if (reserves && reserves.length > 0) {
+						// Members/Admins get priority; earliest reserved wins within the same tier
+						const sortedReserves = [...reserves].sort((a, b) => {
+							const aPriority = (a.player_type === 'Member' || a.player_type === 'Admin') ? 0 : 1;
+							const bPriority = (b.player_type === 'Member' || b.player_type === 'Admin') ? 0 : 1;
+							return aPriority - bPriority;
+						});
+						const nextReserve = sortedReserves[0];
+
+						await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', nextReserve.id);
+						if (nextReserve.email && nextReserve.email.indexOf('@') !== -1) {
+							const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+							sendEmail('reserve_promoted', {
+								name: nextReserve.player_name,
+								email: nextReserve.email,
+								eventTitle: eventRow ? eventRow[1] : '',
+								eventDate: eventRow ? eventRow[2] : '',
+								eventTime: eventRow ? eventRow[3] : '',
+								eventLocation: eventRow ? eventRow[8] : ''
+							});
+						}
+					}
+			}
+			return refreshAllData();
+		}
 
         async function markSignupPaid(payload) {
             const { error } = await supabaseClient
@@ -2387,8 +2407,9 @@
 			const restricted = document.getElementById('ratingsRestricted');
 			const content = document.getElementById('ratingsMainContent');
 			const filterBar = document.querySelector('.gender-Everyone')?.closest('.flex.items-center.space-x-2');
+			const isMember = currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin');
 
-			if (currentUser) {
+			if (isMember) {
 				restricted.classList.add('hidden');
 				content.classList.remove('hidden');
 				if (filterBar) filterBar.classList.remove('hidden');
@@ -2453,12 +2474,15 @@
             }
             // ---------------------------------------------------
 
-            ladderState = { session: data.ladderSession, courts: data.ladderCourts || [], games: data.ladderGames || [] };
+            ladderSessionsState = data.ladderSessions || [];
+			if (activeLadderSessionId && !ladderSessionsState.some(s => s.session.id === activeLadderSessionId)) {
+				activeLadderSessionId = null;
+			}
 
             // 3. Populate Checkboxes (Selection Screen)
             const scContainer = document.getElementById('scramblePlayerCheckboxes');
             if (scContainer && data.names) {
-                scContainer.innerHTML = data.names.map(n => `
+                scContainer.innerHTML = `<input type="text" id="scrambleSearch" oninput="filterScrambleNames()" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + data.names.map(n => `
                     <label class="flex items-center space-x-3 p-3 bg-white rounded border cursor-pointer hover:bg-rose-50 transition">
                         <input type="checkbox" value="${n}" class="scramble-check w-5 h-5 accent-rose-600">
                         <span class="font-bold text-xs uppercase">${n}</span>
@@ -2514,7 +2538,7 @@
                             ${p.name}
                         </h4>
                         <div style="margin-top: 1rem; display: flex; justify-between; align-items: center;">
-                            <p style="color: #999999 !important; font-size: 10px; font-weight: 700; text-transform: uppercase; margin: 0;">Rating: ${p.elo}</p>
+                            <p style="color: #999999 !important; font-size: 10px; font-weight: 700; text-transform: uppercase; margin: 0;">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? 'Rating: ' + p.elo : '🔒 Members only'}</p>
                             <button onclick="openProfile('${p.name}')" style="color: #e11d48 !important; font-size: 10px; font-weight: 900; text-transform: uppercase; text-decoration: underline; background: none; border: none; cursor: pointer; margin-left: auto;">View Profile</button>
                         </div>
                     </div>
@@ -2570,8 +2594,9 @@
 
         function renderStandings() {
             const standings = globalData.standings || [];
-            const filtered = (currentGender === 'Everyone' ? globalData.standings : globalData.standings.filter(p => p.gender === currentGender))
-            .filter(p => p.name !== "Singles" && !p.isHidden && !p.isUnder18 && (p.membership === "Member" || p.membership === "Admin"));
+            const search = (document.getElementById('ratingsSearch')?.value || '').toLowerCase();
+			const filtered = (currentGender === 'Everyone' ? globalData.standings : globalData.standings.filter(p => p.gender === currentGender))
+			.filter(p => p.name !== "Singles" && !p.isHidden && !p.isUnder18 && (!search || p.name.toLowerCase().includes(search)));
             
             const today = new Date().getTime();
             const thirtyDays = 30 * 24 * 60 * 60 * 1000;
@@ -2750,6 +2775,14 @@
                     triggerError(e.message); 
                 });
         }
+		
+		function filterScrambleNames() {
+			const search = document.getElementById('scrambleSearch').value.toLowerCase();
+			document.querySelectorAll('.scramble-check').forEach(cb => {
+				const label = cb.closest('label');
+				if (label) label.style.display = cb.value.toLowerCase().includes(search) ? '' : 'none';
+			});
+		}
 
         function generateScramble() {
             // 1. Get selected names from checkboxes (this is alphabetical)
@@ -3049,8 +3082,8 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div class="stat-card border-l-4 border-black p-3 text-left bg-gray-50 rounded-xl">
                         <p class="text-[10px] font-bold text-gray-400 uppercase">Skill Rating</p>
-                        <p class="text-3xl font-black text-black">${p.elo}</p>
-                        <p class="text-[9px] font-bold uppercase ${decayColor}">${decayText}</p>
+                        <p class="text-3xl font-black text-black">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? p.elo : '🔒'}</p>
+						<p class="text-[9px] font-bold uppercase ${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? decayColor : 'text-gray-400'}">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? decayText : 'Members only'}</p>
                     </div>
                     <div class="stat-card border-l-4 border-rose-600 p-3 flex flex-col justify-center bg-gray-50 rounded-xl text-center">
                         <p class="text-[10px] font-bold text-gray-400 uppercase">Recent Form</p>
@@ -3249,29 +3282,31 @@
                 });
         }
 
-        let ladderState = { session: null, courts: [], games: [] };
+        let ladderSessionsState = [];
+		let activeLadderSessionId = null;
         const INVALID_LADDER_COUNTS = [1, 2, 3, 6, 7, 11];
 
         function updateLaddersAccess() {
-            const restricted = document.getElementById('laddersRestricted');
-            const content = document.getElementById('laddersMainContent');
-            const resetBtn = document.getElementById('ladderResetBtn');
+			const restricted = document.getElementById('laddersRestricted');
+			const content = document.getElementById('laddersMainContent');
+			const resetBtn = document.getElementById('ladderResetBtn');
+			const isMember = currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin');
 
-            if (currentUser) {
-                restricted.classList.add('hidden');
-                content.classList.remove('hidden');
-                if (resetBtn) resetBtn.classList.remove('hidden');
-            } else {
-                restricted.classList.remove('hidden');
-                content.classList.add('hidden');
-                if (resetBtn) resetBtn.classList.add('hidden');
-            }
-        }
+			if (isMember) {
+				restricted.classList.add('hidden');
+				content.classList.remove('hidden');
+				if (resetBtn) resetBtn.classList.remove('hidden');
+			} else {
+				restricted.classList.remove('hidden');
+				content.classList.add('hidden');
+				if (resetBtn) resetBtn.classList.add('hidden');
+			}
+		}
 
         function renderLadderCheckboxes() {
             const container = document.getElementById('ladderPlayerCheckboxes');
             if (!container || !globalData.names) return;
-            container.innerHTML = globalData.names.map(n => `
+            container.innerHTML = `<input type="text" id="ladderSearch" oninput="filterLadderNames()" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + globalData.names.map(n => `
                 <label class="flex items-center space-x-3 p-3 bg-white rounded border cursor-pointer hover:bg-rose-50 transition">
                     <input type="checkbox" value="${n}" class="ladder-check w-5 h-5 accent-rose-600" onchange="validateLadderHeadcount()">
                     <span class="font-bold text-xs uppercase">${n}</span>
@@ -3302,98 +3337,144 @@
                 btn.disabled = false;
             }
         }
+		
+		function filterLadderNames() {
+			const search = document.getElementById('ladderSearch').value.toLowerCase();
+			document.querySelectorAll('.ladder-check').forEach(cb => {
+				const label = cb.closest('label');
+				if (label) label.style.display = cb.value.toLowerCase().includes(search) ? '' : 'none';
+			});
+		}
 
         function startLadderSession() {
-            const selected = Array.from(document.querySelectorAll('.ladder-check:checked')).map(cb => cb.value);
-            const totalRoundsRaw = document.getElementById('ladderTotalRounds').value;
-            const totalRounds = parseInt(totalRoundsRaw);
-            const btn = document.getElementById('genLadderBtn');
+			const sessionName = document.getElementById('ladderSessionName').value.trim();
+			const selected = Array.from(document.querySelectorAll('.ladder-check:checked')).map(cb => cb.value);
+			const totalRoundsRaw = document.getElementById('ladderTotalRounds').value;
+			const totalRounds = parseInt(totalRoundsRaw);
+			const btn = document.getElementById('genLadderBtn');
 
-            if (!totalRoundsRaw || isNaN(totalRounds) || totalRounds < 1) {
-                return triggerError("Please enter the number of rounds.");
-            }
+			if (!sessionName) {
+				return triggerError("Please give this session a name (e.g. Mixed Ladder, Female Only Ladder).");
+			}
 
-            if (selected.length < 4 || INVALID_LADDER_COUNTS.includes(selected.length)) {
-                return triggerError("Please select a valid number of players (4, 5, 8, 9, 10, 12+).");
-            }
+			if (!totalRoundsRaw || isNaN(totalRounds) || totalRounds < 1) {
+				return triggerError("Please enter the number of rounds.");
+			}
 
-            btn.disabled = true;
-            btn.innerText = "Starting...";
+			if (selected.length < 4 || INVALID_LADDER_COUNTS.includes(selected.length)) {
+				return triggerError("Please select a valid number of players (4, 5, 8, 9, 10, 12+).");
+			}
 
-            startLadderSessionData({ players: selected, totalRounds: totalRounds })
-                .then(res => {
-                    ladderState = res;
-                    renderLadderSession();
-                    btn.disabled = false;
-                    btn.innerText = "Start Ladder Session";
-                    triggerToast("Ladder Session Started!");
-                })
-                .catch(err => {
-                    triggerError(err.message);
-                    btn.disabled = false;
-                    btn.innerText = "Start Ladder Session";
-                });
-        }
+			btn.disabled = true;
+			btn.innerText = "Starting...";
+
+			startLadderSessionData({ sessionName, players: selected, totalRounds: totalRounds })
+				.then(res => {
+					ladderSessionsState.push(res);
+					activeLadderSessionId = res.session.id;
+					renderLadderSession();
+					btn.disabled = false;
+					btn.innerText = "Start Ladder Session";
+					triggerToast("Ladder Session Started!");
+				})
+				.catch(err => {
+					triggerError(err.message);
+					btn.disabled = false;
+					btn.innerText = "Start Ladder Session";
+				});
+		}
 
         function renderLadderSession() {
-            const step1 = document.getElementById('ladderStep1');
-            const step2 = document.getElementById('ladderStep2');
+			renderLadderTabs();
 
-            if (!ladderState.session || ladderState.session.status !== "Active") {
-                step1.classList.remove('hidden');
-                step2.classList.add('hidden');
-                renderLadderCheckboxes();
-                return;
-            }
+			const step1 = document.getElementById('ladderStep1');
+			const step2 = document.getElementById('ladderStep2');
 
-            step1.classList.add('hidden');
-            step2.classList.remove('hidden');
+			const current = ladderSessionsState.find(s => s.session.id === activeLadderSessionId);
 
-            document.getElementById('ladderRoundDisplay').innerText =
-                `ROUND ${ladderState.session.currentRound} OF ${ladderState.session.totalRounds}`;
+			if (!current) {
+				step1.classList.remove('hidden');
+				step2.classList.add('hidden');
+				document.getElementById('ladderStep1Heading').innerText = "1. Select Players Present Today";
+				document.getElementById('ladderSessionName').value = "";
+				renderLadderCheckboxes();
+				return;
+			}
 
-            const totalGames = ladderState.games.length;
-            const scoredGames = ladderState.games.filter(g => g.scoreA !== "" && g.scoreB !== "").length;
-            document.getElementById('ladderProgressDisplay').innerText = `${scoredGames} / ${totalGames} GAMES SCORED`;
+			step1.classList.add('hidden');
+			step2.classList.remove('hidden');
 
-            const isLastRound = ladderState.session.currentRound >= ladderState.session.totalRounds;
-            document.getElementById('ladderEndRoundTitle').innerText = isLastRound ? "Finish Session" : "End Round";
-            document.getElementById('endRoundBtn').innerText = isLastRound ? "Finish Session" : "Confirm & End Round";
-            document.getElementById('endRoundBtn').disabled = scoredGames < totalGames;
-            document.getElementById('endRoundBtn').style.opacity = scoredGames < totalGames ? "0.4" : "1";
+			document.getElementById('ladderRoundDisplay').innerText =
+				`${current.session.name.toUpperCase()} — ROUND ${current.session.currentRound} OF ${current.session.totalRounds}`;
 
-            renderLadderCourts();
-        }
+			const totalGames = current.games.length;
+			const scoredGames = current.games.filter(g => g.scoreA !== "" && g.scoreB !== "").length;
+			document.getElementById('ladderProgressDisplay').innerText = `${scoredGames} / ${totalGames} GAMES SCORED`;
 
-        function renderLadderCourts() {
-            const container = document.getElementById('ladderCourtsContainer');
-            const courtNumbers = [...new Set(ladderState.courts.map(c => c.court))].sort((a, b) => a - b);
+			const isLastRound = current.session.currentRound >= current.session.totalRounds;
+			document.getElementById('ladderEndRoundTitle').innerText = isLastRound ? "Finish Session" : "End Round";
+			document.getElementById('endRoundBtn').innerText = isLastRound ? "Finish Session" : "Confirm & End Round";
+			document.getElementById('endRoundBtn').disabled = scoredGames < totalGames;
+			document.getElementById('endRoundBtn').style.opacity = scoredGames < totalGames ? "0.4" : "1";
 
-            container.innerHTML = courtNumbers.map(courtNum => {
-                const players = ladderState.courts
-                    .filter(c => c.court === courtNum)
-                    .sort((a, b) => b.roundPoints - a.roundPoints);
+			renderLadderCourts(current);
+		}
 
-                const courtGames = ladderState.games.filter(g => g.court === courtNum);
+		function renderLadderTabs() {
+			const container = document.getElementById('ladderTabsContainer');
+			if (!container) return;
 
-                const playersHtml = players.map((p, i) => `
-                    <div class="flex justify-between items-center py-2 ${i < players.length - 1 ? 'border-b border-gray-100' : ''}">
-                        <span class="font-bold text-sm uppercase">${i + 1}. ${p.playerName}</span>
-                        <span class="font-black text-rose-600">${p.roundPoints} pts</span>
-                    </div>
-                `).join('');
+			const tabsHtml = ladderSessionsState.map(s => `
+				<button onclick="switchLadderTab('${s.session.id}')"
+					class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition ${activeLadderSessionId === s.session.id ? 'bg-black text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
+					${s.session.name}
+				</button>
+			`).join('');
 
-                const gamesHtml = courtGames.map(g => generateLadderGameCard(g)).join('');
+			const newTabHtml = `
+				<button onclick="switchLadderTab(null)"
+					class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition border-2 border-dashed ${activeLadderSessionId === null ? 'border-rose-600 text-rose-600' : 'border-gray-300 text-gray-400 hover:border-black hover:text-black'}">
+					+ New Session
+				</button>
+			`;
 
-                return `
-                    <div class="card p-6 border-t-8 border-black shadow-lg">
-                        <h3 class="text-xl font-black uppercase italic mb-4">Court ${courtNum}</h3>
-                        <div class="bg-gray-50 rounded-lg p-3 mb-4">${playersHtml}</div>
-                        <div class="space-y-3">${gamesHtml}</div>
-                    </div>
-                `;
-            }).join('');
-        }
+			container.innerHTML = tabsHtml + newTabHtml;
+		}
+
+		function switchLadderTab(sessionId) {
+			activeLadderSessionId = sessionId;
+			renderLadderSession();
+		}
+
+        function renderLadderCourts(current) {
+			const container = document.getElementById('ladderCourtsContainer');
+			const courtNumbers = [...new Set(current.courts.map(c => c.court))].sort((a, b) => a - b);
+
+			container.innerHTML = courtNumbers.map(courtNum => {
+				const players = current.courts
+					.filter(c => c.court === courtNum)
+					.sort((a, b) => b.roundPoints - a.roundPoints);
+
+				const courtGames = current.games.filter(g => g.court === courtNum);
+
+				const playersHtml = players.map((p, i) => `
+					<div class="flex justify-between items-center py-2 ${i < players.length - 1 ? 'border-b border-gray-100' : ''}">
+						<span class="font-bold text-sm uppercase">${i + 1}. ${p.playerName}</span>
+						<span class="font-black text-rose-600">${p.roundPoints} pts</span>
+					</div>
+				`).join('');
+
+				const gamesHtml = courtGames.map(g => generateLadderGameCard(g)).join('');
+
+				return `
+					<div class="card p-6 border-t-8 border-black shadow-lg">
+						<h3 class="text-xl font-black uppercase italic mb-4">Court ${courtNum}</h3>
+						<div class="bg-gray-50 rounded-lg p-3 mb-4">${playersHtml}</div>
+						<div class="space-y-3">${gamesHtml}</div>
+					</div>
+				`;
+			}).join('');
+		}
 
         function generateLadderGameCard(g) {
             const isScored = (g.scoreA !== "" && g.scoreB !== "");
@@ -3416,7 +3497,7 @@
                     <input type="number" id="ladderScoreB_${g.gameId}" value="${g.scoreB}" placeholder="0"
                           ${isScored ? 'disabled' : ''} class="ladder-score-B rounded text-center font-black bg-white" style="${boxStyle} ${isScored ? 'opacity: 0.5;' : ''}">
                 </div>
-                <button id="ladderGameBtn_${g.gameId}" onclick="${isScored ? `unlockLadderGame(${g.gameId})` : `saveLadderScore(${g.gameId})`}"
+                <button id="ladderGameBtn_${g.gameId}" onclick="${isScored ? `unlockLadderGame('${g.gameId}')` : `saveLadderScore('${g.gameId}')`}"
                         class="w-full mt-3 py-2 border-2 ${isScored ? 'border-gray-300 text-gray-400' : 'border-black'} rounded-lg text-[10px] font-black hover:bg-black hover:text-white transition">
                     ${isScored ? 'Edit Score' : 'Confirm Score'}
                 </button>
@@ -3430,59 +3511,62 @@
             document.getElementById(`ladderScoreB_${gameId}`).style.opacity = "1";
             const btn = document.getElementById(`ladderGameBtn_${gameId}`);
             btn.innerText = "Confirm Score";
-            btn.setAttribute('onclick', `saveLadderScore(${gameId})`);
+            btn.setAttribute('onclick', `saveLadderScore('${gameId}')`);
             btn.classList.remove('border-gray-300', 'text-gray-400');
             btn.classList.add('border-black');
         }
 
         function saveLadderScore(gameId) {
-            const sA = document.getElementById(`ladderScoreA_${gameId}`).value;
-            const sB = document.getElementById(`ladderScoreB_${gameId}`).value;
-            const btn = document.getElementById(`ladderGameBtn_${gameId}`);
+			const sA = document.getElementById(`ladderScoreA_${gameId}`).value;
+			const sB = document.getElementById(`ladderScoreB_${gameId}`).value;
+			const btn = document.getElementById(`ladderGameBtn_${gameId}`);
 
-            if (sA === "" || sB === "") return triggerError("Enter both scores first.");
-            if (Number(sA) === Number(sB)) return triggerError("Scores cannot be tied. Please correct before confirming.");
+			if (sA === "" || sB === "") return triggerError("Enter both scores first.");
+			if (Number(sA) === Number(sB)) return triggerError("Scores cannot be tied. Please correct before confirming.");
 
-            btn.disabled = true;
-            btn.innerText = "Saving...";
+			btn.disabled = true;
+			btn.innerText = "Saving...";
 
-            updateLadderScore({ gameId: gameId, scoreA: sA, scoreB: sB })
-                .then(res => {
-                    ladderState = res;
-                    renderLadderSession();
-                    triggerToast("Score Confirmed!");
-                })
-                .catch(err => {
-                    triggerError(err.message);
-                    btn.disabled = false;
-                    btn.innerText = "Confirm Score";
-                });
-        }
+			updateLadderScore({ gameId: gameId, scoreA: sA, scoreB: sB })
+				.then(res => {
+					const idx = ladderSessionsState.findIndex(s => s.session.id === res.session.id);
+					if (idx !== -1) ladderSessionsState[idx] = res; else ladderSessionsState.push(res);
+					renderLadderSession();
+					triggerToast("Score Confirmed!");
+				})
+				.catch(err => {
+					triggerError(err.message);
+					btn.disabled = false;
+					btn.innerText = "Confirm Score";
+				});
+		}
 
         function checkLadderRoundComplete() {
-            const totalGames = ladderState.games.length;
-            const scoredGames = ladderState.games.filter(g => g.scoreA !== "" && g.scoreB !== "").length;
-            if (scoredGames < totalGames) {
-                return triggerError("All games must be scored before ending the round.");
-            }
+			const current = ladderSessionsState.find(s => s.session.id === activeLadderSessionId);
+			if (!current) return;
 
-            const btn = document.getElementById('endRoundBtn');
-            btn.disabled = true;
-            btn.innerText = "Processing...";
+			const totalGames = current.games.length;
+			const scoredGames = current.games.filter(g => g.scoreA !== "" && g.scoreB !== "").length;
+			if (scoredGames < totalGames) {
+				return triggerError("All games must be scored before ending the round.");
+			}
 
-            endLadderRound()
-                .then(res => {
-                    showLadderRoundResult(res);
-                    // Refresh main league data (Elo/standings) since ladder games updated Matches
-                    refreshAllData().catch(err => triggerError(err.message));
-                    btn.disabled = false;
-                })
-                .catch(err => {
-                    triggerError(err.message);
-                    btn.disabled = false;
-                    btn.innerText = "Confirm & End Round";
-                });
-        }
+			const btn = document.getElementById('endRoundBtn');
+			btn.disabled = true;
+			btn.innerText = "Processing...";
+
+			endLadderRound(current.session.id)
+				.then(res => {
+					showLadderRoundResult(res);
+					refreshAllData().catch(err => triggerError(err.message));
+					btn.disabled = false;
+				})
+				.catch(err => {
+					triggerError(err.message);
+					btn.disabled = false;
+					btn.innerText = "Confirm & End Round";
+				});
+		}
 
         function showLadderRoundResult(res) {
             const title = document.getElementById('ladderRoundResultTitle');
@@ -3516,47 +3600,57 @@
             openModal('ladderRoundResultModal');
 
             // Stash the result so we can apply the next-round state once they click Continue
-            window._pendingLadderState = res.state;
-            window._ladderSessionFinished = res.finished;
+            window._pendingLadderResult = res;
         }
 
         function closeLadderRoundResultModal() {
-            closeModal('ladderRoundResultModal');
-            if (window._pendingLadderState) {
-                ladderState = window._pendingLadderState;
-                renderLadderSession();
-                if (window._ladderSessionFinished) {
-                    triggerToast("Ladder Session Finished!");
-                    document.querySelectorAll('.ladder-check').forEach(cb => cb.checked = false);
-                    validateLadderHeadcount();
-                }
-            }
-        }
+			closeModal('ladderRoundResultModal');
+			const res = window._pendingLadderResult;
+			if (!res) return;
+
+			if (res.finished) {
+				ladderSessionsState = ladderSessionsState.filter(s => s.session.id !== res.sessionId);
+				activeLadderSessionId = null;
+				triggerToast("Ladder Session Finished!");
+				document.querySelectorAll('.ladder-check').forEach(cb => cb.checked = false);
+				validateLadderHeadcount();
+			} else {
+				const idx = ladderSessionsState.findIndex(s => s.session.id === res.sessionId);
+				if (idx !== -1) ladderSessionsState[idx] = res.state; else ladderSessionsState.push(res.state);
+			}
+			renderLadderSession();
+		}
 
         function resetLadderSession() {
-            openModal('ladderResetModal');
-        }
+			if (!activeLadderSessionId) {
+				return triggerError("Select a session tab first.");
+			}
+			openModal('ladderResetModal');
+		}
 
-        function confirmResetLadder() {
-            const btn = document.getElementById('ladderResetFinalBtn');
-            btn.disabled = true;
-            btn.innerText = "Ending Session...";
+		function confirmResetLadder() {
+			const btn = document.getElementById('ladderResetFinalBtn');
+			btn.disabled = true;
+			btn.innerText = "Ending Session...";
 
-            clearLadderSession()
-                .then(res => {
-                    ladderState = res;
-                    renderLadderSession();
-                    closeModal('ladderResetModal');
-                    triggerToast("Session Ended.");
-                    btn.disabled = false;
-                    btn.innerText = "End Session";
-                })
-                .catch(err => {
-                    triggerError(err.message);
-                    btn.disabled = false;
-                    btn.innerText = "End Session";
-                });
-        }
+			const sessionIdToEnd = activeLadderSessionId;
+
+			clearLadderSession(sessionIdToEnd)
+				.then(() => {
+					ladderSessionsState = ladderSessionsState.filter(s => s.session.id !== sessionIdToEnd);
+					activeLadderSessionId = null;
+					renderLadderSession();
+					closeModal('ladderResetModal');
+					triggerToast("Session Ended.");
+					btn.disabled = false;
+					btn.innerText = "End Session";
+				})
+				.catch(err => {
+					triggerError(err.message);
+					btn.disabled = false;
+					btn.innerText = "End Session";
+				});
+		}
 
         function copyWhatsAppStandings() {
             // 1. Get and sort ALL players by ELO (Removed .slice)
@@ -3607,26 +3701,61 @@
         }
 
         // --- EVENT MODAL FUNCTIONS ---
-        function openEventModal() {
-            openModal('eventModal');
-            document.getElementById('evtTitle').value = "";
-            const evtDate = document.getElementById('evtDate');
-            if (evtDate) evtDate.valueAsDate = new Date();
-            document.getElementById('evtTime').value = "";
-            document.getElementById('evtLocation').value = "";
-            document.getElementById('evtMax').value = "";
-            document.getElementById('evtMemberDate').valueAsDate = new Date();
-            document.getElementById('evtPublicDate').valueAsDate = new Date();
-            const evtDeadline = document.getElementById('evtDeadline');
-            if (evtDeadline) evtDeadline.value = "";
-            const evtDuration = document.getElementById('evtDuration');
-            if (evtDuration) evtDuration.value = "";
-            document.getElementById('evtNewcomersOnly').checked = false;
-            document.getElementById('evtUnder18Only').checked = false;
-            document.getElementById('evtMemberPrice').value = "";
-            document.getElementById('evtNonMemberPrice').value = "";
-            document.getElementById('evtPriceFields').style.display = 'grid';
-        }
+        let editingEventId = null;
+
+		function openEventModal(eventId) {
+			openModal('eventModal');
+			editingEventId = eventId || null;
+
+			const heading = document.getElementById('eventModalHeading');
+			const submitBtn = document.getElementById('evtSubmitBtn');
+
+			if (editingEventId) {
+				const event = (globalData.events || []).find(e => e[0] === editingEventId);
+				if (!event) { editingEventId = null; return; }
+
+				if (heading) heading.innerText = "Amend Event";
+				if (submitBtn) submitBtn.innerText = "Save Changes";
+
+				document.getElementById('evtTitle').value = event[1] || "";
+				document.getElementById('evtDate').value = event[2] || "";
+				document.getElementById('evtTime').value = event[3] || "";
+				document.getElementById('evtLocation').value = event[8] || "";
+				document.getElementById('evtMax').value = event[4] || "";
+				document.getElementById('evtMemberDate').value = event[5] || "";
+				document.getElementById('evtPublicDate').value = event[6] || "";
+				document.getElementById('evtDeadline').value = event[9] || "";
+				document.getElementById('evtDuration').value = event[10] ?? "";
+				document.getElementById('evtUnder18Only').checked = !!event[14];
+				document.getElementById('evtFemaleOnly').checked = !!event[15];
+				document.getElementById('evtAllAges').checked = !!event[16];
+				document.getElementById('evtMemberPrice').value = event[11] ?? "";
+				document.getElementById('evtNonMemberPrice').value = event[12] ?? "";
+				document.getElementById('evtPriceFields').style.display = 'grid';
+			} else {
+				if (heading) heading.innerText = "Create New Event";
+				if (submitBtn) submitBtn.innerText = "Create Event";
+
+				document.getElementById('evtTitle').value = "";
+				const evtDate = document.getElementById('evtDate');
+				if (evtDate) evtDate.valueAsDate = new Date();
+				document.getElementById('evtTime').value = "";
+				document.getElementById('evtLocation').value = "";
+				document.getElementById('evtMax').value = "";
+				document.getElementById('evtMemberDate').valueAsDate = new Date();
+				document.getElementById('evtPublicDate').valueAsDate = new Date();
+				const evtDeadline = document.getElementById('evtDeadline');
+				if (evtDeadline) evtDeadline.value = "";
+				const evtDuration = document.getElementById('evtDuration');
+				if (evtDuration) evtDuration.value = "";
+				document.getElementById('evtUnder18Only').checked = false;
+				document.getElementById('evtFemaleOnly').checked = false;
+				document.getElementById('evtAllAges').checked = false;
+				document.getElementById('evtMemberPrice').value = "";
+				document.getElementById('evtNonMemberPrice').value = "";
+				document.getElementById('evtPriceFields').style.display = 'grid';
+			}
+		}
 
         function toggleNewcomersOnlyFields() {
             // Price fields always visible now
@@ -3653,53 +3782,57 @@
         }
 
         function closeEventModal() {
-            closeModal('eventModal');
-        }
+			closeModal('eventModal');
+			editingEventId = null;
+		}
 
         function submitNewEvent() {
-            if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
+			if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
 
-            const newcomersOnly = document.getElementById('evtNewcomersOnly').checked;
-            
-            const data = {
-                title: document.getElementById('evtTitle').value,
-                date: document.getElementById('evtDate').value,
-                time: document.getElementById('evtTime').value,
-                location: document.getElementById('evtLocation').value,
-                max: document.getElementById('evtMax').value,
-                memberDate: document.getElementById('evtMemberDate').value,
-                publicDate: document.getElementById('evtPublicDate').value,
-                deadline: document.getElementById('evtDeadline').value,
-                duration: document.getElementById('evtDuration').value,
-                newcomersOnly: newcomersOnly,
-                under18Only: document.getElementById('evtUnder18Only').checked,
-                memberPrice: document.getElementById('evtMemberPrice').value,
-                nonMemberPrice: document.getElementById('evtNonMemberPrice').value,
-            };
+			const data = {
+				title: document.getElementById('evtTitle').value,
+				date: document.getElementById('evtDate').value,
+				time: document.getElementById('evtTime').value,
+				location: document.getElementById('evtLocation').value,
+				max: document.getElementById('evtMax').value,
+				memberDate: document.getElementById('evtMemberDate').value,
+				publicDate: document.getElementById('evtPublicDate').value,
+				deadline: document.getElementById('evtDeadline').value,
+				duration: document.getElementById('evtDuration').value,
+				under18Only: document.getElementById('evtUnder18Only').checked,
+				femaleOnly: document.getElementById('evtFemaleOnly').checked,
+				allAges: document.getElementById('evtAllAges').checked,
+				memberPrice: document.getElementById('evtMemberPrice').value,
+				nonMemberPrice: document.getElementById('evtNonMemberPrice').value,
+			};
 
-            if (!data.title || !data.date || !data.location || !data.max || !data.memberDate || !data.publicDate) {
-                return triggerError("Please fill in all required fields.");
-            }
+			if (!data.title || !data.date || !data.location || !data.max || !data.memberDate || !data.publicDate) {
+				return triggerError("Please fill in all required fields.");
+			}
 
-            if (data.memberPrice === "" || data.nonMemberPrice === "") {
-                return triggerError("Please enter both prices. Use £0 for free events.");
-            }
+			if (data.memberPrice === "" || data.nonMemberPrice === "") {
+				return triggerError("Please enter both prices. Use £0 for free events.");
+			}
 
-            const btn = document.getElementById('evtSubmitBtn');
-            btn.disabled = true; btn.innerText = "Creating...";
+			const btn = document.getElementById('evtSubmitBtn');
+			const isEditing = !!editingEventId;
+			btn.disabled = true; btn.innerText = isEditing ? "Saving..." : "Creating...";
 
-            addEvent(data)
-                .then(res => {
-                    render(res);
-                    triggerToast("Event Created!");
-                    closeEventModal();
-                    btn.disabled = false; btn.innerText = "Create Event";
-                })
-                .catch(err => {
-                    triggerError(err.message);
-                    btn.disabled = false; btn.innerText = "Create Event";
-                });
-        }
+			const savePromise = isEditing ? updateEvent(editingEventId, data) : addEvent(data);
+
+			savePromise
+				.then(res => {
+					render(res);
+					triggerToast(isEditing ? "Event Updated!" : "Event Created!");
+					editingEventId = null;
+					closeEventModal();
+					btn.disabled = false; btn.innerText = isEditing ? "Save Changes" : "Create Event";
+				})
+				.catch(err => {
+					triggerError(err.message);
+					btn.disabled = false; btn.innerText = isEditing ? "Save Changes" : "Create Event";
+				});
+		}
 
         // --- MEMBERSHIP MODAL FUNCTIONS ---
         function openMembershipModal() {
@@ -3746,6 +3879,159 @@
                     triggerToast(name + " Updated");
                 })
                 .catch(err => triggerError(err.message));
+        }
+
+        // --- EVENT TYPE CONFIG ---
+        // Single source of truth for event categories. To add a new type later
+        // (e.g. Singles, Tournament), add an entry here + one line in getEventTypeKey().
+        const EVENT_TYPES = {
+            mixed:  { key: 'mixed',  label: 'Mixed Doubles', icon: '🎾', color: '#e11d48', bg: '#fff1f2', text: '#be123c' },
+            female: { key: 'female', label: 'Female Only',   icon: '♀️', color: '#FF69B4', bg: '#fdf2f8', text: '#be185d' },
+            junior: { key: 'junior', label: 'Junior',        icon: '👦', color: '#3b82f6', bg: '#eff6ff', text: '#1d4ed8' }
+        };
+        let currentEventFilter = 'all';
+
+        function getEventTypeKey(event) {
+            if (!!event[15]) return 'female';
+            if (!!event[14]) return 'junior';
+            return 'mixed';
+        }
+
+        function setEventFilter(key) {
+            currentEventFilter = key;
+            renderEventsList();
+        }
+
+        function renderEventFilterChips() {
+            const container = document.getElementById('eventFilterChips');
+            if (!container) return;
+            const chips = [{ key: 'all', label: 'All Events', icon: '📅' }, ...Object.values(EVENT_TYPES)];
+            container.innerHTML = chips.map(c => {
+                const isActive = currentEventFilter === c.key;
+                const activeStyle = isActive
+                    ? `background-color:${c.key === 'all' ? '#000000' : c.color}; color:#ffffff; border-color:${c.key === 'all' ? '#000000' : c.color};`
+                    : `background-color:#ffffff; color:#374151; border-color:#e5e7eb;`;
+                return `
+                    <button onclick="setEventFilter('${c.key}')"
+                        style="${activeStyle} flex-shrink:0;"
+                        class="flex items-center gap-1.5 px-3.5 py-2 rounded-full border-2 font-black text-[10px] uppercase tracking-wide transition whitespace-nowrap">
+                        <span>${c.icon}</span><span>${c.label}</span>
+                    </button>`;
+            }).join('');
+        }
+
+        function getEventQuickStatus(event) {
+			const status = (event[7] || '').toString().trim();
+			const signups = (globalData.signups || []).filter(s => s[0] === event[0]);
+			const confirmedCount = signups.filter(s => s[5] === 'Confirmed').length;
+			const maxPlayers = event[4] ? Number(event[4]) : null;
+			const isFull = maxPlayers && confirmedCount >= maxPlayers;
+			const today = new Date(); today.setHours(0, 0, 0, 0);
+			const isPast = new Date(event[2]) < today;
+			const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
+			const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
+
+			// Always-visible places count, e.g. "6/10 Places" — shown regardless of status.
+			const places = maxPlayers ? { label: confirmedCount + '/' + maxPlayers + ' Places', style: 'background:#f3f4f6; color:#4b5563;' } : null;
+
+			let status_;
+			if (status === 'Cancelled') status_ = { label: 'Cancelled', style: 'background:#f3f4f6; color:#9ca3af;' };
+			else if (isPast) status_ = { label: 'Past', style: 'background:#f3f4f6; color:#9ca3af;' };
+			else if (mySignup && mySignup[5] === 'Confirmed') status_ = { label: "You're In ✅", style: 'background:#f0fdf4; color:#15803d;' };
+			else if (mySignup && mySignup[5] === 'Reserve') status_ = { label: 'On Reserve List', style: 'background:#f9fafb; color:#6b7280;' };
+			else if (isFull) status_ = { label: 'Full — Reserve Available', style: 'background:#fff7ed; color:#c2410c;' };
+			else if (maxPlayers) status_ = { label: (maxPlayers - confirmedCount) + ' Spots Left', style: 'background:#fff1f2; color:#be123c;' };
+			else status_ = { label: 'Open', style: 'background:#fff1f2; color:#be123c;' };
+
+			return { ...status_, places };
+		}
+
+        function renderEventsList() {
+            renderEventFilterChips();
+
+            const container = document.getElementById('eventsListContainer');
+            if (!container) return;
+
+            const allEvents = (globalData.events || []).filter(e => (e[7] || '').toString().trim() !== 'Cancelled');
+            const filtered = currentEventFilter === 'all' ? allEvents : allEvents.filter(e => getEventTypeKey(e) === currentEventFilter);
+
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const upcoming = filtered.filter(e => new Date(e[2]) >= today).sort((a, b) => new Date(a[2]) - new Date(b[2]));
+            const past = filtered.filter(e => new Date(e[2]) < today).sort((a, b) => new Date(b[2]) - new Date(a[2]));
+
+            const dayMonthShort = (dateStr) => {
+                const d = new Date(dateStr + 'T00:00:00');
+                const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+                return { day: d.getDate(), month: months[d.getMonth()] };
+            };
+
+            const buildCard = (event, faded) => {
+                const type = EVENT_TYPES[getEventTypeKey(event)];
+                const dm = dayMonthShort(event[2]);
+                const quickStatus = getEventQuickStatus(event);
+                return `
+                    <div onclick="openCalendarEventModal('${event[0]}')"
+                        class="card flex items-stretch overflow-hidden cursor-pointer hover:shadow-lg transition"
+                        style="${faded ? 'opacity:0.55;' : ''}">
+                        <div class="flex flex-col items-center justify-center flex-shrink-0 px-4"
+                            style="background-color:${type.color}; color:#ffffff; min-width:72px;">
+                            <span style="font-size:22px; font-weight:900; line-height:1;">${dm.day}</span>
+                            <span style="font-size:10px; font-weight:800; letter-spacing:0.05em;">${dm.month}</span>
+                        </div>
+                        <div class="flex-1 min-w-0 p-3 flex flex-col justify-center gap-1.5">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span style="background-color:${type.bg}; color:${type.text};" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
+                                    ${type.icon} ${type.label}
+                                </span>
+                                <span style="${quickStatus.style}" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
+                                    ${quickStatus.label}
+                                </span>
+                                ${quickStatus.places ? `
+                                <span style="${quickStatus.places.style}" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
+                                    ${quickStatus.places.label}
+                                </span>` : ''}
+                            </div>
+                            <p class="font-black uppercase text-sm truncate">${event[1]}</p>
+                            <p class="text-[11px] font-bold text-gray-400 truncate">${event[3] ? event[3] + ' · ' : ''}${event[8] || ''}</p>
+                        </div>
+                        <div class="flex items-center pr-3 text-gray-300 flex-shrink-0">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                    </div>`;
+            };
+
+            let html = '';
+
+            if (upcoming.length === 0) {
+                html += `
+                    <div class="text-center py-16">
+                        <p class="text-4xl mb-3">📅</p>
+                        <p class="font-black uppercase text-gray-400 text-sm">No upcoming events${currentEventFilter !== 'all' ? ' in this category' : ''}</p>
+                    </div>`;
+            } else {
+                html += `<div class="space-y-3">${upcoming.map(e => buildCard(e, false)).join('')}</div>`;
+            }
+
+            if (past.length > 0) {
+                html += `
+                    <div class="pt-2">
+                        <button onclick="document.getElementById('pastEventsContainer').classList.toggle('hidden'); this.querySelector('span').classList.toggle('rotate-180');"
+                            class="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-black uppercase text-gray-400 tracking-widest hover:text-black transition">
+                            Show ${past.length} Past Event${past.length > 1 ? 's' : ''}
+                            <span class="transition-transform">▾</span>
+                        </button>
+                        <div id="pastEventsContainer" class="hidden space-y-3 mt-3">${past.map(e => buildCard(e, true)).join('')}</div>
+                    </div>`;
+            }
+
+            container.innerHTML = html;
+
+            const adminBtn = document.getElementById('calendarAdminBtn');
+            if (adminBtn) {
+                adminBtn.innerHTML = (currentUser && currentUser.role === 'Admin')
+                    ? `<button onclick="openEventModal()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition">+ Create Event</button>`
+                    : '';
+            }
         }
 
         var calendarCurrentMonth = new Date().getMonth();
@@ -3820,33 +4106,28 @@
                 const extraCount = dayEvents.length - maxVisible;
 
                 visibleEvents.forEach(ev => {
-                    const isPastEvent = new Date(ev[2]) < today;
-                    const under18Only = !!ev[14];
+					const isPastEvent = new Date(ev[2]) < today;
+					const under18Only = !!ev[14];
+					const femaleOnly = !!ev[15];
 
-                    let logoSrc, borderColor, opacity;
-                    if (isPastEvent) {
-                        logoSrc = 'https://i.postimg.cc/W1Wps66D/Logo-red.jpg';
-                        borderColor = '#d1d5db';
-                        opacity = '0.35';
-                    } else if (under18Only) {
-                        logoSrc = 'https://i.postimg.cc/zGtDqSSb/Logo-Blue.jpg';
-                        borderColor = '#3b82f6';
-                        opacity = '1';
-                    } else {
-                        logoSrc = 'https://i.postimg.cc/W1Wps66D/Logo-red.jpg';
-                        borderColor = '#e11d48';
-                        opacity = '1';
-                    }
+					let markerHtml;
+					if (isPastEvent) {
+						markerHtml = `<img src="https://i.postimg.cc/W1Wps66D/Logo-red.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; opacity:0.35; border: 2px solid #d1d5db;" alt="${ev[1]}">`;
+					} else if (femaleOnly) {
+						markerHtml = `<img src="https://i.postimg.cc/13J2HkH9/Logo-purple.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; border: 2px solid #FF69B4;" alt="${ev[1]}">`;
+					} else if (under18Only) {
+						markerHtml = `<img src="https://i.postimg.cc/zGtDqSSb/Logo-Blue.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; border: 2px solid #3b82f6;" alt="${ev[1]}">`;
+					} else {
+						markerHtml = `<img src="https://i.postimg.cc/W1Wps66D/Logo-red.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; border: 2px solid #e11d48;" alt="${ev[1]}">`;
+					}
 
-                    pillsHtml += `
-                        <div onclick="event.stopPropagation(); openCalendarEventModal('${ev[0]}')"
-                            title="${ev[1]}"
-                            style="cursor:pointer; margin-top:3px; display:flex; align-items:center; justify-content:center;">
-                            <img src="${logoSrc}"
-                                style="width:22px; height:22px; border-radius:50%; object-fit:cover; opacity:${opacity}; border: 2px solid ${borderColor};"
-                                alt="${ev[1]}">
-                        </div>`;
-                });
+					pillsHtml += `
+						<div onclick="event.stopPropagation(); openCalendarEventModal('${ev[0]}')"
+							title="${ev[1]}"
+							style="cursor:pointer; margin-top:3px; display:flex; align-items:center; justify-content:center;">
+							${markerHtml}
+						</div>`;
+				});
 
                 if (extraCount > 0) {
                     pillsHtml += `
@@ -3887,11 +4168,12 @@
             const spotsLeft = maxPlayers ? maxPlayers - signups.length : null;
             const isFull = maxPlayers && signups.length >= maxPlayers;
             const status = (event[7] || "").toString().trim();
-            const newcomersOnly = !!event[13];
             const under18Only = !!event[14];
-            const memberPrice = (newcomersOnly || under18Only) ? "0.00" : Number(event[11] || 0).toFixed(2);
-            const nonMemberPrice = (newcomersOnly || under18Only) ? "0.00" : Number(event[12] || 0).toFixed(2);
-            const userPrice = (newcomersOnly || under18Only) ? "0.00" : (currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin') ? memberPrice : nonMemberPrice);
+			const femaleOnly = !!event[15];
+			const allAges = !!event[16];
+			const memberPrice = under18Only ? "0.00" : Number(event[11] || 0).toFixed(2);
+			const nonMemberPrice = under18Only ? "0.00" : Number(event[12] || 0).toFixed(2);
+			const userPrice = under18Only ? "0.00" : (currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin') ? memberPrice : nonMemberPrice);
 
             const isSignedUp = currentUser && signups.some(s => s[0] === currentUser.username);
             const today = new Date(); today.setHours(0,0,0,0);
@@ -3903,6 +4185,11 @@
             const viewerIsUnder18 = currentUser && (globalData.standings || []).find(p =>
                 p.name === (currentUser.firstName + " " + currentUser.surname) && p.isUnder18
             );
+			
+			const viewerPlayer = currentUser && (globalData.standings || []).find(p =>
+				p.name === (currentUser.firstName + " " + currentUser.surname)
+			);
+			const viewerIsFemale = !!(viewerPlayer && viewerPlayer.gender === 'Female');
 
             const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
             const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
@@ -3919,11 +4206,13 @@
 
             if (status === "Cancelled") {
                 accessStatus = "cancelled"; statusMsg = "This event has been cancelled ❌";
-            } else if (under18Only && !viewerIsUnder18 && currentUser && currentUser.role !== 'Admin') {
-                accessStatus = "locked"; statusMsg = "This event is for Teens only";
-            } else if (!under18Only && viewerIsUnder18) {
-                accessStatus = "locked"; statusMsg = "This event is not available for Under 18s";
-            } else if (isConfirmed) {
+            } else if (!allAges && under18Only && !viewerIsUnder18 && currentUser && currentUser.role !== 'Admin') {
+				accessStatus = "locked"; statusMsg = "This event is for Teens only";
+			} else if (!allAges && !under18Only && viewerIsUnder18) {
+				accessStatus = "locked"; statusMsg = "This event is not available for Under 18s";
+			} else if (femaleOnly && !viewerIsFemale && currentUser && currentUser.role !== 'Admin') {
+				accessStatus = "locked"; statusMsg = "This event is for female players only";
+			} else if (isConfirmed) {
                 accessStatus = "signedup"; statusMsg = "You're in! ✅";
             } else if (isReserve) {
                 accessStatus = "reserve"; statusMsg = "You're on the reserve list 🔄";
@@ -3952,8 +4241,9 @@
                 <div class="bg-black text-white p-5 flex items-start justify-between gap-4">
                     <div class="flex-1">
                         <div class="flex flex-wrap gap-2 mb-2">
-                            ${newcomersOnly ? `<span class="bg-green-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">🎉 Newcomers</span>` : ''}
                             ${under18Only ? `<span class="bg-blue-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👦 Junior</span>` : ''}
+							${allAges ? `<span class="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👨‍👧 All Ages</span>` : ''}
+							${femaleOnly ? `<span class="bg-purple-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">♀️ Women Only</span>` : ''}
                             ${isPast ? `<span class="bg-gray-600 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">Past Event</span>` : ''}
                             ${status === 'Cancelled' ? `<span class="bg-rose-600 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">Cancelled</span>` : ''}
                         </div>
@@ -3970,8 +4260,8 @@
                     ${event[8] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[8]}</p></div>` : ''}
                     ${event[10] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[10]} ${Number(event[10]) === 1 ? 'hour' : 'hours'}</p></div>` : ''}
                     ${maxPlayers ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold ${isFull ? 'text-rose-600' : 'text-gray-600'}">${signups.length} / ${maxPlayers} signed up${spotsLeft > 0 ? ' — ' + spotsLeft + ' spots left' : ' — FULL'}</p></div>` : ''}
-                    ${event[9] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><p class="text-xs font-bold text-gray-600">Sign up by ${formatEventDate(event[9])}</p></div>` : ''}
-                    ${!newcomersOnly && !under18Only ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">£${userPrice || nonMemberPrice} <span class="text-gray-400">(Members £${memberPrice} / Non-members £${nonMemberPrice})</span></p></div>` : ''}
+                    ${event[9] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><p class="text-xs font-bold text-gray-600">Sign up before ${formatEventDate(event[9])}</p></div>` : ''}
+                    ${!under18Only ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">£${userPrice || nonMemberPrice} <span class="text-gray-400">(Members £${memberPrice} / Non-members £${nonMemberPrice})</span></p></div>` : ''}
                 </div>
 
                 <!-- Status Message -->
@@ -4007,19 +4297,20 @@
                     ` : ''}
 
 
-                    ${!newcomersOnly && !under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] !== 'Paid' ? `
+                    ${!under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] !== 'Paid' ? `
                         <button onclick="openPaymentModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}', '${userPrice}')" style="background-color: #e11d48 !important; color: #ffffff !important;" class="w-full py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-black transition">💳 Make Payment</button>
                     ` : ''}
-                    ${!newcomersOnly && !under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] === 'Paid' ? `
+                    ${!under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] === 'Paid' ? `
                         <span class="w-full inline-block text-center bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest">💳 Paid</span>
                     ` : ''}
                 </div>
 
                 ${isAdmin && status !== 'Cancelled' ? `
-                <div class="border-t border-gray-100 p-5 pt-3 space-y-2">
-                    <button onclick="closeCalendarEventModal(); setTimeout(() => openEventSignupsModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}'), 100);" class="w-full bg-black text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-gray-800 transition">👥 View Signups (${signups.length}${maxPlayers ? '/' + maxPlayers : ''})</button>
-                    <button onclick="closeCalendarEventModal(); setTimeout(() => confirmCancelEvent('${event[0]}', '${event[1].replace(/'/g, "\\'")}'), 100);" class="w-full border-2 border-rose-600 text-rose-600 py-2 rounded-xl font-black uppercase text-xs hover:bg-rose-600 hover:text-white transition">🚫 Cancel Event</button>
-                </div>` : ''}
+				<div class="border-t border-gray-100 p-5 pt-3 space-y-2">
+					<button onclick="closeCalendarEventModal(); setTimeout(() => openEventSignupsModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}'), 100);" class="w-full bg-black text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-gray-800 transition">👥 View Signups (${signups.length}${maxPlayers ? '/' + maxPlayers : ''})</button>
+					<button onclick="closeCalendarEventModal(); setTimeout(() => openEventModal('${event[0]}'), 100);" class="w-full border-2 border-black text-black py-2 rounded-xl font-black uppercase text-xs hover:bg-black hover:text-white transition">✏️ Amend Event</button>
+					<button onclick="closeCalendarEventModal(); setTimeout(() => confirmCancelEvent('${event[0]}', '${event[1].replace(/'/g, "\\'")}'), 100);" class="w-full border-2 border-black text-black py-2 rounded-xl font-black uppercase text-xs hover:bg-black hover:text-white transition">🚫 Cancel Event</button>
+				</div>` : ''}
             `;
 
             document.getElementById('calendarEventModal').classList.remove('hidden');
@@ -4076,7 +4367,7 @@
         }
 
         function renderEvents() {
-            renderCalendar();
+            renderEventsList();
         }
 
         function handleEventClick(eventId, asReserve, btn) {
@@ -4330,35 +4621,39 @@
         }
 
         function updateUIForLogin() {
-            const stickyBar = document.getElementById('stickyLoginBar');
-            if (stickyBar) {
-                if (currentUser) {
-                    stickyBar.style.display = 'none';
-                } else {
-                    stickyBar.style.display = 'block';
-                }
-            }
-            const authBtn = document.getElementById('nav-auth');
-            const adminBtn = document.getElementById('nav-admin');
-            const adminBtnMobile = document.getElementById('nav-admin-m');
+			const stickyBar = document.getElementById('stickyLoginBar');
+			if (stickyBar) {
+				if (currentUser) {
+					stickyBar.style.display = 'none';
+				} else {
+					stickyBar.style.display = 'block';
+				}
+			}
+			const authBtn = document.getElementById('nav-auth');
+			const authBtnMobile = document.getElementById('nav-auth-m');
+			const adminBtn = document.getElementById('nav-admin');
+			const adminBtnMobile = document.getElementById('nav-admin-m');
 
-            if (currentUser) {
-                const label = currentUser.firstName + " (Logout)";
-                if (authBtn) authBtn.innerText = label;
-                if (currentUser.role === "Admin") {
-                    if (adminBtn) adminBtn.classList.remove('hidden');
-                    if (adminBtnMobile) adminBtnMobile.classList.remove('hidden');
-                }
-            } else {
-                if (authBtn) authBtn.innerText = "Login / Sign Up";
-                if (adminBtn) adminBtn.classList.add('hidden');
-                if (adminBtnMobile) adminBtnMobile.classList.add('hidden');
-            }
-            updateScrambleAccess();
-            updateLaddersAccess();
-            renderEvents();
+			if (currentUser) {
+				const label = currentUser.firstName + " (Logout)";
+				if (authBtn) authBtn.innerText = label;
+				if (authBtnMobile) authBtnMobile.innerText = label;
+				if (currentUser.role === "Admin") {
+					if (adminBtn) adminBtn.classList.remove('hidden');
+					if (adminBtnMobile) adminBtnMobile.classList.remove('hidden');
+				}
+			} else {
+				if (authBtn) authBtn.innerText = "Login / Sign Up";
+				if (authBtnMobile) authBtnMobile.innerText = "Login / Sign Up";
+				if (adminBtn) adminBtn.classList.add('hidden');
+				if (adminBtnMobile) adminBtnMobile.classList.add('hidden');
+			}
+			updateScrambleAccess();
+			updateLaddersAccess();
 			updateRatingsAccess();
-        }
+			renderEvents();
+			if (globalData && globalData.standings) refreshAllData();
+		}
 
         function toggleMobileMenu() {
             const menu = document.getElementById('mobileMenu');
@@ -4993,9 +5288,9 @@
     </div>
     <!-- CREATE EVENT MODAL -->
     <div id="eventModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-start justify-center hidden z-[200] p-4" style="padding-top: 120px; padding-bottom: 24px;">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full border-t-8 border-rose-600" style="display: flex; flex-direction: column; max-height: calc(100vh - 144px);">
-            <div class="p-6 space-y-3 overflow-y-auto flex-1">
-                <h3 class="text-3xl font-black italic uppercase">Create New Event</h3>
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full border-t-8 border-rose-600" style="display: flex; flex-direction: column; max-height: calc(100dvh - 144px);">
+            <div class="p-6 pb-3 space-y-3 overflow-y-auto flex-1">
+                <h3 id="eventModalHeading" class="text-3xl font-black italic uppercase">Create New Event</h3>
                 <div class="space-y-3">
                 <input type="text" id="evtTitle" placeholder="Event Title (e.g. Tuesday Scramble)" class="input-field border-2">
                 <div class="grid grid-cols-2 gap-2">
@@ -5025,15 +5320,24 @@
                 <label class="block text-[10px] font-black text-rose-600 uppercase tracking-widest mt-2">Duration (Hours):</label>
                 <input type="number" id="evtDuration" placeholder="e.g. 2" step="0.5" min="0.5" class="input-field border-2">
 
-                <label class="flex items-center gap-3 bg-rose-50 p-4 rounded-xl mt-4 cursor-pointer">
+                 <!--<label class="flex items-center gap-3 bg-rose-50 p-4 rounded-xl mt-4 cursor-pointer">
                     <input type="checkbox" id="evtNewcomersOnly" onchange="toggleNewcomersOnlyFields()" class="w-5 h-5 accent-rose-600">
                     <span class="text-xs font-bold text-left uppercase">Newcomers Only (Free "Come and Try" Event)</span>
-                </label>
+                </label>-->
                 <label class="flex items-center gap-3 bg-green-50 p-4 rounded-xl mt-2 cursor-pointer border border-green-200">
                     <input type="checkbox" id="evtUnder18Only" onchange="toggleNewcomersOnlyFields()" class="w-5 h-5 accent-green-600">
                     <span class="text-xs font-bold text-left uppercase text-green-700">Teens Only (Junior Session)</span>
                 </label>
-
+				<label class="flex items-center gap-3 bg-indigo-50 p-4 rounded-xl mt-2 cursor-pointer border border-indigo-200">
+					<input type="checkbox" id="evtAllAges" class="w-5 h-5 accent-indigo-600">
+					<span class="text-xs font-bold text-left uppercase text-indigo-700">All Ages (Adults & Teens Together)</span>
+					<span class="text-[9px] font-bold text-indigo-400 normal-case block">e.g. parent/teen sessions — don't combine with "Teens Only"</span>
+				</label>
+				<label class="flex items-center gap-3 bg-purple-50 p-4 rounded-xl mt-2 cursor-pointer border border-purple-200">
+					<input type="checkbox" id="evtFemaleOnly" class="w-5 h-5 accent-purple-600">
+					<span class="text-xs font-bold text-left uppercase text-purple-700">Female Only Event</span>
+				</label>
+				
                 <div id="evtPriceFields" class="grid grid-cols-2 gap-2 mt-2 items-end">
                     <div class="space-y-1">
                         <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest leading-tight">Member Price (£)</label>
@@ -5045,13 +5349,13 @@
                     </div>
                 </div>
             </div>
-                <div class="flex gap-4 pt-4">
-                    <button onclick="closeEventModal()" class="flex-1 py-3 font-bold uppercase text-gray-400">Cancel</button>
-                    <button onclick="submitNewEvent()" id="evtSubmitBtn" class="flex-1 btn-red py-3 rounded font-black uppercase">Create Event</button>
-                </div>
-            </div>
-        </div>
-    </div>
+				<div class="flex gap-4 p-6 pt-4 border-t border-gray-100 flex-shrink-0">
+					<button onclick="closeEventModal()" class="flex-1 py-3 font-bold uppercase text-gray-400">Cancel</button>
+					<button onclick="submitNewEvent()" id="evtSubmitBtn" class="flex-1 btn-red py-3 rounded font-black uppercase">Create Event</button>
+				</div>
+			</div>
+		</div>
+	</div>
 
     <!-- MANAGE MEMBERSHIP MODAL -->
     <div id="membershipModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-[150] p-4">
