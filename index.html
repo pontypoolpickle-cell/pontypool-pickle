@@ -4,6 +4,7 @@
 <head>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet">
     <style>
         :root { --ponty-red: #e11d48; --ponty-black: #000000; }
         body { background-color: #f4f4f4; font-family: 'Inter', sans-serif; color: var(--ponty-black); }
@@ -80,9 +81,25 @@
         body.modal-open {
             overflow: hidden;
         }
+
+        /* Force a consistent DD/MM/YYYY date picker on every device (mobile + desktop) */
+        .flatpickr-calendar {
+            z-index: 999999 !important;
+        }
+        .flatpickr-day.selected,
+        .flatpickr-day.selected:hover,
+        .flatpickr-day.startRange,
+        .flatpickr-day.endRange {
+            background: var(--ponty-red) !important;
+            border-color: var(--ponty-red) !important;
+        }
+        .flatpickr-day.today {
+            border-color: var(--ponty-red) !important;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 </head>
 <body>
 
@@ -961,6 +978,61 @@
 					   day % 10 === 3 ? 'rd' : 'th';
 		return `${days[date.getDay()]} ${day}${suffix} ${months[date.getMonth()]} ${date.getFullYear()}`;
 	}
+
+	// Formats a raw timestamp (e.g. "2026-07-13T20:42:42.666457+00:00") into "2026-07-13 20:42"
+	function formatSignupTimestamp(timestampStr) {
+		if (!timestampStr) return '';
+		const date = new Date(timestampStr);
+		if (isNaN(date.getTime())) return timestampStr;
+		const pad = n => String(n).padStart(2, '0');
+		return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+	}
+
+	// --- Date input handling -----------------------------------------------
+	// Native <input type="date"> pickers render in whatever date format the
+	// device/browser locale dictates (MM/DD/YYYY on some phones, DD/MM/YYYY on
+	// others/desktop). To keep the displayed format identical everywhere we
+	// swap every date field over to flatpickr, which renders its own calendar
+	// UI and is not affected by device locale settings. The underlying value
+	// (read via .value elsewhere in this file) is kept as "Y-m-d" exactly like
+	// a native date input, so no other logic needs to change.
+	const DATE_INPUT_IDS = ['scrambleDate', 'historySearchDate', 'matchDate', 'evtDate', 'evtMemberDate', 'evtPublicDate', 'evtDeadline', 'arIncidentDate'];
+
+	function initDatePickers() {
+		if (typeof flatpickr === 'undefined') return;
+		DATE_INPUT_IDS.forEach(id => {
+			const el = document.getElementById(id);
+			if (el && !el._flatpickr) {
+				flatpickr(el, {
+					dateFormat: 'Y-m-d',
+					altInput: true,
+					altFormat: 'd/m/Y',
+					allowInput: true
+				});
+			}
+		});
+	}
+
+	// Sets a date-input's value while keeping the visible flatpickr display in sync.
+	function setDateInputValue(id, value) {
+		const el = document.getElementById(id);
+		if (!el) return;
+		if (el._flatpickr) {
+			el._flatpickr.setDate(value || null, true);
+		} else {
+			el.value = value || '';
+		}
+	}
+
+	function setDateInputToday(id) {
+		const el = document.getElementById(id);
+		if (!el) return;
+		if (el._flatpickr) {
+			el._flatpickr.setDate(new Date(), true);
+		} else if ('valueAsDate' in el) {
+			el.valueAsDate = new Date();
+		}
+	}
 	
 	function toggleMobileMenu() {
 		const menu = document.getElementById('mobileMenu');
@@ -1137,7 +1209,13 @@
 
         const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_qFG6VEHtM9eMy_6WR86QxQ_fi7Wzed8';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Force every request to bypass any HTTP cache so reads (e.g. password
+        // reset code verification) always see the very latest database state.
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            global: {
+                fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' })
+            }
+        });
 
         // TODO: Replace with your EmailJS credentials
         const EMAILJS_SERVICE_ID = 'service_zya6iux';
@@ -2588,8 +2666,8 @@
                 pendingCard.classList.add('hidden');
             }
 
-            if(!document.getElementById('matchDate').value) document.getElementById('matchDate').valueAsDate = new Date();
-            if(!document.getElementById('scrambleDate').value) document.getElementById('scrambleDate').valueAsDate = new Date();
+            if(!document.getElementById('matchDate').value) setDateInputToday('matchDate');
+            if(!document.getElementById('scrambleDate').value) setDateInputToday('scrambleDate');
         }
 
         function renderStandings() {
@@ -3718,13 +3796,13 @@
 				if (submitBtn) submitBtn.innerText = "Save Changes";
 
 				document.getElementById('evtTitle').value = event[1] || "";
-				document.getElementById('evtDate').value = event[2] || "";
+				setDateInputValue('evtDate', event[2] || "");
 				document.getElementById('evtTime').value = event[3] || "";
 				document.getElementById('evtLocation').value = event[8] || "";
 				document.getElementById('evtMax').value = event[4] || "";
-				document.getElementById('evtMemberDate').value = event[5] || "";
-				document.getElementById('evtPublicDate').value = event[6] || "";
-				document.getElementById('evtDeadline').value = event[9] || "";
+				setDateInputValue('evtMemberDate', event[5] || "");
+				setDateInputValue('evtPublicDate', event[6] || "");
+				setDateInputValue('evtDeadline', event[9] || "");
 				document.getElementById('evtDuration').value = event[10] ?? "";
 				document.getElementById('evtUnder18Only').checked = !!event[14];
 				document.getElementById('evtFemaleOnly').checked = !!event[15];
@@ -3737,15 +3815,13 @@
 				if (submitBtn) submitBtn.innerText = "Create Event";
 
 				document.getElementById('evtTitle').value = "";
-				const evtDate = document.getElementById('evtDate');
-				if (evtDate) evtDate.valueAsDate = new Date();
+				setDateInputToday('evtDate');
 				document.getElementById('evtTime').value = "";
 				document.getElementById('evtLocation').value = "";
 				document.getElementById('evtMax').value = "";
-				document.getElementById('evtMemberDate').valueAsDate = new Date();
-				document.getElementById('evtPublicDate').valueAsDate = new Date();
-				const evtDeadline = document.getElementById('evtDeadline');
-				if (evtDeadline) evtDeadline.value = "";
+				setDateInputToday('evtMemberDate');
+				setDateInputToday('evtPublicDate');
+				setDateInputValue('evtDeadline', "");
 				const evtDuration = document.getElementById('evtDuration');
 				if (evtDuration) evtDuration.value = "";
 				document.getElementById('evtUnder18Only').checked = false;
@@ -4203,11 +4279,14 @@
             let accessStatus = "locked";
             let statusMsg = "";
 
-            const isAdminOrMember = currentUser && (currentUser.role === "Admin" || currentUser.role === "Member");
+            const isAdmin = currentUser && currentUser.role === 'Admin';
+            const isMember = currentUser && currentUser.role === "Member";
 
             const memOpenDate = event[5] ? new Date(event[5] + 'T00:00:00') : null;
             const pubOpenDate = event[6] ? new Date(event[6] + 'T00:00:00') : null;
 
+            // Admins have no signup-window restrictions — the member/non-member
+            // open dates below only ever apply to Members and Non-Members.
             if (status === "Cancelled") {
                 accessStatus = "cancelled"; statusMsg = "This event has been cancelled ❌";
             } else if (!allAges && under18Only && !viewerIsUnder18 && currentUser && currentUser.role !== 'Admin') {
@@ -4226,19 +4305,19 @@
                 accessStatus = "closed"; statusMsg = "Sign up deadline has passed";
             } else if (isFull) {
                 accessStatus = "reserve-open"; statusMsg = "Event Full — Join Reserve List";
-            } else if (isAdminOrMember && memOpenDate && today >= memOpenDate) {
-                accessStatus = "open"; statusMsg = currentUser.role === "Admin" ? "Open for Signups" : "Member Access Open ⭐";
+            } else if (isAdmin) {
+                accessStatus = "open"; statusMsg = "Open for Signups";
+            } else if (isMember && memOpenDate && today >= memOpenDate) {
+                accessStatus = "open"; statusMsg = "Member Access Open ⭐";
             } else if (currentUser && currentUser.role === "Non-Member" && pubOpenDate && today >= pubOpenDate) {
                 accessStatus = "open"; statusMsg = "Access Open";
             } else if (!currentUser) {
                 accessStatus = "loggedout"; statusMsg = "Please log in to sign up";
-            } else if (isAdminOrMember && memOpenDate) {
+            } else if (isMember && memOpenDate) {
                 accessStatus = "locked"; statusMsg = "Member access opens " + memOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) + (pubOpenDate ? " · Non-member access opens " + pubOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) : "");
             } else if (pubOpenDate) {
                 accessStatus = "locked"; statusMsg = "Members: " + (memOpenDate ? memOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) : "N/A") + " · Non-members: " + pubOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
             }
-
-            const isAdmin = currentUser && currentUser.role === 'Admin';
 
             content.innerHTML = `
                 <!-- Header -->
@@ -4507,9 +4586,104 @@
             openModal('loginModal');
         }
 
+        // --- Password reset session persistence ---------------------------
+        // Keeps the "enter code" step alive in sessionStorage so an accidental
+        // tap outside the modal (or a brief tab switch while waiting on the
+        // email) doesn't force the member to request a brand new code — which
+        // would invalidate whichever code is already on its way to them.
+        const RESET_SESSION_KEY = 'pptPasswordResetSession';
+        const RESET_SESSION_MAX_AGE_MS = 55 * 60 * 1000; // just under the 60 min server-side token expiry
+
+        function savePendingResetSession(identifier) {
+            try {
+                sessionStorage.setItem(RESET_SESSION_KEY, JSON.stringify({ identifier, requestedAt: Date.now() }));
+            } catch (e) { /* sessionStorage unavailable — non-fatal */ }
+        }
+
+        function getPendingResetSession() {
+            try {
+                const raw = sessionStorage.getItem(RESET_SESSION_KEY);
+                if (!raw) return null;
+                const session = JSON.parse(raw);
+                if (!session || !session.identifier || (Date.now() - session.requestedAt) > RESET_SESSION_MAX_AGE_MS) {
+                    sessionStorage.removeItem(RESET_SESSION_KEY);
+                    return null;
+                }
+                return session;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearPendingResetSession() {
+            try { sessionStorage.removeItem(RESET_SESSION_KEY); } catch (e) { /* ignore */ }
+        }
+
         function swapToForgotPassword() {
             closeModal('loginModal');
+
+            // Resume an in-progress reset (e.g. after accidentally tapping outside
+            // the modal) instead of issuing — and thereby invalidating — a new code.
+            const pending = getPendingResetSession();
+            if (pending) {
+                document.getElementById('resetIdentifier').value = pending.identifier;
+                document.getElementById('resetIdentifier').dataset.confirmed = pending.identifier;
+                openModal('resetPasswordModal');
+                return;
+            }
+
             openModal('forgotPasswordModal');
+        }
+
+        function startResetOver() {
+            clearPendingResetSession();
+            closeModal('resetPasswordModal');
+            document.getElementById('resetToken').value = "";
+            document.getElementById('resetNewPassword').value = "";
+            document.getElementById('resetConfirmPassword').value = "";
+            document.getElementById('resetIdentifier').value = "";
+            document.getElementById('resetIdentifier').dataset.confirmed = "";
+            openModal('forgotPasswordModal');
+        }
+
+        let resendResetCodeCooldownUntil = 0;
+
+        function resendResetCode() {
+            const identifier = document.getElementById('resetIdentifier').dataset.confirmed;
+            if (!identifier) return startResetOver();
+
+            const btn = document.getElementById('resendResetCodeBtn');
+            if (Date.now() < resendResetCodeCooldownUntil) return;
+
+            if (btn) { btn.disabled = true; btn.innerText = "Resending..."; }
+
+            requestPasswordReset({ identifier: identifier })
+                .then(() => {
+                    savePendingResetSession(identifier);
+                    triggerToast("New code sent! Your previous code no longer works.");
+                    resendResetCodeCooldownUntil = Date.now() + 30000;
+                    startResendCooldownCountdown(btn);
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    if (btn) { btn.disabled = false; btn.innerText = "Resend Code"; }
+                });
+        }
+
+        function startResendCooldownCountdown(btn) {
+            if (!btn) return;
+            const tick = () => {
+                const remaining = Math.ceil((resendResetCodeCooldownUntil - Date.now()) / 1000);
+                if (remaining <= 0) {
+                    btn.disabled = false;
+                    btn.innerText = "Resend Code";
+                    return;
+                }
+                btn.disabled = true;
+                btn.innerText = "Resend Code (" + remaining + "s)";
+                setTimeout(tick, 1000);
+            };
+            tick();
         }
 
         function processSignup() {
@@ -4704,11 +4878,6 @@
             btn.style.color = isHidden ? '#e11d48' : '';
         }
 
-        function swapToForgotPassword() {
-            document.getElementById('loginModal').classList.add('hidden');
-            document.getElementById('forgotPasswordModal').classList.remove('hidden');
-        }
-
         function closeForgotPasswordModal() {
             closeModal('forgotPasswordModal');
             document.getElementById('resetIdentifier').value = "";
@@ -4734,11 +4903,16 @@
                 .then(() => {
                     btn.disabled = false;
                     btn.innerText = "Send Reset Code";
-                    // Store identifier for use in step 2
+                    // Store identifier for use in step 2, and persist the in-progress
+                    // reset so accidentally closing the modal doesn't lose it.
                     document.getElementById('resetIdentifier').dataset.confirmed = identifier;
+                    savePendingResetSession(identifier);
+                    resendResetCodeCooldownUntil = Date.now() + 30000;
+                    startResendCooldownCountdown(document.getElementById('resendResetCodeBtn'));
                     // Swap to step 2 modal
                     document.getElementById('forgotPasswordModal').classList.add('hidden');
                     document.getElementById('resetPasswordModal').classList.remove('hidden');
+                    document.body.classList.add('modal-open');
                     triggerToast("Reset code sent! Check your spam folder if it doesn't arrive.");
                 })
                 .catch(err => {
@@ -4765,6 +4939,7 @@
 
             resetPassword({ identifier: identifier, token: token, newPassword: newPassword })
                 .then(() => {
+                    clearPendingResetSession();
                     triggerSuccess("Password Updated!", "You can now log in with your new password.");
                     closeResetPasswordModal();
                     closeForgotPasswordModal();
@@ -4852,7 +5027,7 @@
                                 <div class="flex justify-between items-center py-2 border-b border-gray-50">
                                     <div>
                                         <p class="font-black text-sm uppercase">${s[1]}</p>
-                                        <p class="text-[10px] text-gray-400 font-bold">${s[2]} &bull; ${s[3]}</p>
+                                        <p class="text-[10px] text-gray-400 font-bold">${formatSignupTimestamp(s[2])} &bull; ${s[3]}</p>
                                     </div>
                                     <div class="flex items-center gap-2">
                                         ${!isFreeEvent ? `<span class="text-[9px] ${s[6] === 'Paid' ? 'bg-black text-white' : ''} px-2 py-1 rounded font-black" ${s[6] !== 'Paid' ? 'style="background-color: #fff1f2 !important; color: #e11d48 !important;"' : ''}>${s[6] === 'Paid' ? '💳 Paid' : '⏳ Unpaid'}</span>` : ''}
@@ -4872,7 +5047,7 @@
                                 <div class="flex justify-between items-center py-2 border-b border-gray-50">
                                     <div>
                                         <p class="font-black text-sm uppercase">${s[1]}</p>
-                                        <p class="text-[10px] text-gray-400 font-bold">${s[2]} &bull; ${s[3]}</p>
+                                        <p class="text-[10px] text-gray-400 font-bold">${formatSignupTimestamp(s[2])} &bull; ${s[3]}</p>
                                     </div>
                                     <div class="flex items-center gap-2">
                                         <span class="text-[9px] ${s[6] === 'Paid' ? 'bg-black text-white' : 'bg-amber-100 text-amber-700'} px-2 py-1 rounded font-black">${s[6] === 'Paid' ? '💳 Paid' : '⏳ Unpaid'}</span>
@@ -4996,7 +5171,7 @@
 
         function openAccidentReportModal() {
             // Set today's date as default
-            document.getElementById('arIncidentDate').valueAsDate = new Date();
+            setDateInputToday('arIncidentDate');
             openModal('accidentReportModal');
         }
 
@@ -5120,6 +5295,8 @@
         });
 
         window.onload = async () => {
+            initDatePickers();
+
             const saved = sessionStorage.getItem('pickleUser');
             if (saved) {
                 currentUser = JSON.parse(saved);
@@ -5143,19 +5320,21 @@
             }
         };
     </script>
-    <div id="successToast" class="fixed left-1/2 transform -translate-x-1/2 opacity-0 -translate-y-10 pointer-events-none transition-all duration-500 ease-out" style="width: max-content; z-index: 9999999 !important; top: 160px !important;">
+    <div id="successToast" class="fixed left-1/2 transform -translate-x-1/2 opacity-0 -translate-y-10 pointer-events-none transition-all duration-500 ease-out" style="width: max-content; max-width: min(92vw, 420px); z-index: 9999999 !important; top: 160px !important;">
         <div style="background-color: #e11d48 !important; 
                     color: #ffffff !important; 
                     border: 2px solid #000000 !important; 
-                    padding: 12px 32px !important; 
-                    border-radius: 99px !important; 
+                    padding: 12px 24px !important; 
+                    border-radius: 24px !important; 
                     display: flex !important; 
                     align-items: center !important; 
                     gap: 12px !important; 
+                    max-width: 100%; 
+                    box-sizing: border-box; 
                     box-shadow: 0 10px 25px rgba(0,0,0,0.3) !important;">
             
             <!-- Checkmark Icon forced to white -->
-            <svg class="w-6 h-6" fill="none" stroke="white" viewBox="0 0 24 24" style="stroke: white !important; min-width: 24px; height: 24px; width: 24px;">
+            <svg class="w-6 h-6" fill="none" stroke="white" viewBox="0 0 24 24" style="stroke: white !important; min-width: 24px; height: 24px; width: 24px; flex-shrink: 0;">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path>
             </svg>
 
@@ -5166,7 +5345,11 @@
                                         font-weight: 700 !important; 
                                         font-style: italic !important; 
                                         letter-spacing: 0.05em !important; 
-                                        display: inline-block !important;">
+                                        display: inline-block !important;
+                                        white-space: normal !important;
+                                        word-break: break-word !important;
+                                        min-width: 0 !important;
+                                        flex: 1 1 auto !important;">
                 Records Updated!
             </span>
         </div>
@@ -5596,6 +5779,11 @@
                 <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">⚠️ Passwords are case sensitive</p>
             </div>
             <button onclick="processPasswordReset()" id="resetSubmitBtn" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg">Set New Password</button>
+            <div class="flex items-center justify-between gap-3">
+                <button onclick="resendResetCode()" id="resendResetCodeBtn" class="text-gray-400 hover:text-black font-bold uppercase text-[10px] underline">Resend Code</button>
+                <button onclick="startResetOver()" class="text-gray-400 hover:text-black font-bold uppercase text-[10px] underline">Use a Different Account</button>
+            </div>
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide text-center">💡 It's safe to close this window — come back here anytime within the next hour to enter your code.</p>
         </div>
     </div>
     <div id="deleteUserModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 300 !important;">
