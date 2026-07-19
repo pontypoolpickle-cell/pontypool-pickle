@@ -19,6 +19,7 @@
         .nav-link-gold.active { color: var(--ponty-gold-light) !important; border-bottom: 3px solid var(--ponty-gold) !important; }
         .nav-link-gold:hover { color: #fff !important; }
         .member-gold-badge { display: inline-block; width: 16px; height: 16px; border-radius: 50%; object-fit: cover; border: 1px solid var(--ponty-gold); box-shadow: 0 0 4px rgba(201, 162, 39, 0.6); vertical-align: middle; }
+		.member-gold-badge-lg { display: inline-block; width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1px solid var(--ponty-gold); box-shadow: 0 0 4px rgba(201, 162, 39, 0.6); vertical-align: middle; flex-shrink: 0; }
         .membership-plan-card { border: 2px solid #eee; border-radius: 1rem; transition: all 0.2s; }
         .membership-plan-card.selected { border-color: var(--ponty-gold); box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.25); }
         .expiring-soon-row { background-color: #fff7e0 !important; }
@@ -187,6 +188,20 @@
             </button>
         </div>
     </div>
+	
+	<div id="stickyMembershipBar" class="md:hidden sticky top-[72px] z-40" style="display: none; background: linear-gradient(135deg, var(--ponty-gold) 0%, #000000 100%); border-bottom: 2px solid var(--ponty-gold);">
+		<div class="flex items-center justify-between gap-3 px-4 py-2.5 max-w-md mx-auto">
+			<div class="flex items-center gap-2.5">
+				<div class="w-7 h-7 bg-white bg-opacity-20 rounded-full flex items-center justify-center flex-shrink-0">
+					<span class="text-sm">⭐</span>
+				</div>
+				<p class="text-white font-black uppercase text-[10px] tracking-widest leading-tight">Support the club <span class="text-yellow-100">become a member</span></p>
+			</div>
+			<button onclick="showTab('membership-page')" class="flex-shrink-0 bg-white text-black px-4 py-1.5 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-yellow-100 transition shadow-lg">
+				View
+			</button>
+		</div>
+	</div>
 
     <main class="container mx-auto p-4 pb-24 md:p-8 md:pb-12">
         <div id="loading" class="p-24 text-center">
@@ -249,26 +264,6 @@
                         </span>
                     </div>
                 </a>
-            </div>
-            <div class="px-4">
-                <button onclick="showTab('membership-page')"
-                   class="w-full card p-8 md:p-10 border-l-8 shadow-xl max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-6 hover:shadow-2xl transition group text-left"
-                   style="background-color: #000000 !important; border-color: var(--ponty-gold) !important;">
-                    <div class="flex-shrink-0">
-                        <img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" alt="Membership" class="h-16 md:h-20 w-auto object-contain rounded">
-                    </div>
-                    <div class="text-center md:text-left flex-grow">
-                        <p class="text-[10px] font-black uppercase tracking-widest mb-2" style="color: var(--ponty-gold-light) !important;">Support the Club</p>
-                        <h3 class="text-2xl md:text-3xl font-black italic uppercase tracking-tight text-white group-hover:opacity-80 transition">
-                            Click here to find out about Membership
-                        </h3>
-                    </div>
-                    <div class="flex-shrink-0">
-                        <span class="btn-gold px-6 py-3 rounded-full font-black uppercase text-sm tracking-widest shadow-lg inline-block whitespace-nowrap">
-                            View Membership →
-                        </span>
-                    </div>
-                </button>
             </div>
             <div class="mt-16 text-center space-y-8 px-4">
                 <div class="card p-8 md:p-12 bg-white border-b-8 border-rose-600 shadow-2xl max-w-4xl mx-auto">
@@ -461,7 +456,7 @@
                         </div>
                         <div>
                             <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Policy Document</p>
-                            <h4 class="font-black text-lg uppercase italic group-hover:text-rose-600 transition">Safeguarding Policy</h4>
+                            <h4 class="font-black text-lg uppercase italic group-hover:text-rose-600 transition">Adults Safeguarding Policy</h4>
                             <p class="text-xs text-gray-400 font-bold uppercase mt-1">View PDF ↗</p>
                         </div>
                     </a>
@@ -496,7 +491,6 @@
                         </div>
                     </a>
 
-                    <!-- Placeholder for additional policy -->
                     <a href="https://drive.google.com/file/d/1z0_my_mmWBdzF4qGiEqxjZ76Tm2C56xb/view?usp=drive_link" target="_blank" rel="noopener noreferrer"
                       class="card p-6 border-l-8 border-black flex items-start gap-5 hover:shadow-xl transition group">
                         <div class="w-12 h-12 bg-black text-white rounded-xl flex items-center justify-center flex-shrink-0">
@@ -510,6 +504,20 @@
                             <p class="text-xs text-gray-400 font-bold uppercase mt-1">View PDF ↗</p>
                         </div>
                     </a>
+					
+					<a href="https://drive.google.com/file/d/1MOegqKMIZQWfLCSn8Bqf8LKIBSZ9IMjr/view?usp=sharing" target="_blank" rel="noopener noreferrer"
+					  class="card p-6 border-l-8 border-rose-600 flex items-start gap-5 hover:shadow-xl transition group">
+						<div class="w-12 h-12 bg-rose-600 text-white rounded-xl flex items-center justify-center flex-shrink-0">
+							<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+							</svg>
+						</div>
+						<div>
+							<p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Policy Document</p>
+							<h4 class="font-black text-lg uppercase italic group-hover:text-rose-600 transition">Juniors Safeguarding Policy</h4>
+							<p class="text-xs text-gray-400 font-bold uppercase mt-1">View PDF ↗</p>
+						</div>
+					</a>
 
                 </div>
             </div>
@@ -649,7 +657,7 @@
         <!-- MEMBERSHIP PAGE -->
         <div id="membership-page" class="tab-content hidden max-w-4xl mx-auto space-y-12 px-4 pb-20">
             <div class="text-center space-y-4">
-                <img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" alt="Pontypool Pickleball Club Gold Logo" class="h-24 w-24 object-contain mx-auto rounded-full shadow-lg">
+                <img src="https://i.postimg.cc/nzpqBz8q/Logo-gold-large.png" alt="Pontypool Pickleball Club Gold Logo" class="h-24 w-24 object-contain mx-auto rounded-full shadow-lg">
                 <h2 class="text-5xl md:text-6xl font-black italic uppercase leading-none text-black">
                     Club <span style="color: var(--ponty-gold) !important;">Membership</span>
                 </h2>
@@ -3075,10 +3083,14 @@
                     <tr class="hover:bg-gray-50 transition text-sm md:text-base">
                         <td class="px-2 py-4 md:p-6 font-black text-gray-400">${i+1}</td>
                         <td class="px-2 py-4 md:p-6">
-                            <button onclick="openProfile('${p.name}')" class="font-black text-left text-xs md:text-lg hover:text-rose-600 transition underline decoration-rose-200 underline-offset-4">
-                                ${p.name}
-                            </button>
-                            ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge ml-1" title="Active Member">` : ''}
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center justify-center flex-shrink-0" style="width: 28px;">
+                                    ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge-lg" title="Active Member">` : ''}
+                                </span>
+                                <button onclick="openProfile('${p.name}')" class="font-black text-left text-xs md:text-lg hover:text-rose-600 transition underline decoration-rose-200 underline-offset-4">
+                                    ${p.name}
+                                </button>
+                            </div>
                         </td>
                         <td class="px-1 py-4 md:p-4 text-center font-bold text-green-600 text-xs">${p.wins || 0}</td>
                         <td class="px-1 py-4 md:p-4 text-center font-bold text-red-600 text-xs">${p.losses || 0}</td>
@@ -3438,6 +3450,22 @@
         function openProfile(playerName) {
             const p = globalData.standings.find(x => x.name === playerName);
             if (!p) return;
+			
+			if (!currentUser || (currentUser.role !== 'Member' && currentUser.role !== 'Admin')) {
+				document.getElementById('profileHeaderTitle').innerHTML = `
+					<h2 class="text-3xl font-black italic tracking-tight uppercase text-white">Members Only</h2>
+				`;
+				document.getElementById('profileContent').innerHTML = `
+					<div class="text-center py-10 space-y-4">
+						<p class="text-5xl">🔒</p>
+						<p class="font-bold text-gray-600 max-w-sm mx-auto">Player profiles are only available to club members.</p>
+						<button onclick="closeProfile(); showTab('membership-page');" class="btn-gold px-6 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">⭐ Activate Your Membership</button>
+					</div>
+				`;
+				document.getElementById('profileModal').style.display = 'flex';
+				document.body.classList.add('modal-open');
+				return;
+			}
 
             // 1. Calculate Rating Rank
             const ratingSorted = [...globalData.standings].sort((a,b) => b.elo - a.elo);
@@ -4211,12 +4239,12 @@
             const under18Msg = document.getElementById('under18ComingSoonMsg');
 
             if (isUnder18) {
-                fields.classList.add('hidden');
-                submitBtn.disabled = true;
-                submitBtn.style.opacity = '0.4';
-                if (under18Msg) under18Msg.classList.remove('hidden');
-            } else {
-                fields.classList.add('hidden');
+				fields.classList.remove('hidden');
+				submitBtn.disabled = false;
+				submitBtn.style.opacity = '1';
+				if (under18Msg) under18Msg.classList.add('hidden');
+			} else {
+				fields.classList.add('hidden');
                 submitBtn.disabled = false;
                 submitBtn.style.opacity = '1';
                 if (under18Msg) under18Msg.classList.add('hidden');
@@ -5505,6 +5533,14 @@
 					stickyBar.style.display = 'block';
 				}
 			}
+			const membershipBar = document.getElementById('stickyMembershipBar');
+			if (membershipBar) {
+				if (currentUser && currentUser.role === 'Non-Member') {
+					membershipBar.style.display = 'block';
+				} else {
+					membershipBar.style.display = 'none';
+				}
+			}
 			const authBtn = document.getElementById('nav-auth');
 			const authBtnMobile = document.getElementById('nav-auth-m');
 			const adminBtn = document.getElementById('nav-admin');
@@ -6341,7 +6377,7 @@
                 <div id="membershipPaymentDurationOptions" class="grid grid-cols-3 gap-2"></div>
                 <div>
                     <label class="text-[10px] font-bold uppercase text-gray-400">Payment Reference</label>
-                    <input type="text" id="membershipPaymentRef" placeholder="e.g. last 4 digits of transaction" class="input-field border-2">
+                    <input type="text" id="membershipPaymentRef" placeholder="Membership followed by your initials" class="input-field border-2">
                     <p class="text-[10px] text-gray-400 font-bold uppercase mt-1">So we can match your payment against the bank statement.</p>
                 </div>
                 <button onclick="executeSubmitMembershipPayment()" id="membershipPaymentSubmitBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">Submit for Review</button>
