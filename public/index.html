@@ -2411,16 +2411,28 @@
         // expiries made elsewhere (e.g. by an admin) show up without needing to log out.
         async function refreshCurrentUserMembership() {
             if (!currentUser) return;
-            const { data: userRow, error } = await supabaseClient.from('users').select('*').eq('username', currentUser.username).maybeSingle();
+            const username = currentUser.username;
+            const { data: userRow, error } = await supabaseClient.from('users').select('*').eq('username', username).maybeSingle();
             if (error || !userRow) return;
+
+            // This function awaits a network request, so the user may have logged out (or
+            // logged in as someone else) before it resolves. Bail out instead of reviving a
+            // cleared currentUser or clobbering a different session — merging this response
+            // in unconditionally used to be able to resurrect currentUser as a partial object
+            // (missing firstName/surname/email) right after a session-timeout logout, which
+            // showed up as "Undefined" in the header and let the corrupted session sign up
+            // to events under an "undefined undefined" name.
+            if (!currentUser || currentUser.username !== username) return;
 
             let role = userRow.role || 'Non-Member';
             let status = userRow.membership_status || 'None';
             if (role !== 'Admin' && status === 'Active' && userRow.membership_end_date && userRow.membership_end_date < todayStr()) {
-                await applyMembershipFields(currentUser.username, { membership_status: 'Expired' }).catch(() => {});
+                await applyMembershipFields(username, { membership_status: 'Expired' }).catch(() => {});
                 status = 'Expired';
                 role = 'Non-Member';
             }
+
+            if (!currentUser || currentUser.username !== username) return;
 
             currentUser = Object.assign({}, currentUser, {
                 role: role,
@@ -5592,6 +5604,14 @@
         }
 
         function updateUIForLogin() {
+			// Defensive check: a currentUser missing its name/username is corrupt (this
+			// used to be reachable via a race in refreshCurrentUserMembership — see the
+			// comment there). Treat it as logged out rather than rendering "Undefined
+			// (Logout)" and leaving a broken session able to interact with the site.
+			if (currentUser && (!currentUser.firstName || !currentUser.username)) {
+				logoutUser();
+				return;
+			}
 			const stickyBar = document.getElementById('stickyLoginBar');
 			if (stickyBar) {
 				if (currentUser) {
