@@ -5807,6 +5807,9 @@
                                     </div>
                                     <div class="flex items-center gap-2">
                                         ${!isFreeEvent ? `<span class="text-[9px] ${s[6] === 'Paid' ? 'bg-black text-white' : ''} px-2 py-1 rounded font-black" ${s[6] !== 'Paid' ? 'style="background-color: #fff1f2 !important; color: #e11d48 !important;"' : ''}>${s[6] === 'Paid' ? '💳 Paid' : '⏳ Unpaid'}</span>` : ''}
+                                        ${!isFreeEvent && s[6] !== 'Paid' && s[4] && s[4].indexOf('@') !== -1 ? `<button onclick="sendPaymentReminder('${eventId}', '${s[1].replace(/'/g, "\\'")}', this)" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Send Payment Reminder">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                        </button>` : ''}
                                         <span class="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-black">#${i + 1}</span>
                                         <button onclick="confirmAdminRemoveSignup('${eventId}', '${s[1].replace(/'/g, "\\'")}')" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Remove from event">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -5827,6 +5830,9 @@
                                     </div>
                                     <div class="flex items-center gap-2">
                                         <span class="text-[9px] ${s[6] === 'Paid' ? 'bg-black text-white' : 'bg-amber-100 text-amber-700'} px-2 py-1 rounded font-black">${s[6] === 'Paid' ? '💳 Paid' : '⏳ Unpaid'}</span>
+                                        ${!isFreeEvent && s[6] !== 'Paid' && s[4] && s[4].indexOf('@') !== -1 ? `<button onclick="sendPaymentReminder('${eventId}', '${s[1].replace(/'/g, "\\'")}', this)" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Send Payment Reminder">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                        </button>` : ''}
                                         <span class="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-black">#${i + 1}</span>
                                         <button onclick="confirmAdminRemoveSignup('${eventId}', '${s[1].replace(/'/g, "\\'")}')" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Remove from event">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -5844,6 +5850,38 @@
 
         function closeEventSignupsModal() {
             closeModal('eventSignupsModal');
+        }
+
+        function sendPaymentReminder(eventId, name, btn) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+
+            const signup = (globalData.signups || []).find(s => s[0] === eventId && s[1] === name);
+            const email = signup ? signup[4] : '';
+            if (!email || email.indexOf('@') === -1) return triggerError("This player doesn't have an email on file.");
+
+            const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+            if (!eventRow) return triggerError("Event not found.");
+
+            const isMemberType = signup && (signup[3] === 'Member' || signup[3] === 'Admin');
+            const amount = isMemberType ? Number(eventRow[11]) : Number(eventRow[12]);
+
+            const originalHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>'; }
+
+            sendEmail('payment_reminder', {
+                name: name,
+                email: email,
+                eventTitle: eventRow[1],
+                eventDate: eventRow[2],
+                eventTime: eventRow[3] || 'TBC',
+                eventLocation: eventRow[8] || 'TBC',
+                amount: amount ? amount.toFixed(2) : '',
+                paymentRef: `${name} - ${eventRow[1]}`
+            }).then(() => {
+                triggerToast("Payment reminder sent to " + name + ".");
+            }).finally(() => {
+                if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+            });
         }
 
         let adminRemoveTarget = { eventId: "", name: "", eventTitle: "" };
