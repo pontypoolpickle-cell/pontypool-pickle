@@ -2416,6 +2416,8 @@
 
             currentUser = Object.assign({}, currentUser, {
                 role: role,
+                gender: userRow.gender || currentUser.gender || '',
+                isUnder18: !!userRow.is_under18,
                 membershipStatus: status,
                 membershipDurationWeeks: userRow.membership_duration_weeks || null,
                 membershipRequestedDurationWeeks: userRow.membership_requested_duration_weeks || null,
@@ -2638,6 +2640,7 @@
                 surname: user.surname,
                 email: user.email || '',
                 role: user.role || 'Non-Member',
+                gender: user.gender || '',
                 isUnder18: !!user.is_under18,
                 membershipStatus: user.membership_status || 'None',
                 membershipDurationWeeks: user.membership_duration_weeks || null,
@@ -5019,14 +5022,24 @@
             const deadline = event[9] ? new Date(event[9]) : null;
             const deadlinePassed = deadline && deadline < today;
 
-            const viewerIsUnder18 = currentUser && (globalData.standings || []).find(p =>
-                p.name === (currentUser.firstName + " " + currentUser.surname) && p.isUnder18
+            // Look up the viewer's linked "player" row by name for fields (like ELO)
+            // that only live on that row. Matching is case/whitespace-insensitive
+            // because the players table is a separate record from the users table
+            // and names can otherwise drift apart (e.g. extra spaces, capitalisation).
+            const viewerPlayer = currentUser && (globalData.standings || []).find(p =>
+                normalizeName(p.name) === normalizeName(currentUser.firstName + " " + currentUser.surname)
             );
-			
-			const viewerPlayer = currentUser && (globalData.standings || []).find(p =>
-				p.name === (currentUser.firstName + " " + currentUser.surname)
-			);
-			const viewerIsFemale = !!(viewerPlayer && viewerPlayer.gender === 'Female');
+
+            // Prefer the authoritative values captured on the user's own account
+            // (currentUser.isUnder18 / currentUser.gender) and only fall back to the
+            // player-row lookup above for older cached sessions that predate those
+            // fields. Relying solely on the name-matched player row was fragile: any
+            // mismatch (or a missing/blank gender on that row) silently treated a
+            // genuinely female/under-18 member as if they weren't, blocking them from
+            // female-only/teen-only events while other members were unaffected.
+            const viewerIsUnder18 = currentUser && (currentUser.isUnder18 || !!(viewerPlayer && viewerPlayer.isUnder18));
+            const viewerGender = currentUser && (currentUser.gender || (viewerPlayer && viewerPlayer.gender) || '');
+            const viewerIsFemale = viewerGender === 'Female';
 
             const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
             const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
