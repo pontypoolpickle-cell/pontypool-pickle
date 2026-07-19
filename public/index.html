@@ -1388,6 +1388,16 @@
             return new Date().toISOString().slice(0, 10);
         }
 
+        // Only include the year when it differs from the current year, so "opens
+        // 16 Jul" stays short in the common case but becomes "opens 16 Jul 2027" if
+        // an event was accidentally set up for a future year — making that kind of
+        // data-entry mistake visible instead of just an unexplained permanent lock.
+        function formatAccessOpenDate(date) {
+            const opts = { day: 'numeric', month: 'short' };
+            if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+            return date.toLocaleDateString('en-GB', opts);
+        }
+
         function isMembershipActive(u) {
             return !!(u && u.membership_status === 'Active' && u.membership_end_date && u.membership_end_date >= todayStr());
         }
@@ -5084,9 +5094,13 @@
             } else if (!currentUser) {
                 accessStatus = "loggedout"; statusMsg = "Please log in to sign up";
             } else if (isMember && memOpenDate) {
-                accessStatus = "locked"; statusMsg = "Member access opens " + memOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) + (pubOpenDate ? " · Non-member access opens " + pubOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) : "");
+                // Year is included (not just day/month) so a mis-set open date — e.g. an
+                // event created with the wrong year — is visible in the message itself,
+                // rather than silently staying "locked" past a date that looks, at a
+                // glance, like it should already have passed.
+                accessStatus = "locked"; statusMsg = "Member access opens " + formatAccessOpenDate(memOpenDate) + (pubOpenDate ? " · Non-member access opens " + formatAccessOpenDate(pubOpenDate) : "");
             } else if (pubOpenDate) {
-                accessStatus = "locked"; statusMsg = "Members: " + (memOpenDate ? memOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) : "N/A") + " · Non-members: " + pubOpenDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
+                accessStatus = "locked"; statusMsg = "Members: " + (memOpenDate ? formatAccessOpenDate(memOpenDate) : "N/A") + " · Non-members: " + formatAccessOpenDate(pubOpenDate);
             }
 
             content.innerHTML = `
