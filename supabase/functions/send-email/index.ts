@@ -477,6 +477,74 @@ serve(async (req) => {
         break;
       }
 
+      // EMAIL 18: Junior Player Registration & Consent Form (to admin)
+      case "junior_consent_form": {
+        const medicalConditionsBlock = data.medicalConditions === "Yes" ? `
+          <div style="background-color:#fff1f2;border-left:4px solid #e11d48;border-radius:0 8px 8px 0;padding:14px 18px;margin:0 0 20px;">
+            <p style="margin:0 0 6px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#9ca3af;">Medical Condition / Allergy / Injury Details</p>
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#374151;line-height:1.6;">${(data.medicalConditionsDetails || 'Not provided').replace(/\n/g, '<br>')}</p>
+          </div>
+        ` : '';
+        const medicationBlock = data.medication === "Yes" ? `
+          <div style="background-color:#fff1f2;border-left:4px solid #e11d48;border-radius:0 8px 8px 0;padding:14px 18px;margin:0 0 20px;">
+            <p style="margin:0 0 6px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#9ca3af;">Medication Details / Location During Sessions</p>
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#374151;line-height:1.6;">${(data.medicationDetails || 'Not provided').replace(/\n/g, '<br>')}</p>
+          </div>
+        ` : '';
+        const nominatedPersonsHtml = (data.nominatedPersons && data.nominatedPersons.length > 0)
+          ? (data.nominatedPersons as string[]).map((p: string, i: number) => detailRow(`Nominated Person ${i + 1}`, p)).join('')
+          : detailRow('Nominated Persons', 'N/A — Independent travel selected');
+        const body = `
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">A parent/guardian has completed the Junior Player Registration &amp; Consent Form via the club website. Please review the details below and verify face-to-face with the family at the start of the junior's first session before activating their account.</p>
+          <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">1. Player &amp; Guardian Details</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 20px;">
+            ${detailRow('Full Name of Teenager', data.teenName)}
+            ${detailRow('Date of Birth', data.dob)}
+            ${detailRow('Full Name of Parent/Guardian', data.guardianName)}
+            ${detailRow('Guardian Primary Contact Number', data.guardianPhone)}
+            ${detailRow('Guardian Email Address', `<a href="mailto:${data.guardianEmail}" style="color:#e11d48;font-weight:900;">${data.guardianEmail}</a>`)}
+            ${detailRow('Alternative Emergency Contact Name', data.altContactName)}
+            ${detailRow('Alternative Emergency Contact Number', data.altContactPhone)}
+          </table>
+          <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">2. Medical Information &amp; Emergency Protocols</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 20px;">
+            ${detailRow('Has Medical Conditions / Allergies / Injuries?', data.medicalConditions)}
+            ${detailRow('Carries / Needs Emergency Medication?', data.medication)}
+            ${detailRow('Emergency Contact Acknowledged', data.emergencyContactAck)}
+            ${detailRow('Self-Medication Confirmed', data.selfMedicationAck)}
+            ${detailRow('999 Protocol Permission Given', data.emergency999Ack)}
+          </table>
+          ${medicalConditionsBlock}
+          ${medicationBlock}
+          <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">3. Travel, Dismissal &amp; Lateness Agreement</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 20px;">
+            ${detailRow('End of Session Option', data.dismissalOption)}
+            ${nominatedPersonsHtml}
+            ${detailRow('Collection & Lateness Agreement Accepted', data.latenessAck)}
+            ${detailRow('Refusal to Wait Protocol Accepted', data.refusalWaitAck)}
+          </table>
+          <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">4. Player Welfare, Dress Code &amp; Media Policies</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 20px;">
+            ${detailRow('Kit & Preparedness Requirement Accepted', data.kitAck)}
+            ${detailRow('Strict Photography Ban Accepted', data.photoBanAck)}
+          </table>
+          <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">5. Legal Sign-Off &amp; Privacy Consent</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 24px;">
+            ${detailRow('Parent/Guardian Declaration Accepted', data.declarationAck)}
+            ${detailRow('In-Person Verification Agreement Accepted', data.verificationAck)}
+            ${detailRow('Club Policy Acknowledgement Accepted', data.policyAck)}
+            ${detailRow('UK GDPR Privacy Consent Accepted', data.gdprAck)}
+            ${detailRow('Full Name of Parent/Guardian (Sign-Off)', data.parentSignName)}
+            ${detailRow('Date of Submission', data.submissionDate)}
+          </table>
+          <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">⚠️ Reminder: the account cannot be activated until the parent/guardian has been verified face-to-face at the start of the junior's first session.</p>
+          </div>
+        `;
+        await sendEmail(ADMIN_EMAIL, `🧾 Junior Consent Form — ${data.teenName}`, buildEmailHtml("Junior Consent Form Submitted", body));
+        break;
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Unknown email type" }), { status: 400 });
     }

@@ -519,6 +519,21 @@
 						</div>
 					</a>
 
+                    <!-- Junior Consent Form -->
+                    <div onclick="openJuniorConsentModal()"
+                      class="card p-6 border-l-8 border-blue-600 flex items-start gap-5 hover:shadow-xl transition group cursor-pointer">
+                        <div class="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Junior Registration Form</p>
+                            <h4 class="font-black text-lg uppercase italic group-hover:text-blue-600 transition">Junior Consent Form</h4>
+                            <p class="text-xs text-gray-400 font-bold uppercase mt-1">Complete Online ↗</p>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
@@ -2807,6 +2822,11 @@
 			await sendEmail('accident_report', data);
 			return true;
 		}
+
+        async function sendJuniorConsentForm(data) {
+			await sendEmail('junior_consent_form', data);
+			return true;
+		}
         // --- ENHANCED SOCIAL ROTATIONS (MORE ROUNDS) ---
         // --- MATHEMATICALLY VERIFIED SOCIAL ROTATIONS ---
         // --- BALANCED SOCIAL ROTATIONS ---
@@ -4248,7 +4268,7 @@
                 submitBtn.disabled = false;
                 submitBtn.style.opacity = '1';
                 if (under18Msg) under18Msg.classList.add('hidden');
-                document.getElementById('regConsentAck').checked = false;
+                resetJuniorConsentSignupStatus();
             }
         }
 
@@ -5414,10 +5434,10 @@
 
         function processSignup() {
             const isUnder18 = document.getElementById('regUnder18').checked;
-            const consentAck = document.getElementById('regConsentAck').checked;
+            const consentAck = document.getElementById('regConsentAck').value === 'true';
 
             if (isUnder18 && !consentAck) {
-                return triggerError("Please acknowledge that you understand a consent form must be submitted before your account can be approved.");
+                return triggerError("Please complete and submit the Junior Consent Form below before continuing.");
             }
 
             const data = {
@@ -5467,7 +5487,7 @@
                         document.getElementById(id).value = "";
                     });
                     document.getElementById('regUnder18').checked = false;
-                    document.getElementById('regConsentAck').checked = false;
+                    resetJuniorConsentSignupStatus();
                     document.getElementById('under18Fields').classList.add('hidden');
                     
                     btn.innerText = "Submit for Approval";
@@ -6020,6 +6040,186 @@
                 });
         }
 
+        let juniorConsentContext = null;
+
+        function openJuniorConsentModal(context) {
+            juniorConsentContext = context || null;
+            setDateInputToday('jcSubmissionDate');
+            openModal('juniorConsentModal');
+        }
+
+        function closeJuniorConsentModal() {
+            closeModal('juniorConsentModal');
+        }
+
+        function toggleJcSection(radioName, wrapId) {
+            const selected = document.querySelector(`input[name="${radioName}"]:checked`);
+            const wrap = document.getElementById(wrapId);
+            if (selected && selected.value === "Yes") {
+                wrap.classList.remove('hidden');
+            } else {
+                wrap.classList.add('hidden');
+            }
+        }
+
+        function toggleJcDismissalOption() {
+            const selected = document.querySelector('input[name="jcDismissalOption"]:checked');
+            const wrap = document.getElementById('jcNominatedPersonsWrap');
+            if (selected && selected.value === "Option A") {
+                wrap.classList.remove('hidden');
+            } else {
+                wrap.classList.add('hidden');
+            }
+        }
+
+        function resetJuniorConsentSignupStatus() {
+            const hiddenAck = document.getElementById('regConsentAck');
+            if (hiddenAck) hiddenAck.value = "";
+            const status = document.getElementById('juniorConsentSubmittedStatus');
+            if (status) status.classList.add('hidden');
+            const openBtn = document.getElementById('openJuniorConsentBtn');
+            if (openBtn) {
+                openBtn.classList.remove('hidden');
+                openBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Complete Consent Form`;
+            }
+        }
+
+        function resetJuniorConsentFormFields() {
+            ['jcTeenName', 'jcGuardianName', 'jcGuardianPhone', 'jcGuardianEmail', 'jcAltContactName', 'jcAltContactPhone',
+             'jcMedicalConditionsDetails', 'jcMedicationDetails', 'jcParentSignName'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = "";
+            });
+            ['jcPerson1Name', 'jcPerson1Relationship', 'jcPerson1Mobile', 'jcPerson2Name', 'jcPerson2Relationship', 'jcPerson2Mobile',
+             'jcPerson3Name', 'jcPerson3Relationship', 'jcPerson3Mobile', 'jcPerson4Name', 'jcPerson4Relationship', 'jcPerson4Mobile',
+             'jcPerson5Name', 'jcPerson5Relationship', 'jcPerson5Mobile'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = "";
+            });
+            setDateInputValue('jcDOB', '');
+            document.querySelectorAll('#juniorConsentModal input[type="checkbox"]').forEach(cb => cb.checked = false);
+            document.querySelectorAll('#juniorConsentModal input[type="radio"]').forEach(rb => rb.checked = false);
+            document.getElementById('jcMedicalConditionsDetailsWrap').classList.add('hidden');
+            document.getElementById('jcMedicationDetailsWrap').classList.add('hidden');
+            document.getElementById('jcNominatedPersonsWrap').classList.add('hidden');
+        }
+
+        function submitJuniorConsentForm() {
+            const teenName = document.getElementById('jcTeenName').value.trim();
+            const dob = document.getElementById('jcDOB').value;
+            const guardianName = document.getElementById('jcGuardianName').value.trim();
+            const guardianPhone = document.getElementById('jcGuardianPhone').value.trim();
+            const guardianEmail = document.getElementById('jcGuardianEmail').value.trim();
+            const altContactName = document.getElementById('jcAltContactName').value.trim();
+            const altContactPhone = document.getElementById('jcAltContactPhone').value.trim();
+            const medicalConditions = document.querySelector('input[name="jcMedicalConditions"]:checked');
+            const medication = document.querySelector('input[name="jcMedication"]:checked');
+            const dismissalOption = document.querySelector('input[name="jcDismissalOption"]:checked');
+            const parentSignName = document.getElementById('jcParentSignName').value.trim();
+            const submissionDate = document.getElementById('jcSubmissionDate').value;
+
+            if (!teenName) return triggerError("Please enter the full name of the teenager.");
+            if (!dob) return triggerError("Please enter the teenager's date of birth.");
+            if (!guardianName) return triggerError("Please enter the full name of the parent/guardian.");
+            if (!guardianPhone) return triggerError("Please enter the parent/guardian's primary contact number.");
+            if (!guardianEmail) return triggerError("Please enter the parent/guardian's email address.");
+            if (!altContactName) return triggerError("Please enter an alternative emergency contact name.");
+            if (!altContactPhone) return triggerError("Please enter an alternative emergency contact number.");
+            if (!medicalConditions) return triggerError("Please answer whether your child has any medical conditions, allergies, or past injuries.");
+            if (medicalConditions.value === "Yes" && !document.getElementById('jcMedicalConditionsDetails').value.trim()) {
+                return triggerError("Please provide details of the medical conditions, allergies, or past injuries.");
+            }
+            if (!medication) return triggerError("Please answer whether your child carries or requires any emergency medication.");
+            if (medication.value === "Yes" && !document.getElementById('jcMedicationDetails').value.trim()) {
+                return triggerError("Please list the medication and where it is kept during sessions.");
+            }
+            if (!document.getElementById('jcEmergencyContactAck').checked) return triggerError("Please acknowledge the Emergency Contact declaration.");
+            if (!document.getElementById('jcSelfMedicationAck').checked) return triggerError("Please acknowledge the Self-Medication declaration.");
+            if (!document.getElementById('jc999Ack').checked) return triggerError("Please acknowledge the 999 Protocol declaration.");
+            if (!dismissalOption) return triggerError("Please select an End of Session Protocol option.");
+
+            let nominatedPersons = [];
+            if (dismissalOption.value === "Option A") {
+                const p1Name = document.getElementById('jcPerson1Name').value.trim();
+                const p1Rel = document.getElementById('jcPerson1Relationship').value.trim();
+                const p1Mobile = document.getElementById('jcPerson1Mobile').value.trim();
+                if (!p1Name || !p1Rel || !p1Mobile) {
+                    return triggerError("Please provide the name, relationship, and mobile number for Nominated Person 1 (Self).");
+                }
+                for (let i = 1; i <= 5; i++) {
+                    const name = document.getElementById(`jcPerson${i}Name`).value.trim();
+                    const rel = document.getElementById(`jcPerson${i}Relationship`).value.trim();
+                    const mobile = document.getElementById(`jcPerson${i}Mobile`).value.trim();
+                    if (name || rel || mobile) {
+                        nominatedPersons.push(`${name || 'Not provided'} (${rel || 'Not provided'}) — ${mobile || 'Not provided'}`);
+                    }
+                }
+            }
+
+            if (!document.getElementById('jcLatenessAck').checked) return triggerError("Please acknowledge the Collection & Lateness Agreement.");
+            if (!document.getElementById('jcRefusalWaitAck').checked) return triggerError("Please acknowledge the Refusal to Wait Protocol.");
+            if (!document.getElementById('jcKitAck').checked) return triggerError("Please acknowledge the Kit & Preparedness Requirement.");
+            if (!document.getElementById('jcPhotoBanAck').checked) return triggerError("Please acknowledge the Strict Photography Ban.");
+            if (!document.getElementById('jcDeclarationAck').checked) return triggerError("Please acknowledge the Parent/Guardian Declaration.");
+            if (!document.getElementById('jcVerificationAck').checked) return triggerError("Please acknowledge the In-Person Verification Agreement.");
+            if (!document.getElementById('jcPolicyAck').checked) return triggerError("Please acknowledge the Club Policy Acknowledgement.");
+            if (!document.getElementById('jcGdprAck').checked) return triggerError("Please acknowledge the UK GDPR Privacy Consent.");
+            if (!parentSignName) return triggerError("Please type the parent/guardian's full name to sign this form.");
+            if (!submissionDate) return triggerError("Please enter the date of submission.");
+
+            const data = {
+                teenName, dob, guardianName, guardianPhone, guardianEmail, altContactName, altContactPhone,
+                medicalConditions: medicalConditions.value,
+                medicalConditionsDetails: document.getElementById('jcMedicalConditionsDetails').value.trim() || "N/A",
+                medication: medication.value,
+                medicationDetails: document.getElementById('jcMedicationDetails').value.trim() || "N/A",
+                emergencyContactAck: "Yes",
+                selfMedicationAck: "Yes",
+                emergency999Ack: "Yes",
+                dismissalOption: dismissalOption.value === "Option A" ? "Option A — Collected by a designated adult" : "Option B — Independent travel",
+                nominatedPersons: nominatedPersons,
+                latenessAck: "Yes",
+                refusalWaitAck: "Yes",
+                kitAck: "Yes",
+                photoBanAck: "Yes",
+                declarationAck: "Yes",
+                verificationAck: "Yes",
+                policyAck: "Yes",
+                gdprAck: "Yes",
+                parentSignName,
+                submissionDate
+            };
+
+            const btn = document.getElementById('jcSubmitBtn');
+            btn.disabled = true;
+            btn.innerText = "Submitting...";
+
+            sendJuniorConsentForm(data)
+                .then(() => {
+                    triggerSuccess("Consent Form Submitted", "The completed consent form has been emailed to the club. Thank you! Remember a parent/guardian must attend the first session for in-person verification.");
+                    closeJuniorConsentModal();
+                    btn.disabled = false;
+                    btn.innerText = "Submit Consent Form";
+
+                    if (juniorConsentContext === 'signup') {
+                        const hiddenAck = document.getElementById('regConsentAck');
+                        if (hiddenAck) hiddenAck.value = "true";
+                        const status = document.getElementById('juniorConsentSubmittedStatus');
+                        if (status) status.classList.remove('hidden');
+                        const openBtn = document.getElementById('openJuniorConsentBtn');
+                        if (openBtn) openBtn.innerHTML = "✅ Consent Form Submitted — Edit / Resubmit";
+                    }
+                    juniorConsentContext = null;
+
+                    resetJuniorConsentFormFields();
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    btn.disabled = false;
+                    btn.innerText = "Submit Consent Form";
+                });
+        }
+
         ['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(i => { 
             window.addEventListener(i, () => { 
                 if (currentUser !== null) {
@@ -6456,20 +6656,19 @@
             <div id="under18Fields" class="hidden space-y-3 bg-rose-50 border border-rose-200 rounded-xl p-4">
                 <p class="text-[10px] font-black uppercase text-rose-600 tracking-widest">⚠️ Parental / Guardian Consent Required</p>
                 <p class="text-xs font-bold text-gray-600 leading-relaxed uppercase">
-                    As you are under 18, a parent or guardian must complete and submit a consent form before your account can be approved. Please download the form below, have it completed and signed, then email it to <span class="text-rose-600">pontypoolpickle@gmail.com</span>.
+                    As you are under 18, a parent or guardian must complete our Junior Registration & Consent Form below. Once submitted, a copy is emailed straight to the club at <span class="text-rose-600">pontypoolpickle@gmail.com</span> — no printing or downloads required.
                 </p>
-                <a href="https://docs.google.com/document/d/1sb0TP4FzpGzsuSja_sj4BZhYhNrKydjv_6ZOhfMrvl8/export?format=pdf" 
-                  target="_blank" rel="noopener noreferrer"
-                  class="flex items-center justify-center gap-2 w-full bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-rose-600 transition">
+                <button type="button" onclick="openJuniorConsentModal('signup')" id="openJuniorConsentBtn"
+                  class="flex items-center justify-center gap-2 w-full bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
-                    Download Consent Form (PDF)
-                </a>
-                <label class="flex items-center gap-3 cursor-pointer bg-white p-3 rounded-lg border border-rose-200">
-                    <input type="checkbox" id="regConsentAck" class="w-5 h-5 accent-rose-600">
-                    <span class="text-xs font-black uppercase text-gray-600">I understand a completed consent form must be received before my account is approved</span>
-                </label>
+                    Complete Consent Form
+                </button>
+                <div id="juniorConsentSubmittedStatus" class="hidden bg-green-50 p-3 rounded-lg border border-green-200 text-center">
+                    <span class="text-xs font-black uppercase text-green-700">✅ Consent form submitted to the club — thank you!</span>
+                </div>
+                <input type="hidden" id="regConsentAck" value="">
             </div>
             <input type="text" id="regUser" placeholder="Choose Username" class="input-field border-2">
             <div class="relative">
@@ -7123,6 +7322,245 @@
                         Submit Report
                     </button>
                     <button onclick="closeAccidentReportModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- JUNIOR CONSENT FORM MODAL -->
+    <div id="juniorConsentModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 100px; padding-bottom: 24px; z-index: 2000 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full border-t-8 border-blue-600">
+            <div class="bg-black text-white p-6 flex justify-between items-center rounded-t-xl">
+                <div>
+                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Pontypool Pickle Club</p>
+                    <h3 class="text-2xl font-black italic uppercase">Junior Consent Form</h3>
+                    <p class="text-[10px] font-bold uppercase text-gray-400 tracking-widest mt-1">Player Registration & Consent (Ages 13–17)</p>
+                </div>
+                <button onclick="closeJuniorConsentModal()" class="text-gray-400 hover:text-white transition text-2xl font-black">✕</button>
+            </div>
+
+            <div class="p-6 md:p-8 space-y-8">
+
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
+                    <p class="text-xs font-black uppercase text-blue-700">📋 Mandatory 2-Step Verification System</p>
+                    <p class="text-xs font-bold text-gray-600 leading-relaxed">This form must be completed by a parent or guardian. Junior sessions are strictly for teenagers aged 13–17. Submitting this form grants a <strong>provisional account</strong> only — the parent/guardian must be physically present at the start of the child's first session for an in-person verification check before the child may step onto the court.</p>
+                </div>
+
+                <!-- SECTION 1: Player & Guardian Details -->
+                <div class="space-y-4">
+                    <h4 class="font-black uppercase italic text-lg border-b-2 border-blue-600 pb-1">1. Player & Guardian Details</h4>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Full Name of Teenager</label>
+                        <input type="text" id="jcTeenName" placeholder="Full name of teenager" class="input-field border-2">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Date of Birth</label>
+                        <input type="date" id="jcDOB" class="input-field border-2">
+                        <p class="text-[10px] text-gray-400 font-bold">Collected strictly for player safety in the event of an emergency, and stored securely.</p>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Full Name of Parent/Guardian</label>
+                        <input type="text" id="jcGuardianName" placeholder="Full name of parent/guardian" class="input-field border-2">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Parent/Guardian Primary Contact Number</label>
+                        <input type="tel" id="jcGuardianPhone" placeholder="Must be reachable during session times" class="input-field border-2">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Parent/Guardian Email Address</label>
+                        <input type="email" id="jcGuardianEmail" placeholder="email@example.com" class="input-field border-2">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact Name</label>
+                        <input type="text" id="jcAltContactName" placeholder="Alternative emergency contact name" class="input-field border-2">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact Number</label>
+                        <input type="tel" id="jcAltContactPhone" placeholder="Backup contact number" class="input-field border-2">
+                    </div>
+                </div>
+
+                <!-- SECTION 2: Medical Information & Emergency Protocols -->
+                <div class="space-y-4">
+                    <h4 class="font-black uppercase italic text-lg border-b-2 border-blue-600 pb-1">2. Medical Information & Emergency Protocols</h4>
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <p class="text-[11px] font-bold text-gray-600">📋 Critical Medical Notice: Pontypool Pickle Club runs sessions using volunteer leaders and does not guarantee qualified medical first aiders on-site. Information below is collected solely so it can be passed directly to emergency services (999) or paramedic staff in a medical crisis.</p>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Does your child have any medical conditions, allergies, or past injuries we should be aware of?</label>
+                        <div class="flex gap-4">
+                            <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-blue-50 transition flex-1 justify-center">
+                                <input type="radio" name="jcMedicalConditions" value="Yes" onchange="toggleJcSection('jcMedicalConditions', 'jcMedicalConditionsDetailsWrap')" class="accent-blue-600">
+                                <span class="font-bold text-sm uppercase">Yes</span>
+                            </label>
+                            <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-blue-50 transition flex-1 justify-center">
+                                <input type="radio" name="jcMedicalConditions" value="No" onchange="toggleJcSection('jcMedicalConditions', 'jcMedicalConditionsDetailsWrap')" class="accent-blue-600">
+                                <span class="font-bold text-sm uppercase">No</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="jcMedicalConditionsDetailsWrap" class="space-y-1 hidden">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Please provide details</label>
+                        <textarea id="jcMedicalConditionsDetails" rows="3" placeholder="Details of conditions, allergies or past injuries..." class="input-field border-2"></textarea>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Does your child carry any emergency self-administered medication, or take regular medication that emergency services would need to be made aware of?</label>
+                        <div class="flex gap-4">
+                            <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-blue-50 transition flex-1 justify-center">
+                                <input type="radio" name="jcMedication" value="Yes" onchange="toggleJcSection('jcMedication', 'jcMedicationDetailsWrap')" class="accent-blue-600">
+                                <span class="font-bold text-sm uppercase">Yes</span>
+                            </label>
+                            <label class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-blue-50 transition flex-1 justify-center">
+                                <input type="radio" name="jcMedication" value="No" onchange="toggleJcSection('jcMedication', 'jcMedicationDetailsWrap')" class="accent-blue-600">
+                                <span class="font-bold text-sm uppercase">No</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="jcMedicationDetailsWrap" class="space-y-1 hidden">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Please list medication names and where emergency medication (e.g. inhaler/EpiPen) is kept during sessions</label>
+                        <textarea id="jcMedicationDetails" rows="3" placeholder="Medication names and location during sessions..." class="input-field border-2"></textarea>
+                    </div>
+                    <div class="bg-blue-50 rounded-lg p-3">
+                        <p class="text-xs font-black uppercase text-blue-700">🚨 Emergency Medical Declaration</p>
+                    </div>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcEmergencyContactAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Emergency Contact: I understand the club runs sessions using volunteer leaders and does not provide dedicated medical first aiders. In the event of an injury or illness, the session host will immediately contact me or my alternative emergency contact.</span>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcSelfMedicationAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Self-Medication: I confirm that my child is fully capable of self-administering their own prescribed emergency medication (e.g. inhaler or EpiPen) if required.</span>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jc999Ack" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">999 Protocol: I give permission for the session host to bypass standard protocols and call 999 for emergency medical services immediately if they believe my child requires urgent professional medical attention, and I agree to meet them at the venue or hospital.</span>
+                    </label>
+                </div>
+
+                <!-- SECTION 3: Travel, Dismissal & Lateness Agreement -->
+                <div class="space-y-4">
+                    <h4 class="font-black uppercase italic text-lg border-b-2 border-blue-600 pb-1">3. Travel, Dismissal & Lateness Agreement</h4>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">🚗 End of Session Protocol — At the end of the session, my child:</label>
+                        <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                            <input type="radio" name="jcDismissalOption" value="Option A" onchange="toggleJcDismissalOption()" class="accent-blue-600 mt-1">
+                            <span class="font-bold text-sm uppercase">Option A: Will be collected by a designated adult. I understand my child will only be permitted to leave with the adults listed below (including myself).</span>
+                        </label>
+                        <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                            <input type="radio" name="jcDismissalOption" value="Option B" onchange="toggleJcDismissalOption()" class="accent-blue-600 mt-1">
+                            <span class="font-bold text-sm uppercase">Option B: Has my full permission to travel home independently (e.g. walking, cycling, or public transport).</span>
+                        </label>
+                    </div>
+
+                    <div id="jcNominatedPersonsWrap" class="space-y-3 hidden">
+                        <p class="text-[10px] text-gray-400 font-bold">To permanently amend this list you must email pontypoolpickle@gmail.com 7 days prior to a session. For single-session alternative adult collections, inform the host in person before leaving and text their details to the host's mobile.</p>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Nominated Person 1 (Self)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input type="text" id="jcPerson1Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcPerson1Relationship" placeholder="Relationship" class="input-field border-2">
+                                <input type="tel" id="jcPerson1Mobile" placeholder="Mobile" class="input-field border-2">
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Nominated Person 2 (Optional)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input type="text" id="jcPerson2Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcPerson2Relationship" placeholder="Relationship" class="input-field border-2">
+                                <input type="tel" id="jcPerson2Mobile" placeholder="Mobile" class="input-field border-2">
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Nominated Person 3 (Optional)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input type="text" id="jcPerson3Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcPerson3Relationship" placeholder="Relationship" class="input-field border-2">
+                                <input type="tel" id="jcPerson3Mobile" placeholder="Mobile" class="input-field border-2">
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Nominated Person 4 (Optional)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input type="text" id="jcPerson4Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcPerson4Relationship" placeholder="Relationship" class="input-field border-2">
+                                <input type="tel" id="jcPerson4Mobile" placeholder="Mobile" class="input-field border-2">
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Nominated Person 5 (Optional)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input type="text" id="jcPerson5Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcPerson5Relationship" placeholder="Relationship" class="input-field border-2">
+                                <input type="tel" id="jcPerson5Mobile" placeholder="Mobile" class="input-field border-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-50 rounded-lg p-3">
+                        <p class="text-xs font-black uppercase text-blue-700">⏱ Mandatory Lateness & Safety Declaration</p>
+                    </div>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcLatenessAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Collection & Lateness Agreement: I agree to arrive 10 minutes before the allocated end time if my child is being collected. I understand volunteer hosts cannot continuously manage repeated lateness and that repeated offenses will result in permanent removal of my child's junior account.</span>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcRefusalWaitAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Refusal to Wait Protocol: If my child is under a collection agreement but refuses to wait for their lift, I understand the host will attempt to call me and my alternative emergency contacts. If no contact can be made, the host is legally required to call the police via 101 immediately.</span>
+                    </label>
+                </div>
+
+                <!-- SECTION 4: Player Welfare, Dress Code & Media Policies -->
+                <div class="space-y-4">
+                    <h4 class="font-black uppercase italic text-lg border-b-2 border-blue-600 pb-1">4. Player Welfare, Dress Code & Media Policies</h4>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcKitAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Kit & Preparedness Requirement: I agree to ensure my child attends sessions in appropriate clothing (free of rips/tears, shorts/short leggings in warm weather) and suitable court footwear (school shoes are explicitly banned). I will provide a ready-made drink/water bottle. I understand the session host has the strict right to inspect and refuse entry without a refund if my child is missing the required kit.</span>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcPhotoBanAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Strict Photography Ban: I understand that Pontypool Pickle Club operates a zero-tolerance, strict ban on photography and filming during all junior sessions. This explicitly includes a restriction on parents attempting to photograph or film their own children, to prevent the accidental digital capture of other minors.</span>
+                    </label>
+                </div>
+
+                <!-- SECTION 5: Legal Sign-Off & Privacy Consent -->
+                <div class="space-y-4">
+                    <h4 class="font-black uppercase italic text-lg border-b-2 border-blue-600 pb-1">5. Legal Sign-Off & Privacy Consent</h4>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcDeclarationAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Parent/Guardian Declaration: I confirm that the information provided above is accurate. I accept that my child must abide by the Club Equality, Diversity & Inclusion policy while attending sessions.</span>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcVerificationAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">In-Person Verification Agreement: I agree to accompany my child to the start of their first session and understand they cannot step onto the court until the face-to-face verification check is complete.</span>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcPolicyAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Club Policy Acknowledgement: I have read, understood, and agree to abide by the full Pontypool Pickle Club Junior Safeguarding Policy available on the club's website.</span>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" id="jcGdprAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">UK GDPR Privacy Consent: I consent to the club securely storing this digital data on a "need-to-know" basis strictly for player safety and emergency medical purposes. This data will be securely deleted immediately if the account is closed or becomes inactive.</span>
+                    </label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Full Name of Parent/Guardian (Sign-Off)</label>
+                            <input type="text" id="jcParentSignName" placeholder="Type full name to sign" class="input-field border-2">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Date of Submission</label>
+                            <input type="date" id="jcSubmissionDate" class="input-field border-2">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUBMIT -->
+                <div class="flex flex-col gap-3 pb-4">
+                    <button onclick="submitJuniorConsentForm()" id="jcSubmitBtn"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-black uppercase tracking-widest shadow-xl transition">
+                        Submit Consent Form
+                    </button>
+                    <button onclick="closeJuniorConsentModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
                 </div>
 
             </div>
