@@ -547,6 +547,35 @@ serve(async (req) => {
         break;
       }
 
+      // EMAIL 19: Payment Reminder (admin-triggered, to player)
+      case "payment_reminder": {
+        const paymentRef = data.paymentRef || `${data.name} - ${data.eventTitle}`;
+        const body = `
+          <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.name},</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Our records show that you haven't yet paid for the event below. Please make payment via bank transfer as soon as possible to keep your spot.</p>
+          ${eventBox(data.eventTitle, data.eventDate, data.eventTime, data.eventLocation)}
+          <div style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;padding:16px 20px;margin:0 0 20px;">
+            <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">Bank Transfer Details</p>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              ${detailRow('Name', 'Pontypool Pickleball')}
+              ${detailRow('Sort Code', '51-61-02')}
+              ${detailRow('Account No', '76584135')}
+              ${detailRow('Reference', paymentRef)}
+              ${data.amount ? detailRow('Amount Due', `£${data.amount}`) : ''}
+            </table>
+          </div>
+          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin:0 0 20px;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#16a34a;font-weight:700;">✅ Already paid? If you're receiving this email but have already made the bank transfer, please go to <a href="https://www.pontypoolpickle.com" style="color:#16a34a;">www.pontypoolpickle.com</a>, open this event, and click <strong>I've Paid</strong> to update your status.</p>
+          </div>
+          <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">⚠️ Failure to make payment can result in your spot being removed, with another player taking your place.</p>
+          </div>
+          <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">Thanks for your understanding.<br><strong>Pontypool Pickle Club</strong></p>
+        `;
+        await sendEmail(data.email, `⏰ Payment Reminder — ${data.eventTitle}`, buildEmailHtml("Payment Reminder", body));
+        break;
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Unknown email type" }), { status: 400 });
     }
