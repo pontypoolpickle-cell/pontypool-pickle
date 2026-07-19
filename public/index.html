@@ -5097,16 +5097,10 @@
                 normalizeName(p.name) === normalizeName(currentUser.firstName + " " + currentUser.surname)
             );
 
-            // Prefer the authoritative values captured on the user's own account
-            // (currentUser.isUnder18 / currentUser.gender) and only fall back to the
-            // player-row lookup above for older cached sessions that predate those
-            // fields. Relying solely on the name-matched player row was fragile: any
-            // mismatch (or a missing/blank gender on that row) silently treated a
-            // genuinely female/under-18 member as if they weren't, blocking them from
-            // female-only/teen-only events while other members were unaffected.
+            // Prefer the authoritative value captured on the user's own account
+            // (currentUser.isUnder18) and only fall back to the player-row lookup above
+            // for older cached sessions that predate that field.
             const viewerIsUnder18 = currentUser && (currentUser.isUnder18 || !!(viewerPlayer && viewerPlayer.isUnder18));
-            const viewerGender = currentUser && (currentUser.gender || (viewerPlayer && viewerPlayer.gender) || '');
-            const viewerIsFemale = viewerGender === 'Female';
 
             const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
             const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
@@ -5130,8 +5124,6 @@
 				accessStatus = "locked"; statusMsg = "This event is for Teens only";
 			} else if (!allAges && !under18Only && viewerIsUnder18) {
 				accessStatus = "locked"; statusMsg = "This event is not available for Under 18s";
-			} else if (femaleOnly && !viewerIsFemale && currentUser && currentUser.role !== 'Admin') {
-				accessStatus = "locked"; statusMsg = "This event is for female players only";
 			} else if (isConfirmed) {
                 accessStatus = "signedup"; statusMsg = "You're in! ✅";
             } else if (isReserve) {
