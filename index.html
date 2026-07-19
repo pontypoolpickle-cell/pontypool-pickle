@@ -1253,6 +1253,10 @@
           created_at timestamptz default now()
         );
 
+        -- Junior consent verification audit fields (not displayed anywhere in the site) --
+        alter table users add column if not exists consent_verified_by text;
+        alter table users add column if not exists consent_verified_at timestamptz;
+
         -- Membership fields (added for the Membership feature) --
         alter table users add column if not exists membership_status text default 'None';
         alter table users add column if not exists membership_duration_weeks numeric;
@@ -2686,7 +2690,11 @@
                     });
                 }
             } else if (action === 'VerifyConsent') {
-                await supabaseClient.from('users').update({ consent_verified: true }).eq('username', username);
+                await supabaseClient.from('users').update({
+                    consent_verified: true,
+                    consent_verified_by: payload.verifiedBy || null,
+                    consent_verified_at: new Date().toISOString()
+                }).eq('username', username);
             } else {
                 throw new Error('Unsupported action.');
             }
@@ -3646,8 +3654,9 @@
             if (action === 'Delete' && !confirm("Reject and delete this application?")) return;
             
             triggerToast("Processing " + action + "...");
-            
-            updateUserStatus({ username: username, action: action })
+
+            const verifiedBy = currentUser ? (`${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.username) : null;
+            updateUserStatus({ username: username, action: action, verifiedBy: verifiedBy })
                 .then(res => {
                     render(res);
                     triggerToast("User " + action + "d successfully");
@@ -6099,6 +6108,7 @@
 
         function resetJuniorConsentFormFields() {
             ['jcTeenName', 'jcGuardianName', 'jcGuardianPhone', 'jcGuardianEmail', 'jcAltContactName', 'jcAltContactPhone',
+             'jcAltContact2Name', 'jcAltContact2Phone', 'jcAltContact3Name', 'jcAltContact3Phone', 'jcAltContact4Name', 'jcAltContact4Phone',
              'jcMedicalConditionsDetails', 'jcMedicationDetails', 'jcParentSignName'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = "";
@@ -6138,6 +6148,16 @@
             if (!guardianEmail) return triggerError("Please enter the parent/guardian's email address.");
             if (!altContactName) return triggerError("Please enter an alternative emergency contact name.");
             if (!altContactPhone) return triggerError("Please enter an alternative emergency contact number.");
+
+            let altContacts = [`${altContactName} — ${altContactPhone}`];
+            for (let i = 2; i <= 4; i++) {
+                const name = document.getElementById(`jcAltContact${i}Name`).value.trim();
+                const phone = document.getElementById(`jcAltContact${i}Phone`).value.trim();
+                if (name || phone) {
+                    altContacts.push(`${name || 'Not provided'} — ${phone || 'Not provided'}`);
+                }
+            }
+
             if (!medicalConditions) return triggerError("Please answer whether your child has any medical conditions, allergies, or past injuries.");
             if (medicalConditions.value === "Yes" && !document.getElementById('jcMedicalConditionsDetails').value.trim()) {
                 return triggerError("Please provide details of the medical conditions, allergies, or past injuries.");
@@ -6172,7 +6192,7 @@
             if (!document.getElementById('jcLatenessAck').checked) return triggerError("Please acknowledge the Collection & Lateness Agreement.");
             if (!document.getElementById('jcRefusalWaitAck').checked) return triggerError("Please acknowledge the Refusal to Wait Protocol.");
             if (!document.getElementById('jcKitAck').checked) return triggerError("Please acknowledge the Kit & Preparedness Requirement.");
-            if (!document.getElementById('jcPhotoBanAck').checked) return triggerError("Please acknowledge the Strict Photography Ban.");
+            if (!document.getElementById('jcPhotoPolicyAck').checked) return triggerError("Please acknowledge the Photography & Media Policy.");
             if (!document.getElementById('jcDeclarationAck').checked) return triggerError("Please acknowledge the Parent/Guardian Declaration.");
             if (!document.getElementById('jcVerificationAck').checked) return triggerError("Please acknowledge the In-Person Verification Agreement.");
             if (!document.getElementById('jcPolicyAck').checked) return triggerError("Please acknowledge the Club Policy Acknowledgement.");
@@ -6182,6 +6202,7 @@
 
             const data = {
                 teenName, dob, guardianName, guardianPhone, guardianEmail, altContactName, altContactPhone,
+                altContacts: altContacts,
                 medicalConditions: medicalConditions.value,
                 medicalConditionsDetails: document.getElementById('jcMedicalConditionsDetails').value.trim() || "N/A",
                 medication: medication.value,
@@ -6194,7 +6215,7 @@
                 latenessAck: "Yes",
                 refusalWaitAck: "Yes",
                 kitAck: "Yes",
-                photoBanAck: "Yes",
+                photoPolicyAck: "Yes",
                 declarationAck: "Yes",
                 verificationAck: "Yes",
                 policyAck: "Yes",
@@ -7348,7 +7369,7 @@
         <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full border-t-8 border-blue-600">
             <div class="bg-black text-white p-6 flex justify-between items-center rounded-t-xl">
                 <div>
-                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Pontypool Pickle Club</p>
+                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Pontypool Pickleball Club</p>
                     <h3 class="text-2xl font-black italic uppercase">Junior Consent Form</h3>
                     <p class="text-[10px] font-bold uppercase text-gray-400 tracking-widest mt-1">Player Registration & Consent (Ages 13–17)</p>
                 </div>
@@ -7386,13 +7407,37 @@
                         <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Parent/Guardian Email Address</label>
                         <input type="email" id="jcGuardianEmail" placeholder="email@example.com" class="input-field border-2">
                     </div>
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact Name</label>
-                        <input type="text" id="jcAltContactName" placeholder="Alternative emergency contact name" class="input-field border-2">
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact Number</label>
-                        <input type="tel" id="jcAltContactPhone" placeholder="Backup contact number" class="input-field border-2">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contacts</label>
+                        <p class="text-[10px] text-gray-400 font-bold">At least one alternative emergency contact is required. You may add a 2nd, 3rd and 4th if you wish.</p>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 1 (Required)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <input type="text" id="jcAltContactName" placeholder="Name" class="input-field border-2">
+                                <input type="tel" id="jcAltContactPhone" placeholder="Mobile number" class="input-field border-2">
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 2 (Optional)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <input type="text" id="jcAltContact2Name" placeholder="Name" class="input-field border-2">
+                                <input type="tel" id="jcAltContact2Phone" placeholder="Mobile number" class="input-field border-2">
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 3 (Optional)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <input type="text" id="jcAltContact3Name" placeholder="Name" class="input-field border-2">
+                                <input type="tel" id="jcAltContact3Phone" placeholder="Mobile number" class="input-field border-2">
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                            <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 4 (Optional)</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <input type="text" id="jcAltContact4Name" placeholder="Name" class="input-field border-2">
+                                <input type="tel" id="jcAltContact4Phone" placeholder="Mobile number" class="input-field border-2">
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -7400,7 +7445,7 @@
                 <div class="space-y-4">
                     <h4 class="font-black uppercase italic text-lg border-b-2 border-blue-600 pb-1">2. Medical Information & Emergency Protocols</h4>
                     <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <p class="text-[11px] font-bold text-gray-600">📋 Critical Medical Notice: Pontypool Pickle Club runs sessions using volunteer leaders and does not guarantee qualified medical first aiders on-site. Information below is collected solely so it can be passed directly to emergency services (999) or paramedic staff in a medical crisis.</p>
+                        <p class="text-[11px] font-bold text-gray-600">📋 Critical Medical Notice: Pontypool Pickleball Club runs sessions using volunteer leaders and does not guarantee qualified medical first aiders on-site. Information below is collected solely so it can be passed directly to emergency services (999) or paramedic staff in a medical crisis.</p>
                     </div>
                     <div class="space-y-2">
                         <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Does your child have any medical conditions, allergies, or past injuries we should be aware of?</label>
@@ -7530,11 +7575,11 @@
                     <h4 class="font-black uppercase italic text-lg border-b-2 border-blue-600 pb-1">4. Player Welfare, Dress Code & Media Policies</h4>
                     <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
                         <input type="checkbox" id="jcKitAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
-                        <span class="font-bold text-xs uppercase text-gray-600">Kit & Preparedness Requirement: I agree to ensure my child attends sessions in appropriate clothing (free of rips/tears, shorts/short leggings in warm weather) and suitable court footwear (school shoes are explicitly banned). I will provide a ready-made drink/water bottle. I understand the session host has the strict right to inspect and refuse entry without a refund if my child is missing the required kit.</span>
+                        <span class="font-bold text-xs uppercase text-gray-600">Kit & Preparedness Requirement: I agree to ensure my child attends sessions in appropriate clothing (free of rips/tears, shorts/short leggings in warm weather) and suitable court footwear (school shoes are explicitly banned). I will provide a ready-made drink/water bottle. I understand the session host has the strict right to inspect and refuse entry without a refund if my child is missing the required kit. For outdoor sessions, sun cream is not provided by the club — if required, I will ensure my child brings their own.</span>
                     </label>
                     <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
-                        <input type="checkbox" id="jcPhotoBanAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
-                        <span class="font-bold text-xs uppercase text-gray-600">Strict Photography Ban: I understand that Pontypool Pickle Club operates a zero-tolerance, strict ban on photography and filming during all junior sessions. This explicitly includes a restriction on parents attempting to photograph or film their own children, to prevent the accidental digital capture of other minors.</span>
+                        <input type="checkbox" id="jcPhotoPolicyAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
+                        <span class="font-bold text-xs uppercase text-gray-600">Photography & Media Policy: I understand that Pontypool Pickleball Club prohibits parents/guardians from capturing, storing, or distributing images of children other than their own without explicit, prior consent. To photograph or film my child alongside another junior, I will first obtain clear (verbal or written) consent from that junior's parent/guardian. I may photograph or film my own child without additional consent only if they are standing or playing entirely on their own, with no other juniors visible in the frame. I understand coaches or club officials may request the immediate deletion of any media if consent cannot be verified, or if the activity is deemed disruptive to the session.</span>
                     </label>
                 </div>
 
@@ -7551,7 +7596,7 @@
                     </label>
                     <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
                         <input type="checkbox" id="jcPolicyAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
-                        <span class="font-bold text-xs uppercase text-gray-600">Club Policy Acknowledgement: I have read, understood, and agree to abide by the full Pontypool Pickle Club Junior Safeguarding Policy available on the club's website.</span>
+                        <span class="font-bold text-xs uppercase text-gray-600">Club Policy Acknowledgement: I have read, understood, and agree to abide by the full Pontypool Pickleball Club Junior Safeguarding Policy available on the club's website.</span>
                     </label>
                     <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
                         <input type="checkbox" id="jcGdprAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">

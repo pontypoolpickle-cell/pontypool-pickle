@@ -494,6 +494,9 @@ serve(async (req) => {
         const nominatedPersonsHtml = (data.nominatedPersons && data.nominatedPersons.length > 0)
           ? (data.nominatedPersons as string[]).map((p: string, i: number) => detailRow(`Nominated Person ${i + 1}`, p)).join('')
           : detailRow('Nominated Persons', 'N/A — Independent travel selected');
+        const altContactsHtml = (data.altContacts && data.altContacts.length > 0)
+          ? (data.altContacts as string[]).map((c: string, i: number) => detailRow(`Alternative Emergency Contact ${i + 1}`, c)).join('')
+          : `${detailRow('Alternative Emergency Contact Name', data.altContactName)}${detailRow('Alternative Emergency Contact Number', data.altContactPhone)}`;
         const body = `
           <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">A parent/guardian has completed the Junior Player Registration &amp; Consent Form via the club website. Please review the details below and verify face-to-face with the family at the start of the junior's first session before activating their account.</p>
           <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">1. Player &amp; Guardian Details</p>
@@ -503,8 +506,7 @@ serve(async (req) => {
             ${detailRow('Full Name of Parent/Guardian', data.guardianName)}
             ${detailRow('Guardian Primary Contact Number', data.guardianPhone)}
             ${detailRow('Guardian Email Address', `<a href="mailto:${data.guardianEmail}" style="color:#e11d48;font-weight:900;">${data.guardianEmail}</a>`)}
-            ${detailRow('Alternative Emergency Contact Name', data.altContactName)}
-            ${detailRow('Alternative Emergency Contact Number', data.altContactPhone)}
+            ${altContactsHtml}
           </table>
           <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">2. Medical Information &amp; Emergency Protocols</p>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 20px;">
@@ -526,7 +528,7 @@ serve(async (req) => {
           <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">4. Player Welfare, Dress Code &amp; Media Policies</p>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 20px;">
             ${detailRow('Kit & Preparedness Requirement Accepted', data.kitAck)}
-            ${detailRow('Strict Photography Ban Accepted', data.photoBanAck)}
+            ${detailRow('Photography & Media Policy Accepted', data.photoPolicyAck)}
           </table>
           <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">5. Legal Sign-Off &amp; Privacy Consent</p>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 24px;">
