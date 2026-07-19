@@ -1129,9 +1129,9 @@
 		const el = document.getElementById(id);
 		if (!el) return;
 		if (el._flatpickr) {
-			el._flatpickr.setDate(new Date(), true);
+			el._flatpickr.setDate(serverNow(), true);
 		} else if ('valueAsDate' in el) {
-			el.valueAsDate = new Date();
+			el.valueAsDate = serverNow();
 		}
 	}
 	
@@ -1331,6 +1331,17 @@
           score_a integer,
           score_b integer
         );
+
+        -- Trusted server time (see syncServerTime()/serverNow() below) --
+        -- Lets the app check the database's clock instead of trusting the visitor's
+        -- device, since a wrong device date/time previously caused confusing "why is
+        -- this event still locked" reports. Returns the DB server's current time.
+        create or replace function get_server_time()
+        returns timestamptz
+        language sql
+        stable
+        as $$ select now(); $$;
+        grant execute on function get_server_time() to anon, authenticated;
         */
 
         const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
@@ -1342,6 +1353,39 @@
                 fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' })
             }
         });
+
+        // --- Trusted "now" ---------------------------------------------------
+        // Every date/time check that gates something (signup windows, "has this
+        // event started", membership expiry) previously trusted the visitor's own
+        // device clock via `new Date()`. A wrong device clock/timezone silently
+        // makes those checks wrong with no way to tell from the UI, so instead we
+        // ask the database what time it thinks it is (via the get_server_time()
+        // function — see the setup SQL above) once at load, measure the offset from
+        // this device's clock, and apply that same offset everywhere "now" matters.
+        // If the request fails (e.g. the SQL function hasn't been created yet, or a
+        // network hiccup) we fall back to the device clock rather than blocking
+        // anything, so this is a pure reliability improvement, not a hard dependency.
+        let serverTimeOffsetMs = 0;
+
+        async function syncServerTime() {
+            try {
+                const requestStart = Date.now();
+                const { data, error } = await supabaseClient.rpc('get_server_time');
+                if (error || !data) return;
+                const serverTimeMs = new Date(data).getTime();
+                if (Number.isNaN(serverTimeMs)) return;
+                // Split the round-trip evenly; good enough for a calendar-day-level check.
+                const roundTripMs = Date.now() - requestStart;
+                serverTimeOffsetMs = (serverTimeMs + roundTripMs / 2) - Date.now();
+            } catch (e) {
+                // Leave serverTimeOffsetMs at whatever it last was (0 if never synced) —
+                // every caller below just falls back to the device clock.
+            }
+        }
+
+        function serverNow() {
+            return new Date(Date.now() + serverTimeOffsetMs);
+        }
 
         const CACHE_KEY = 'pickle_global_data_cache_v1';
         const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1385,7 +1429,7 @@
         function clearLeagueCache() {}
 
         function todayStr() {
-            return new Date().toISOString().slice(0, 10);
+            return serverNow().toISOString().slice(0, 10);
         }
 
         // Only include the year when it differs from the current year, so "opens
@@ -1394,7 +1438,7 @@
         // data-entry mistake visible instead of just an unexplained permanent lock.
         function formatAccessOpenDate(date) {
             const opts = { day: 'numeric', month: 'short' };
-            if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+            if (date.getFullYear() !== serverNow().getFullYear()) opts.year = 'numeric';
             return date.toLocaleDateString('en-GB', opts);
         }
 
@@ -2031,7 +2075,7 @@
             const scoredGames = (roundGames || []).filter(g => g.score_a !== null && g.score_b !== null);
             for (const g of scoredGames) {
                 const matchRow = {
-                    match_date: new Date().toISOString().slice(0, 10),
+                    match_date: todayStr(),
                     w1: Number(g.score_a) > Number(g.score_b) ? g.p1 : g.p3,
                     w2: Number(g.score_a) > Number(g.score_b) ? (g.p2 || 'Singles') : (g.p4 || 'Singles'),
                     l1: Number(g.score_a) > Number(g.score_b) ? g.p3 : g.p1,
@@ -2716,7 +2760,7 @@
                 await supabaseClient.from('users').update({
                     consent_verified: true,
                     consent_verified_by: payload.verifiedBy || null,
-                    consent_verified_at: new Date().toISOString()
+                    consent_verified_at: serverNow().toISOString()
                 }).eq('username', username);
             } else {
                 throw new Error('Unsupported action.');
@@ -2763,7 +2807,7 @@
 
             const user = users[0];
             const token = String(Math.floor(100000 + Math.random() * 900000));
-            const expiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+            const expiry = new Date(serverNow().getTime() + 60 * 60 * 1000).toISOString();
 
             const { error: updateErr } = await supabaseClient
                 .from('users')
@@ -2793,7 +2837,7 @@
 
             const user = users[0];
             const expiryTime = user.reset_token_expiry ? new Date(user.reset_token_expiry).getTime() : 0;
-            if (String(user.reset_token || '') !== String(token) || expiryTime < Date.now()) {
+            if (String(user.reset_token || '') !== String(token) || expiryTime < serverNow().getTime()) {
                 throw new Error('Invalid or expired reset code.');
             }
 
@@ -3100,7 +3144,7 @@
 			const filtered = (currentGender === 'Everyone' ? globalData.standings : globalData.standings.filter(p => p.gender === currentGender))
 			.filter(p => p.name !== "Singles" && !p.isHidden && !p.isUnder18 && (!search || p.name.toLowerCase().includes(search)));
             
-            const today = new Date().getTime();
+            const today = serverNow().getTime();
             const thirtyDays = 30 * 24 * 60 * 60 * 1000;
 
             const rSorted = [...filtered].sort((a,b) => b.elo - a.elo);
@@ -3572,7 +3616,7 @@
             let decayText = "Status: Active";
             let decayColor = "text-green-600";
             if (p.lastMatchDate) {
-                const daysInactive = Math.floor((new Date() - new Date(p.lastMatchDate)) / 86400000);
+                const daysInactive = Math.floor((serverNow() - new Date(p.lastMatchDate)) / 86400000);
                 if (daysInactive > 23) { 
                     decayText = (30 - daysInactive) + " Days until Decay";
                     decayColor = "text-orange-500";
@@ -4188,7 +4232,7 @@
 
             // 2. Build the formatted text string
             let text = "🏆 *PONTYPOOL PICKLE RANKINGS* 🏆\n";
-            text += "📅 _" + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + "_\n\n";
+            text += "📅 _" + serverNow().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + "_\n\n";
 
             sorted.forEach((p, i) => {
                 let emoji = "🔹";
@@ -4788,7 +4832,7 @@
 			const confirmedCount = signups.filter(s => s[5] === 'Confirmed').length;
 			const maxPlayers = event[4] ? Number(event[4]) : null;
 			const isFull = maxPlayers && confirmedCount >= maxPlayers;
-			const isPast = getEventStartDateTime(event) < new Date();
+			const isPast = getEventStartDateTime(event) < serverNow();
 			const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
 			const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
 
@@ -4816,7 +4860,7 @@
             const allEvents = (globalData.events || []).filter(e => (e[7] || '').toString().trim() !== 'Cancelled');
             const filtered = currentEventFilter === 'all' ? allEvents : allEvents.filter(e => getEventTypeKey(e) === currentEventFilter);
 
-            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const today = serverNow(); today.setHours(0, 0, 0, 0);
             const upcoming = filtered.filter(e => new Date(e[2]) >= today).sort((a, b) => new Date(a[2]) - new Date(b[2]));
             const past = filtered.filter(e => new Date(e[2]) < today).sort((a, b) => new Date(b[2]) - new Date(a[2]));
 
@@ -4898,8 +4942,8 @@
             }
         }
 
-        var calendarCurrentMonth = new Date().getMonth();
-        var calendarCurrentYear = new Date().getFullYear();
+        var calendarCurrentMonth = serverNow().getMonth();
+        var calendarCurrentYear = serverNow().getFullYear();
 
         function changeCalendarMonth(direction) {
             calendarCurrentMonth += direction;
@@ -4920,7 +4964,7 @@
 
             const firstDay = new Date(calendarCurrentYear, calendarCurrentMonth, 1);
             const lastDay = new Date(calendarCurrentYear, calendarCurrentMonth + 1, 0);
-            const today = new Date();
+            const today = serverNow();
             today.setHours(0,0,0,0);
 
             let startOffset = firstDay.getDay() - 1;
@@ -5040,10 +5084,10 @@
 			const userPrice = under18Only ? "0.00" : (currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin') ? memberPrice : nonMemberPrice);
 
             const isSignedUp = currentUser && signups.some(s => s[0] === currentUser.username);
-            const today = new Date(); today.setHours(0,0,0,0);
+            const today = serverNow(); today.setHours(0,0,0,0);
             // Sign-ups stay open right up until the event actually starts (date + time) —
             // there is no separate "signup by" deadline any more.
-            const isPast = getEventStartDateTime(event) < new Date();
+            const isPast = getEventStartDateTime(event) < serverNow();
 
             // Look up the viewer's linked "player" row by name for fields (like ELO)
             // that only live on that row. Matching is case/whitespace-insensitive
@@ -6347,6 +6391,16 @@
 
         window.onload = async () => {
             initDatePickers();
+
+            // Fire-and-forget: don't block the initial render on this — until it
+            // resolves, serverNow() simply falls back to the device clock (today's
+            // existing behaviour), and every date-gated check re-runs serverNow()
+            // fresh each time anyway, so the correction applies from that point on.
+            syncServerTime();
+            // Device clocks don't drift meaningfully within a browsing session, but
+            // re-sync periodically anyway to recover from a failed initial attempt
+            // and to bound how stale the offset can get on a long-lived tab.
+            setInterval(syncServerTime, 5 * 60 * 1000);
 
             const saved = sessionStorage.getItem('pickleUser');
             if (saved) {
