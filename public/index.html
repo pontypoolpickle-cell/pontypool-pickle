@@ -1097,7 +1097,7 @@
 	// UI and is not affected by device locale settings. The underlying value
 	// (read via .value elsewhere in this file) is kept as "Y-m-d" exactly like
 	// a native date input, so no other logic needs to change.
-	const DATE_INPUT_IDS = ['scrambleDate', 'historySearchDate', 'matchDate', 'evtDate', 'evtMemberDate', 'evtPublicDate', 'evtDeadline', 'arIncidentDate', 'membershipActivateStartDate', 'membershipAdjustStartDate', 'membershipAdjustEndDate'];
+	const DATE_INPUT_IDS = ['scrambleDate', 'historySearchDate', 'matchDate', 'evtDate', 'evtMemberDate', 'evtPublicDate', 'arIncidentDate', 'membershipActivateStartDate', 'membershipAdjustStartDate', 'membershipAdjustEndDate'];
 
 	function initDatePickers() {
 		if (typeof flatpickr === 'undefined') return;
@@ -1211,7 +1211,7 @@
 			member_open_date date,
 			public_open_date date,
 			status text default 'Active',
-			signup_deadline date,
+			signup_deadline date, -- deprecated: no longer read/written by the app; sign-ups are open until the event start time instead
 			duration numeric,
 			member_price numeric default 0,
 			non_member_price numeric default 0,
@@ -2133,7 +2133,6 @@
                 member_open_date: data.memberDate || null,
                 public_open_date: data.publicDate || null,
                 status: 'Active',
-                signup_deadline: data.deadline || null,
                 duration: data.duration === '' ? null : Number(data.duration),
                 member_price: Number(data.memberPrice || 0),
                 non_member_price: Number(data.nonMemberPrice || 0),
@@ -2154,7 +2153,6 @@
 				max_players: Number(data.max || 0),
 				member_open_date: data.memberDate || null,
 				public_open_date: data.publicDate || null,
-				signup_deadline: data.deadline || null,
 				duration: data.duration === '' ? null : Number(data.duration),
 				member_price: Number(data.memberPrice || 0),
 				non_member_price: Number(data.nonMemberPrice || 0),
@@ -4239,7 +4237,6 @@
 				document.getElementById('evtMax').value = event[4] || "";
 				setDateInputValue('evtMemberDate', event[5] || "");
 				setDateInputValue('evtPublicDate', event[6] || "");
-				setDateInputValue('evtDeadline', event[9] || "");
 				document.getElementById('evtDuration').value = event[10] ?? "";
 				document.getElementById('evtUnder18Only').checked = !!event[14];
 				document.getElementById('evtFemaleOnly').checked = !!event[15];
@@ -4258,7 +4255,6 @@
 				document.getElementById('evtMax').value = "";
 				setDateInputToday('evtMemberDate');
 				setDateInputToday('evtPublicDate');
-				setDateInputValue('evtDeadline', "");
 				const evtDuration = document.getElementById('evtDuration');
 				if (evtDuration) evtDuration.value = "";
 				document.getElementById('evtUnder18Only').checked = false;
@@ -4310,7 +4306,6 @@
 				max: document.getElementById('evtMax').value,
 				memberDate: document.getElementById('evtMemberDate').value,
 				publicDate: document.getElementById('evtPublicDate').value,
-				deadline: document.getElementById('evtDeadline').value,
 				duration: document.getElementById('evtDuration').value,
 				under18Only: document.getElementById('evtUnder18Only').checked,
 				femaleOnly: document.getElementById('evtFemaleOnly').checked,
@@ -4767,14 +4762,21 @@
             }).join('');
         }
 
+        // Sign-ups stay open right up until the event actually starts — there is no
+        // separate "signup by" deadline. When no time is set we fall back to the end
+        // of the event's calendar day, since we don't know what time it would start.
+        function getEventStartDateTime(event) {
+            if (!event || !event[2]) return null;
+            return event[3] ? new Date(event[2] + 'T' + event[3]) : new Date(event[2] + 'T23:59:59');
+        }
+
         function getEventQuickStatus(event) {
 			const status = (event[7] || '').toString().trim();
 			const signups = (globalData.signups || []).filter(s => s[0] === event[0]);
 			const confirmedCount = signups.filter(s => s[5] === 'Confirmed').length;
 			const maxPlayers = event[4] ? Number(event[4]) : null;
 			const isFull = maxPlayers && confirmedCount >= maxPlayers;
-			const today = new Date(); today.setHours(0, 0, 0, 0);
-			const isPast = new Date(event[2]) < today;
+			const isPast = getEventStartDateTime(event) < new Date();
 			const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
 			const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
 
@@ -5027,10 +5029,9 @@
 
             const isSignedUp = currentUser && signups.some(s => s[0] === currentUser.username);
             const today = new Date(); today.setHours(0,0,0,0);
-            const eventDate = new Date(event[2]);
-            const isPast = eventDate < today;
-            const deadline = event[9] ? new Date(event[9]) : null;
-            const deadlinePassed = deadline && deadline < today;
+            // Sign-ups stay open right up until the event actually starts (date + time) —
+            // there is no separate "signup by" deadline any more.
+            const isPast = getEventStartDateTime(event) < new Date();
 
             // Look up the viewer's linked "player" row by name for fields (like ELO)
             // that only live on that row. Matching is case/whitespace-insensitive
@@ -5081,8 +5082,6 @@
                 accessStatus = "reserve"; statusMsg = "You're on the reserve list 🔄";
             } else if (isPast) {
                 accessStatus = "past"; statusMsg = "This event has already taken place";
-            } else if (deadlinePassed) {
-                accessStatus = "closed"; statusMsg = "Sign up deadline has passed";
             } else if (isFull) {
                 accessStatus = "reserve-open"; statusMsg = "Event Full — Join Reserve List";
             } else if (isAdmin) {
@@ -5127,7 +5126,6 @@
                     ${event[8] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[8]}</p></div>` : ''}
                     ${event[10] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[10]} ${Number(event[10]) === 1 ? 'hour' : 'hours'}</p></div>` : ''}
                     ${maxPlayers ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold ${isFull ? 'text-rose-600' : 'text-gray-600'}">${signups.length} / ${maxPlayers} signed up${spotsLeft > 0 ? ' — ' + spotsLeft + ' spots left' : ' — FULL'}</p></div>` : ''}
-                    ${event[9] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><p class="text-xs font-bold text-gray-600">Sign up before ${formatEventDate(event[9])}</p></div>` : ''}
                     ${!under18Only ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">£${userPrice || nonMemberPrice} <span class="text-gray-400">(Members £${memberPrice} / Non-members £${nonMemberPrice})</span></p></div>` : ''}
                 </div>
 
@@ -6538,9 +6536,6 @@
                 
                 <label class="block text-[10px] font-black text-rose-600 uppercase tracking-widest mt-2">Non-Member Access Opens On:</label>
                 <input type="date" id="evtPublicDate" class="input-field border-2">
-
-                <label class="block text-[10px] font-black text-rose-600 uppercase tracking-widest mt-2">Signup Deadline:</label>
-                <input type="date" id="evtDeadline" class="input-field border-2">
 
                 <label class="block text-[10px] font-black text-rose-600 uppercase tracking-widest mt-2">Duration (Hours):</label>
                 <input type="number" id="evtDuration" placeholder="e.g. 2" step="0.5" min="0.5" class="input-field border-2">
