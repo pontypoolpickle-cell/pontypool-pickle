@@ -789,9 +789,9 @@
                     </svg>
                 </div>
                 <div class="space-y-2">
-                    <h3 class="text-2xl font-black uppercase italic">Members Only Access</h3>
+                    <h3 class="text-2xl font-black uppercase italic">Login Required</h3>
                     <p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">
-                        Running ladder sessions is reserved for club members.
+                        Log in or sign up for a free account to access ladder sessions.
                     </p>
                 </div>
                 <div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
@@ -2425,58 +2425,58 @@
         }
 
         async function signupForEvent(payload) {
-            const { error } = await supabaseClient.from('signups').insert({
-                event_id: payload.eventId,
-                player_name: payload.name,
-                player_type: payload.type || '',
-                email: payload.dob || '',
-                status: 'Confirmed',
-                payment_status: 'Unpaid'
-            });
-            if (error) throw new Error(error.message);
-            if (payload.dob && payload.dob.indexOf('@') !== -1) {
-                const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-                if (eventRow) {
-                    const isFree = !!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]));
-                    sendEmail('event_signup', {
-                        name: payload.name,
-                        email: payload.dob,
-                        eventTitle: eventRow[1],
-                        eventDate: eventRow[2],
-                        eventTime: eventRow[3] || 'TBC',
-                        eventLocation: eventRow[8] || 'TBC',
-                        isFree: isFree
-                    });
-                }
-            }
-            return refreshAllData();
-        }
+			const { error } = await supabaseClient.from('signups').insert({
+				event_id: payload.eventId,
+				player_name: payload.name,
+				player_type: payload.type || '',
+				email: payload.email || '',
+				status: 'Confirmed',
+				payment_status: 'Unpaid'
+			});
+			if (error) throw new Error(error.message);
+			if (payload.email && payload.email.indexOf('@') !== -1) {
+				const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+				if (eventRow) {
+					const isFree = !!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]));
+					sendEmail('event_signup', {
+						name: payload.name,
+						email: payload.email,
+						eventTitle: eventRow[1],
+						eventDate: eventRow[2],
+						eventTime: eventRow[3] || 'TBC',
+						eventLocation: eventRow[8] || 'TBC',
+						isFree: isFree
+					});
+				}
+			}
+			return refreshAllData();
+		}
 
         async function signupAsReserve(payload) {
-            const { error } = await supabaseClient.from('signups').insert({
-                event_id: payload.eventId,
-                player_name: payload.name,
-                player_type: payload.type || '',
-                email: payload.dob || '',
-                status: 'Reserve',
-                payment_status: 'Unpaid'
-            });
-            if (error) throw new Error(error.message);
-            if (payload.dob && payload.dob.indexOf('@') !== -1) {
-                const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-                if (eventRow) {
-                    sendEmail('reserve_signup', {
-                        name: payload.name,
-                        email: payload.dob,
-                        eventTitle: eventRow[1],
-                        eventDate: eventRow[2],
-                        eventTime: eventRow[3] || 'TBC',
-                        eventLocation: eventRow[8] || 'TBC'
-                    });
-                }
-            }
-            return refreshAllData();
-        }
+			const { error } = await supabaseClient.from('signups').insert({
+				event_id: payload.eventId,
+				player_name: payload.name,
+				player_type: payload.type || '',
+				email: payload.email || '',
+				status: 'Reserve',
+				payment_status: 'Unpaid'
+			});
+			if (error) throw new Error(error.message);
+			if (payload.email && payload.email.indexOf('@') !== -1) {
+				const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+				if (eventRow) {
+					sendEmail('reserve_signup', {
+						name: payload.name,
+						email: payload.email,
+						eventTitle: eventRow[1],
+						eventDate: eventRow[2],
+						eventTime: eventRow[3] || 'TBC',
+						eventLocation: eventRow[8] || 'TBC'
+					});
+				}
+			}
+			return refreshAllData();
+		}
 
         async function cancelSignup(payload) {
 			let removedSignupEmail = null;
@@ -3783,7 +3783,7 @@
 			const restricted = document.getElementById('laddersRestricted');
 			const content = document.getElementById('laddersMainContent');
 			const resetBtn = document.getElementById('ladderResetBtn');
-			const isMember = currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin');
+			const isMember = !!currentUser;
 
 			if (isMember) {
 				restricted.classList.add('hidden');
@@ -4787,7 +4787,8 @@
             const dayMonthShort = (dateStr) => {
                 const d = new Date(dateStr + 'T00:00:00');
                 const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-                return { day: d.getDate(), month: months[d.getMonth()] };
+                const weekdays = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+                return { day: d.getDate(), month: months[d.getMonth()], weekday: weekdays[d.getDay()] };
             };
 
             const buildCard = (event, faded) => {
@@ -4800,6 +4801,7 @@
                         style="${faded ? 'opacity:0.55;' : ''}">
                         <div class="flex flex-col items-center justify-center flex-shrink-0 px-4"
                             style="background-color:${type.color}; color:#ffffff; min-width:72px;">
+                            <span style="font-size:10px; font-weight:800; letter-spacing:0.05em; opacity:0.85;">${dm.weekday}</span>
                             <span style="font-size:22px; font-weight:900; line-height:1;">${dm.day}</span>
                             <span style="font-size:10px; font-weight:800; letter-spacing:0.05em;">${dm.month}</span>
                         </div>
@@ -5153,6 +5155,12 @@
 
         function handleEventClickFromCalendar(eventId, asReserve) {
             if (!currentUser) { closeCalendarEventModal(); openAuthModal(); return; }
+            if (!currentUser.firstName || !currentUser.surname || !currentUser.email) {
+                closeCalendarEventModal();
+                triggerError("Your account details look incomplete. Please log out and log back in.");
+                logoutUser();
+                return;
+            }
 
             const btn = event.target;
             if (btn) {
@@ -5181,10 +5189,10 @@
             };
 
             if (asReserve) {
-                signupAsReserve({ eventId, name: fullName, dob: email, type: currentUser.role })
+                signupAsReserve({ eventId, name: fullName, email: email, type: currentUser.role })
                     .then(onSuccess).catch(onFailure);
             } else {
-                signupForEvent({ eventId, name: fullName, dob: email, type: currentUser.role })
+                signupForEvent({ eventId, name: fullName, email: email, type: currentUser.role })
                     .then(onSuccess).catch(onFailure);
             }
         }
@@ -5202,6 +5210,11 @@
         function handleEventClick(eventId, asReserve, btn) {
             if (!currentUser) {
                 openAuthModal();
+                return;
+            }
+            if (!currentUser.firstName || !currentUser.surname || !currentUser.email) {
+                triggerError("Your account details look incomplete. Please log out and log back in.");
+                logoutUser();
                 return;
             }
             if (btn) {
@@ -5289,23 +5302,23 @@
                 });
         }
 
-        function performSignup(eventId, name, dob, type, asReserve, btn) {
-            const successMsg = asReserve ? "Added to Reserve List!" : "Registration Successful!";
-            
-            const resetBtn = () => {
-                if (btn) { btn.disabled = false; btn.innerText = asReserve ? "Join Reserve List" : "Sign Up Now"; btn.style.opacity = "1"; }
-            };
+        function performSignup(eventId, name, email, type, asReserve, btn) {
+			const successMsg = asReserve ? "Added to Reserve List!" : "Registration Successful!";
+			
+			const resetBtn = () => {
+				if (btn) { btn.disabled = false; btn.innerText = asReserve ? "Join Reserve List" : "Sign Up Now"; btn.style.opacity = "1"; }
+			};
 
-            if (asReserve) {
-                signupAsReserve({ eventId, name, dob, type })
-                    .then(res => { render(res); triggerToast(successMsg); resetBtn(); })
-                    .catch(err => { triggerError(err.message); resetBtn(); });
-            } else {
-                signupForEvent({ eventId, name, dob, type })
-                    .then(res => { render(res); triggerToast(successMsg); resetBtn(); })
-                    .catch(err => { triggerError(err.message); resetBtn(); });
-            }
-        }
+			if (asReserve) {
+				signupAsReserve({ eventId, name, email, type })
+					.then(res => { render(res); triggerToast(successMsg); resetBtn(); })
+					.catch(err => { triggerError(err.message); resetBtn(); });
+			} else {
+				signupForEvent({ eventId, name, email, type })
+					.then(res => { render(res); triggerToast(successMsg); resetBtn(); })
+					.catch(err => { triggerError(err.message); resetBtn(); });
+			}
+		}
 
         function openAuthModal() {
             if (currentUser) {
@@ -6607,7 +6620,9 @@
                 <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">⚠️ Passwords are case sensitive</p>
             </div>
             <button onclick="processLogin()" id="loginSubmitBtn" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg">Enter Portal</button>
-            <p class="text-center text-xs font-bold text-gray-400 uppercase">New player? <a href="javascript:void(0)" onclick="swapToSignup()" class="text-rose-600 underline">Sign Up Here</a></p>
+            <div class="bg-rose-50 border-2 border-rose-100 rounded-xl py-3 px-4 text-center">
+                <p class="text-sm font-black uppercase text-black">New player? <a href="javascript:void(0)" onclick="swapToSignup()" class="text-rose-600 underline decoration-2 underline-offset-2">Sign Up Here →</a></p>
+            </div>
             <p class="text-center text-xs font-bold text-gray-400 uppercase">Forgot your password? <a href="javascript:void(0)" onclick="swapToForgotPassword()" class="text-rose-600 underline">Reset it here</a></p>
         </div>
     </div>
