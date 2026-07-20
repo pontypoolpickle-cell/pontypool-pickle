@@ -957,36 +957,38 @@
                                 <input type="date" id="matchDate" class="p-2 border rounded w-full font-bold">
                             </div>
 
-                            <!-- Winning Team Row (All Green Borders) -->
+                            <p class="text-[9px] font-bold uppercase text-gray-400 -mt-2 mb-1">The winner is worked out automatically from whichever score is higher — it doesn't matter which team you enter first.</p>
+
+                            <!-- Team 1 Row (neutral - winner is derived from the scores, not from row order) -->
                             <div class="grid grid-cols-3 gap-2 items-center">
                                 <div class="col-span-2 grid grid-cols-2 gap-2">
-                                    <select id="w1" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #16a34a !important;" 
+                                    <select id="t1p1" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #2563eb !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
-                                    <select id="w2" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #16a34a !important;" 
+                                    <select id="t1p2" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #2563eb !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
                                 </div>
-                                <input type="number" id="sW" placeholder="Score" 
-                                       style="border: 2px solid #16a34a !important; height: 42px;" 
-                                       class="rounded w-full font-black text-center bg-white" title="Winning Score">
+                                <input type="number" id="t1Score" placeholder="Score" 
+                                       style="border: 2px solid #2563eb !important; height: 42px;" 
+                                       class="rounded w-full font-black text-center bg-white" title="Team 1 Score">
                             </div>
 
                             <p class="text-center font-black text-gray-300 my-2 italic text-xs">VERSUS</p>
 
-                            <!-- Losing Team Row (All Red Borders) -->
+                            <!-- Team 2 Row (neutral - winner is derived from the scores, not from row order) -->
                             <div class="grid grid-cols-3 gap-2 items-center">
                                 <div class="col-span-2 grid grid-cols-2 gap-2">
-                                    <select id="l1" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #e11d48 !important;" 
+                                    <select id="t2p1" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #ea580c !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
-                                    <select id="l2" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #e11d48 !important;" 
+                                    <select id="t2p2" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #ea580c !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
                                 </div>
-                                <input type="number" id="sL" placeholder="Score" 
-                                       style="border: 2px solid #e11d48 !important; height: 42px;" 
-                                       class="rounded w-full font-black text-center bg-white" title="Losing Score">
+                                <input type="number" id="t2Score" placeholder="Score" 
+                                       style="border: 2px solid #ea580c !important; height: 42px;" 
+                                       class="rounded w-full font-black text-center bg-white" title="Team 2 Score">
                             </div>
                             </div>
                             </div>
@@ -3345,7 +3347,7 @@
         }
         
         function validateUniquePlayers(sel) {
-            const ids = ['w1', 'w2', 'l1', 'l2'];
+            const ids = ['t1p1', 't1p2', 't2p1', 't2p2'];
             if (!sel.value) return;
             for (let id of ids) {
                 if (id !== sel.id && document.getElementById(id).value === sel.value) {
@@ -3369,20 +3371,39 @@
             let d = { type: type }; 
             if(type === 'match') {
                 d.matchDate = document.getElementById('matchDate').value;
-                d.w1 = document.getElementById('w1').value; 
-                d.w2 = document.getElementById('w2').value; 
-                d.l1 = document.getElementById('l1').value; 
-                d.l2 = document.getElementById('l2').value;
-                d.sW = document.getElementById('sW').value; 
-                d.sL = document.getElementById('sL').value;
-                
-                const unique = new Set([d.w1, d.w2, d.l1, d.l2]);
-                if (unique.size < 4 || !d.matchDate || d.sW === "" || d.sL === "") { 
+                const t1p1 = document.getElementById('t1p1').value;
+                const t1p2 = document.getElementById('t1p2').value;
+                const t2p1 = document.getElementById('t2p1').value;
+                const t2p2 = document.getElementById('t2p2').value;
+                const t1ScoreRaw = document.getElementById('t1Score').value;
+                const t2ScoreRaw = document.getElementById('t2Score').value;
+
+                const unique = new Set([t1p1, t1p2, t2p1, t2p2]);
+                if (unique.size < 4 || !d.matchDate || t1ScoreRaw === "" || t2ScoreRaw === "") { 
                     btn.disabled = false; 
                     btn.innerText = oldTxt; 
                     // 2. Swap alert for triggerError
                     return triggerError("Invalid data or duplicate players selected."); 
                 }
+
+                const t1Score = Number(t1ScoreRaw);
+                const t2Score = Number(t2ScoreRaw);
+                if (t1Score === t2Score) {
+                    btn.disabled = false;
+                    btn.innerText = oldTxt;
+                    return triggerError("Scores cannot be tied. Please correct before saving.");
+                }
+
+                // The winner is always whichever team scored more - never the team
+                // that happens to be entered first/on top, so mixing up entry order
+                // can't flip who gains/loses rating.
+                const team1Won = t1Score > t2Score;
+                d.w1 = team1Won ? t1p1 : t2p1;
+                d.w2 = team1Won ? t1p2 : t2p2;
+                d.l1 = team1Won ? t2p1 : t1p1;
+                d.l2 = team1Won ? t2p2 : t1p2;
+                d.sW = team1Won ? t1Score : t2Score;
+                d.sL = team1Won ? t2Score : t1Score;
             }
             
             processAdminAction(d)
@@ -3391,7 +3412,7 @@
                     render(res); 
                     startAdminSession(); 
                     triggerToast("Saved!"); 
-                    if(type === 'match') {['sW', 'sL'].forEach(id => document.getElementById(id).value = ""); } 
+                    if(type === 'match') {['t1Score', 't2Score'].forEach(id => document.getElementById(id).value = ""); } 
                 })
                 .catch(e => { 
                     btn.disabled = false; 
