@@ -1021,6 +1021,12 @@
                             Copy For WhatsApp
                         </button>
                     </div>
+                    <!-- Row 4: Recalculate ELO -->
+                    <div class="mt-4 flex justify-center">
+                        <button onclick="openRecalcEloModal()" class="w-full md:w-1/2 bg-black text-white border-2 border-blue-600 py-4 rounded-xl font-black uppercase hover:bg-blue-600 transition shadow-lg">
+                            &#8635; Recalculate All ELOs
+                        </button>
+                    </div>
                 </div>
                 <!-- PENDING USER APPROVALS -->
                 <div id="pendingUsersCard" class="card p-8 border-t-8 border-yellow-500 mt-8 hidden">
@@ -3578,6 +3584,24 @@
             deleteMatchFromSheet({ date: matchToDelete.date, w1: matchToDelete.w1, w2: matchToDelete.w2, l1: matchToDelete.l1, l2: matchToDelete.l2, sW: matchToDelete.sW, sL: matchToDelete.sL })
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
+        }
+        function openRecalcEloModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            openModal('recalcEloModal');
+        }
+        function closeRecalcEloModal() {
+            closeModal('recalcEloModal');
+        }
+        function confirmRecalcElo() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+
+            const b = document.getElementById('recalcEloFinalBtn');
+            b.disabled = true; b.innerText = "Recalculating...";
+
+            recalculateAllEloFromScratch()
+                .then(() => refreshAllData())
+                .then(r => { render(r); triggerToast("All ELOs recalculated."); closeRecalcEloModal(); b.disabled = false; b.innerText = "Recalculate Now"; })
+                .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Recalculate Now"; });
         }
         function openEditNameModal() {
             openModal('editNameModal');
@@ -6756,6 +6780,30 @@
                     </button>
                     <button onclick="closeResetScrambleModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
                         Keep Playing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="recalcEloModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 700 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-blue-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-black uppercase italic mb-2">Recalculate All ELOs?</h3>
+                <p class="text-gray-600 mb-6 text-sm font-bold uppercase">This replays every recorded match in date order from each player's starting rating and rewrites every player's ELO, win/loss record, and per-match points change. Only do this after correcting a wrong match result (e.g. via delete &amp; re-add).</p>
+
+                <div class="flex flex-col gap-3">
+                    <button onclick="confirmRecalcElo()" id="recalcEloFinalBtn"
+                            style="background-color: #2563eb !important; color: #ffffff !important;"
+                            class="w-full py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 transition">
+                        Recalculate Now
+                    </button>
+                    <button onclick="closeRecalcEloModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Cancel
                     </button>
                 </div>
             </div>
