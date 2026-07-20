@@ -2061,6 +2061,35 @@
 				return getLadderStateForSession(game.session_id);
 			}
 
+			// Manually swap one player out of a single (not-yet-scored) game - e.g. someone
+			// gets tired and needs to sit out. Only that game's line-up changes; the rest of
+			// the court/round is untouched. The substitute is picked from the full player
+			// list, and once this game is scored/round ends, results/Elo are attributed to
+			// whoever is in the game row at that time - so the sub is treated exactly like
+			// any other player for history and ratings purposes.
+			async function substituteLadderGamePlayer(payload) {
+				const slot = payload.slot;
+				if (!['p1', 'p2', 'p3', 'p4'].includes(slot)) throw new Error('Invalid player slot.');
+
+				const { data: game, error: gameErr } = await supabaseClient.from('ladder_games').select('*').eq('id', payload.gameId).single();
+				if (gameErr) throw new Error(gameErr.message);
+				if (game.score_a !== null && game.score_b !== null) throw new Error('This game has already been scored - unlock/edit the score first if you need to change it.');
+
+				const newName = String(payload.newPlayerName || '').trim();
+				if (!newName) throw new Error('Please select a replacement player.');
+
+				const currentNames = [game.p1, game.p2, game.p3, game.p4].filter(n => n && n !== 'Singles');
+				if (currentNames.some(n => normalizeName(n) === normalizeName(newName))) {
+					throw new Error('That player is already in this game.');
+				}
+
+				const { error } = await supabaseClient.from('ladder_games').update({ [slot]: newName }).eq('id', payload.gameId);
+				if (error) throw new Error(error.message);
+
+				clearLeagueCache();
+				return getLadderStateForSession(game.session_id);
+			}
+
 			async function endLadderRound(sessionId) {
 				const session = await getLadderSessionRawById(sessionId);
 				if (!session) throw new Error('Ladder session not found.');
@@ -3853,6 +3882,7 @@
 
         let ladderSessionsState = [];
 		let activeLadderSessionId = null;
+		let ladderSubContext = null;
         const INVALID_LADDER_COUNTS = [1, 2, 3, 6, 7, 11];
 
         function updateLaddersAccess() {
@@ -4070,7 +4100,62 @@
                         class="w-full mt-3 py-2 border-2 ${isScored ? 'border-gray-300 text-gray-400' : 'border-black'} rounded-lg text-[10px] font-black hover:bg-black hover:text-white transition">
                     ${isScored ? 'Edit Score' : 'Confirm Score'}
                 </button>
+                ${!isScored ? `
+                <button onclick="openLadderSubModal('${g.gameId}')"
+                        class="w-full mt-2 py-1.5 text-[9px] font-black uppercase text-gray-400 hover:text-rose-600 transition">
+                    🔄 Substitute a Player
+                </button>` : ''}
             </div>`;
+        }
+
+        function openLadderSubModal(gameId) {
+            const current = ladderSessionsState.find(s => s.session.id === activeLadderSessionId);
+            const game = current && current.games.find(g => g.gameId === gameId);
+            if (!game) return triggerError("Couldn't find that game - try refreshing.");
+
+            ladderSubContext = { gameId };
+
+            const slots = [
+                { slot: 'p1', name: game.p1 },
+                { slot: 'p2', name: game.p2 },
+                { slot: 'p3', name: game.p3 },
+                { slot: 'p4', name: game.p4 }
+            ].filter(s => s.name && s.name !== 'Singles');
+
+            const slotSelect = document.getElementById('ladderSubSlotSelect');
+            slotSelect.innerHTML = slots.map(s => `<option value="${s.slot}">${s.name}</option>`).join('');
+
+            const inGameNames = new Set(slots.map(s => normalizeName(s.name)));
+            const eligible = (globalData.names || []).filter(n => !inGameNames.has(normalizeName(n)));
+            const newSelect = document.getElementById('ladderSubNewPlayerSelect');
+            newSelect.innerHTML = `<option value="">Select Player</option>` + eligible.map(n => `<option value="${n}">${n}</option>`).join('');
+
+            openModal('ladderSubModal');
+        }
+
+        function confirmLadderSub() {
+            if (!ladderSubContext) return;
+            const slot = document.getElementById('ladderSubSlotSelect').value;
+            const newPlayerName = document.getElementById('ladderSubNewPlayerSelect').value;
+            if (!newPlayerName) return triggerError("Please select a replacement player.");
+
+            const btn = document.getElementById('ladderSubConfirmBtn');
+            btn.disabled = true;
+            btn.innerText = "Substituting...";
+
+            substituteLadderGamePlayer({ gameId: ladderSubContext.gameId, slot, newPlayerName })
+                .then(res => {
+                    const idx = ladderSessionsState.findIndex(s => s.session.id === res.session.id);
+                    if (idx !== -1) ladderSessionsState[idx] = res; else ladderSessionsState.push(res);
+                    renderLadderSession();
+                    closeModal('ladderSubModal');
+                    triggerToast("Player Substituted!");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerText = "Confirm Substitution";
+                });
         }
 
         function unlockLadderGame(gameId) {
@@ -7190,6 +7275,28 @@
                         End Session
                     </button>
                     <button onclick="closeModal('ladderResetModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Keep Playing</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LADDER SUBSTITUTE PLAYER MODAL -->
+    <div id="ladderSubModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 650 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-black">
+            <div class="p-8 space-y-4">
+                <h3 class="text-2xl font-black uppercase italic">🔄 Substitute Player</h3>
+                <p class="text-xs text-gray-400 font-bold uppercase leading-relaxed">Swap a player for this game only — it will still count towards the match history and ratings.</p>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-gray-400">Player Sitting Out</label>
+                    <select id="ladderSubSlotSelect" class="input-field border-2"></select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-gray-400">Replacement Player</label>
+                    <select id="ladderSubNewPlayerSelect" class="input-field border-2"></select>
+                </div>
+                <div class="flex flex-col gap-3">
+                    <button onclick="confirmLadderSub()" id="ladderSubConfirmBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Confirm Substitution</button>
+                    <button onclick="closeModal('ladderSubModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
                 </div>
             </div>
         </div>
