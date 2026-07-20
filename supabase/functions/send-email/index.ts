@@ -576,6 +576,34 @@ serve(async (req) => {
         break;
       }
 
+      // EMAIL 20: Membership Gifted Free (admin override, to member)
+      case "membership_gifted": {
+        const perksHtml = (data.perks || []).map((p: string) =>
+          `<li style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:13px;color:#374151;">${p}</li>`
+        ).join('');
+        const intro = data.isExtension
+          ? `Great news — the club has gifted you a free month of membership! 🎁 Your expiry date has been pushed back, no payment needed.`
+          : `Great news — the club has gifted you a free month of membership! 🎁 No payment needed, just enjoy the perks below.`;
+        const body = `
+          <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.firstName},</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">${intro}</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 24px;">
+            ${data.isExtension ? '' : detailRow('Start Date', data.startDate)}
+            ${detailRow('Expires', data.endDate)}
+          </table>
+          <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">Your Member Perks</p>
+          <ul style="margin:0 0 24px;padding-left:20px;">
+            ${perksHtml}
+          </ul>
+          <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">🔔 We'll email you a reminder a week before your membership expires — no need to keep track yourself!</p>
+          </div>
+          <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">See you on the courts!<br><strong>Pontypool Pickle Club</strong></p>
+        `;
+        await sendEmail(data.email, `🎁 You've Been Gifted a Free Month of Membership! — Pontypool Pickle Club`, buildEmailHtml("Free Membership Gifted", body));
+        break;
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Unknown email type" }), { status: 400 });
     }

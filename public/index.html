@@ -2480,6 +2480,51 @@
             return refreshAllData();
         }
 
+        // Admin override: grant one month of membership completely free, bypassing the
+        // usual payment-request / bank-verification flow. Works for any approved player,
+        // whether they've never been a member, have lapsed, or are already active
+        // (in which case it simply extends their current expiry by a month).
+        const FREE_MEMBERSHIP_GIFT_WEEKS = 4;
+
+        async function giftFreeMembership(payload) {
+            const { data: users, error: fetchErr } = await supabaseClient.from('users').select('*');
+            if (fetchErr) throw new Error(fetchErr.message);
+            const userRow = (users || []).find(u => normalizeName(`${u.first_name} ${u.surname}`) === normalizeName(payload.playerName));
+            if (!userRow) throw new Error('No user account found for this player - they need to sign up first.');
+
+            const isExtension = !!(userRow.membership_end_date && userRow.membership_end_date >= todayStr());
+            let newStart, newEnd;
+            if (isExtension) {
+                newStart = userRow.membership_start_date;
+                newEnd = addWeeksToDate(userRow.membership_end_date, FREE_MEMBERSHIP_GIFT_WEEKS);
+            } else {
+                newStart = payload.startDate || todayStr();
+                newEnd = addWeeksToDate(newStart, FREE_MEMBERSHIP_GIFT_WEEKS);
+            }
+
+            await applyMembershipFields(userRow.username, {
+                membership_status: 'Active',
+                membership_duration_weeks: FREE_MEMBERSHIP_GIFT_WEEKS,
+                membership_start_date: newStart,
+                membership_end_date: newEnd,
+                membership_requested_duration_weeks: null,
+                membership_last_reminder_sent: null
+            });
+
+            if (userRow.email) {
+                sendEmail('membership_gifted', {
+                    firstName: userRow.first_name,
+                    email: userRow.email,
+                    isExtension: isExtension,
+                    startDate: newStart,
+                    endDate: newEnd,
+                    perks: MEMBERSHIP_PERKS_EMAIL
+                });
+            }
+
+            return refreshAllData();
+        }
+
         // Near-real-time refresh: re-pulls the logged-in member's own row so activations /
         // expiries made elsewhere (e.g. by an admin) show up without needing to log out.
         async function refreshCurrentUserMembership() {
@@ -4489,6 +4534,7 @@
         let membershipActivateTarget = null;
         let membershipDeclineTarget = null;
         let membershipAdjustTarget = null;
+        let membershipGiftTarget = null;
 
         function openMembershipModal() {
             if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
@@ -4620,12 +4666,17 @@
 
         function renderMembershipAllPlayersTab() {
             const players = [...globalData.standings].sort((a,b) => a.name.localeCompare(b.name));
+            const memberNames = new Set((globalData.members || []).map(m => normalizeName(m.name)));
             return `
             <input type="text" id="membershipAllPlayersSearch" oninput="filterMembershipAllPlayers()" placeholder="Search player..." class="input-field border-2 mb-2">
             <div id="membershipAllPlayersList" class="overflow-y-auto space-y-2 divide-y" style="max-height: 340px;">
                 ${players.map(p => `
                     <div class="flex justify-between items-center py-3 gap-3 membership-all-player-row" data-name="${p.name.toLowerCase()}">
                         <span class="font-bold text-sm uppercase flex-grow">${p.name} ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}</span>
+                        ${memberNames.has(normalizeName(p.name)) ? `
+                        <button onclick='openMembershipGiftModal(${JSON.stringify({ name: p.name, endDate: p.membershipEndDate })})'
+                                class="btn-gold px-3 py-2 rounded-full text-[9px] font-black uppercase flex-shrink-0" title="Give 1 month of membership for free">🎁 Free Month</button>
+                        ` : ''}
                         <button onclick="confirmDeleteUserAndPlayer('${p.name}')"
                                 class="p-2 text-gray-300 hover:text-rose-600 transition" title="Remove player and user account">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4727,6 +4778,35 @@
                 })
                 .catch(err => triggerError(err.message))
                 .finally(() => { btn.disabled = false; btn.innerText = "Save Changes"; });
+        }
+
+        function openMembershipGiftModal(target) {
+            membershipGiftTarget = target;
+            document.getElementById('membershipGiftName').innerText = target.name;
+            const isExtension = !!(target.endDate && target.endDate >= todayStr());
+            const preview = document.getElementById('membershipGiftPreview');
+            if (isExtension) {
+                preview.innerText = `This member is still active — gifting a free month will extend their expiry from ${target.endDate} to ${addWeeksToDate(target.endDate, FREE_MEMBERSHIP_GIFT_WEEKS)}.`;
+            } else {
+                preview.innerText = `Membership will run from today (${todayStr()}) to ${addWeeksToDate(todayStr(), FREE_MEMBERSHIP_GIFT_WEEKS)} — completely free, no payment required.`;
+            }
+            openModal('membershipGiftModal');
+        }
+
+        function executeGiftMembership() {
+            if (!membershipGiftTarget) return;
+            const btn = document.getElementById('membershipGiftBtn');
+            btn.disabled = true; btn.innerText = "Gifting...";
+            giftFreeMembership({ playerName: membershipGiftTarget.name })
+                .then(res => {
+                    globalData = res;
+                    closeModal('membershipGiftModal');
+                    renderMembershipAdminModal();
+                    renderMembershipPage();
+                    triggerToast("Free Month Gifted!");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "🎁 Confirm Free Month"; });
         }
 
         // --- MEMBERSHIP PAGE (public) ---
@@ -6806,6 +6886,22 @@
                 <div class="flex flex-col gap-3">
                     <button onclick="executeAdjustMembership()" id="membershipAdjustBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">Save Changes</button>
                     <button onclick="closeModal('membershipAdjustModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MEMBERSHIP GIFT FREE MONTH MODAL (admin) -->
+    <div id="membershipGiftModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 300 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8" style="border-color: var(--ponty-gold) !important;">
+            <div class="p-8 space-y-4">
+                <h3 class="text-2xl font-black uppercase italic">🎁 Give Free Month</h3>
+                <p class="text-sm font-bold" id="membershipGiftName"></p>
+                <p class="text-xs font-bold text-gray-500" id="membershipGiftPreview"></p>
+                <p class="text-[10px] text-gray-400 font-bold uppercase">No payment reference required — this is a manual admin override.</p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeGiftMembership()" id="membershipGiftBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">🎁 Confirm Free Month</button>
+                    <button onclick="closeModal('membershipGiftModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">Cancel</button>
                 </div>
             </div>
         </div>
