@@ -3038,7 +3038,8 @@
         };
                 let activeScramblePlayers = [];
 
-        function showTab(id) {
+        function showTab(id, options) {
+            const scroll = !options || options.scroll !== false;
             currentTabId = id; 
             document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
@@ -3055,7 +3056,18 @@
                 if(id === 'ladders-page') { updateLaddersAccess(); if (currentUser) renderLadderSession(); }
 				if(id === 'rating-page') updateRatingsAccess();
             }
-            window.scrollTo({top: 0, behavior: 'smooth'});
+            // render() calls showTab(currentTabId, { scroll: false }) purely to
+            // re-apply visibility/access state for whatever tab is already open -
+            // that happens after every background data refresh (e.g. the second,
+            // network fetch in window.onload that follows an instant render from
+            // cache) and after most admin/user actions. Without suppressing the
+            // scroll there, each of those would silently yank the page back to
+            // the top while someone is mid-scroll, for no visible reason. Explicit
+            // navigation (nav links, "return to home" after a form submit, etc.)
+            // still scrolls to top as normal.
+            if (scroll) {
+                window.scrollTo({top: 0, behavior: 'smooth'});
+            }
         }
 		function updateRatingsAccess() {
 			const restricted = document.getElementById('ratingsRestricted');
@@ -3108,8 +3120,9 @@
             globalData = data;
             document.getElementById('loading').classList.add('hidden');
             
-            // 1. Show the current tab
-            showTab(currentTabId);
+            // 1. Show the current tab (re-applying visibility/access state only -
+            // this isn't a real navigation, so don't scroll the page around)
+            showTab(currentTabId, { scroll: false });
 
             // --- 2. LIVE SCRAMBLE SWITCHER (ADD THIS SECTION) ---
             const step1 = document.getElementById('scrambleStep1');
