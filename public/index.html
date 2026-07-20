@@ -957,36 +957,38 @@
                                 <input type="date" id="matchDate" class="p-2 border rounded w-full font-bold">
                             </div>
 
-                            <!-- Winning Team Row (All Green Borders) -->
+                            <p class="text-[9px] font-bold uppercase text-gray-400 -mt-2 mb-1">The winner is worked out automatically from whichever score is higher — it doesn't matter which team you enter first.</p>
+
+                            <!-- Team 1 Row (neutral - winner is derived from the scores, not from row order) -->
                             <div class="grid grid-cols-3 gap-2 items-center">
                                 <div class="col-span-2 grid grid-cols-2 gap-2">
-                                    <select id="w1" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #16a34a !important;" 
+                                    <select id="t1p1" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #2563eb !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
-                                    <select id="w2" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #16a34a !important;" 
+                                    <select id="t1p2" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #2563eb !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
                                 </div>
-                                <input type="number" id="sW" placeholder="Score" 
-                                       style="border: 2px solid #16a34a !important; height: 42px;" 
-                                       class="rounded w-full font-black text-center bg-white" title="Winning Score">
+                                <input type="number" id="t1Score" placeholder="Score" 
+                                       style="border: 2px solid #2563eb !important; height: 42px;" 
+                                       class="rounded w-full font-black text-center bg-white" title="Team 1 Score">
                             </div>
 
                             <p class="text-center font-black text-gray-300 my-2 italic text-xs">VERSUS</p>
 
-                            <!-- Losing Team Row (All Red Borders) -->
+                            <!-- Team 2 Row (neutral - winner is derived from the scores, not from row order) -->
                             <div class="grid grid-cols-3 gap-2 items-center">
                                 <div class="col-span-2 grid grid-cols-2 gap-2">
-                                    <select id="l1" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #e11d48 !important;" 
+                                    <select id="t2p1" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #ea580c !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
-                                    <select id="l2" onchange="validateUniquePlayers(this)" 
-                                            style="border: 2px solid #e11d48 !important;" 
+                                    <select id="t2p2" onchange="validateUniquePlayers(this)" 
+                                            style="border: 2px solid #ea580c !important;" 
                                             class="player-select match-entry-select p-2 rounded bg-white font-bold"></select>
                                 </div>
-                                <input type="number" id="sL" placeholder="Score" 
-                                       style="border: 2px solid #e11d48 !important; height: 42px;" 
-                                       class="rounded w-full font-black text-center bg-white" title="Losing Score">
+                                <input type="number" id="t2Score" placeholder="Score" 
+                                       style="border: 2px solid #ea580c !important; height: 42px;" 
+                                       class="rounded w-full font-black text-center bg-white" title="Team 2 Score">
                             </div>
                             </div>
                             </div>
@@ -1017,6 +1019,12 @@
                                 <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.316 1.592 5.448 0 9.886-4.438 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.44-9.89 9.886 0 2.125.593 3.858 1.834 5.355l-1.01 3.689 3.742-1.001z"/>
                             </svg>
                             Copy For WhatsApp
+                        </button>
+                    </div>
+                    <!-- Row 4: Recalculate ELO -->
+                    <div class="mt-4 flex justify-center">
+                        <button onclick="openRecalcEloModal()" class="w-full md:w-1/2 bg-black text-white border-2 border-blue-600 py-4 rounded-xl font-black uppercase hover:bg-blue-600 transition shadow-lg">
+                            &#8635; Recalculate All ELOs
                         </button>
                     </div>
                 </div>
@@ -3345,7 +3353,7 @@
         }
         
         function validateUniquePlayers(sel) {
-            const ids = ['w1', 'w2', 'l1', 'l2'];
+            const ids = ['t1p1', 't1p2', 't2p1', 't2p2'];
             if (!sel.value) return;
             for (let id of ids) {
                 if (id !== sel.id && document.getElementById(id).value === sel.value) {
@@ -3369,20 +3377,39 @@
             let d = { type: type }; 
             if(type === 'match') {
                 d.matchDate = document.getElementById('matchDate').value;
-                d.w1 = document.getElementById('w1').value; 
-                d.w2 = document.getElementById('w2').value; 
-                d.l1 = document.getElementById('l1').value; 
-                d.l2 = document.getElementById('l2').value;
-                d.sW = document.getElementById('sW').value; 
-                d.sL = document.getElementById('sL').value;
-                
-                const unique = new Set([d.w1, d.w2, d.l1, d.l2]);
-                if (unique.size < 4 || !d.matchDate || d.sW === "" || d.sL === "") { 
+                const t1p1 = document.getElementById('t1p1').value;
+                const t1p2 = document.getElementById('t1p2').value;
+                const t2p1 = document.getElementById('t2p1').value;
+                const t2p2 = document.getElementById('t2p2').value;
+                const t1ScoreRaw = document.getElementById('t1Score').value;
+                const t2ScoreRaw = document.getElementById('t2Score').value;
+
+                const unique = new Set([t1p1, t1p2, t2p1, t2p2]);
+                if (unique.size < 4 || !d.matchDate || t1ScoreRaw === "" || t2ScoreRaw === "") { 
                     btn.disabled = false; 
                     btn.innerText = oldTxt; 
                     // 2. Swap alert for triggerError
                     return triggerError("Invalid data or duplicate players selected."); 
                 }
+
+                const t1Score = Number(t1ScoreRaw);
+                const t2Score = Number(t2ScoreRaw);
+                if (t1Score === t2Score) {
+                    btn.disabled = false;
+                    btn.innerText = oldTxt;
+                    return triggerError("Scores cannot be tied. Please correct before saving.");
+                }
+
+                // The winner is always whichever team scored more - never the team
+                // that happens to be entered first/on top, so mixing up entry order
+                // can't flip who gains/loses rating.
+                const team1Won = t1Score > t2Score;
+                d.w1 = team1Won ? t1p1 : t2p1;
+                d.w2 = team1Won ? t1p2 : t2p2;
+                d.l1 = team1Won ? t2p1 : t1p1;
+                d.l2 = team1Won ? t2p2 : t1p2;
+                d.sW = team1Won ? t1Score : t2Score;
+                d.sL = team1Won ? t2Score : t1Score;
             }
             
             processAdminAction(d)
@@ -3391,7 +3418,7 @@
                     render(res); 
                     startAdminSession(); 
                     triggerToast("Saved!"); 
-                    if(type === 'match') {['sW', 'sL'].forEach(id => document.getElementById(id).value = ""); } 
+                    if(type === 'match') {['t1Score', 't2Score'].forEach(id => document.getElementById(id).value = ""); } 
                 })
                 .catch(e => { 
                     btn.disabled = false; 
@@ -3557,6 +3584,24 @@
             deleteMatchFromSheet({ date: matchToDelete.date, w1: matchToDelete.w1, w2: matchToDelete.w2, l1: matchToDelete.l1, l2: matchToDelete.l2, sW: matchToDelete.sW, sL: matchToDelete.sL })
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
+        }
+        function openRecalcEloModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            openModal('recalcEloModal');
+        }
+        function closeRecalcEloModal() {
+            closeModal('recalcEloModal');
+        }
+        function confirmRecalcElo() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+
+            const b = document.getElementById('recalcEloFinalBtn');
+            b.disabled = true; b.innerText = "Recalculating...";
+
+            recalculateAllEloFromScratch()
+                .then(() => refreshAllData())
+                .then(r => { render(r); triggerToast("All ELOs recalculated."); closeRecalcEloModal(); b.disabled = false; b.innerText = "Recalculate Now"; })
+                .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Recalculate Now"; });
         }
         function openEditNameModal() {
             openModal('editNameModal');
@@ -6735,6 +6780,30 @@
                     </button>
                     <button onclick="closeResetScrambleModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
                         Keep Playing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="recalcEloModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 700 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-blue-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-black uppercase italic mb-2">Recalculate All ELOs?</h3>
+                <p class="text-gray-600 mb-6 text-sm font-bold uppercase">This replays every recorded match in date order from each player's starting rating and rewrites every player's ELO, win/loss record, and per-match points change. Only do this after correcting a wrong match result (e.g. via delete &amp; re-add).</p>
+
+                <div class="flex flex-col gap-3">
+                    <button onclick="confirmRecalcElo()" id="recalcEloFinalBtn"
+                            style="background-color: #2563eb !important; color: #ffffff !important;"
+                            class="w-full py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 transition">
+                        Recalculate Now
+                    </button>
+                    <button onclick="closeRecalcEloModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Cancel
                     </button>
                 </div>
             </div>
