@@ -1806,13 +1806,31 @@
 			});
 
             for (const m of (matches || [])) {
-                const winners = [m.w1, m.w2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
-                const losers = [m.l1, m.l2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
+                // Older matches may have been saved with the winner/loser labels
+                // swapped relative to the real scores (whichever team's score was
+                // entered first/on a side used to be trusted blindly as the
+                // winner - see the fixed "Record Match Result" form). Detect that
+                // here by comparing the two stored scores, and if the "losing"
+                // side's score is actually higher, swap the labels back before
+                // recalculating - regardless of which side each score was
+                // originally entered on - and persist the correction so the match
+                // history and every future recalculation reflect the real result.
+                let w1 = m.w1, w2 = m.w2, l1 = m.l1, l2 = m.l2;
+                let scoreW = Number(m.score_w || 0), scoreL = Number(m.score_l || 0);
+                const wasSwapped = scoreL > scoreW;
+                if (wasSwapped) {
+                    [w1, l1] = [l1, w1];
+                    [w2, l2] = [l2, w2];
+                    [scoreW, scoreL] = [scoreL, scoreW];
+                }
+
+                const winners = [w1, w2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
+                const losers = [l1, l2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
                 if (!winners.length || !losers.length) continue;
                 const winnerAvg = winners.reduce((s, p) => s + p.elo, 0) / winners.length;
                 const loserAvg = losers.reduce((s, p) => s + p.elo, 0) / losers.length;
                 const isProv = [...winners, ...losers].some(p => p.totalGames < 10);
-                const changes = calculateElo(winnerAvg, loserAvg, m.score_w, m.score_l, isProv);
+                const changes = calculateElo(winnerAvg, loserAvg, scoreW, scoreL, isProv);
 
                 winners.forEach(p => {
                     p.elo += changes.winnerChange;
@@ -1829,12 +1847,21 @@
                     p.lastMatchDate = m.match_date;
                 });
 
-                await supabaseClient.from('matches').update({
+                const matchUpdate = {
                     change_w1: winners[0] ? changes.winnerChange : 0,
                     change_w2: winners[1] ? changes.winnerChange : 0,
                     change_l1: losers[0] ? changes.loserChange : 0,
                     change_l2: losers[1] ? changes.loserChange : 0
-                }).eq('id', m.id);
+                };
+                if (wasSwapped) {
+                    matchUpdate.w1 = w1;
+                    matchUpdate.w2 = w2 || 'Singles';
+                    matchUpdate.l1 = l1;
+                    matchUpdate.l2 = l2 || 'Singles';
+                    matchUpdate.score_w = scoreW;
+                    matchUpdate.score_l = scoreL;
+                }
+                await supabaseClient.from('matches').update(matchUpdate).eq('id', m.id);
             }
 
             await Promise.all(Array.from(stats.values()).map(updatePlayerRecord));
@@ -6794,7 +6821,7 @@
                     </svg>
                 </div>
                 <h3 class="text-2xl font-black uppercase italic mb-2">Recalculate All ELOs?</h3>
-                <p class="text-gray-600 mb-6 text-sm font-bold uppercase">This replays every recorded match in date order from each player's starting rating and rewrites every player's ELO, win/loss record, and per-match points change. Only do this after correcting a wrong match result (e.g. via delete &amp; re-add).</p>
+                <p class="text-gray-600 mb-6 text-sm font-bold uppercase">This replays every recorded match in date order from each player's starting rating. It automatically detects and corrects any match where the winner/loser was mislabelled (regardless of which side the scores were entered on), and rewrites every player's ELO, win/loss record, and per-match points change to match.</p>
 
                 <div class="flex flex-col gap-3">
                     <button onclick="confirmRecalcElo()" id="recalcEloFinalBtn"
