@@ -211,6 +211,8 @@
 
         <!-- WELCOME PAGE -->
         <div id="welcome-page" class="tab-content hidden space-y-12">
+            <!-- SPECIAL EVENT BANNER (tournaments) - populated/shown by renderSpecialEventBanner() -->
+            <div id="specialEventBanner" class="hidden px-4"></div>
             <div class="welcome-hero py-20 px-8 text-center text-white shadow-2xl">
                 <h2 class="text-6xl font-black mb-4 italic tracking-tighter">Welcome to the Club</h2>
                 <p class="text-xl text-gray-300 max-w-3xl mx-auto uppercase font-bold tracking-widest">Representing Pontypool.</p>
@@ -1230,6 +1232,28 @@
 			created_at timestamptz default now()
         );
 
+        -- Special Events (tournaments) - flags an event to show as a countdown
+        -- banner on the homepage. The PDF link is fully admin-managed from the
+        -- Create/Edit Event form (either pasted as a URL, or uploaded as a file,
+        -- which is stored in the "event-documents" Storage bucket below) - no code
+        -- changes are ever needed to add/change/remove a special event or its PDF.
+        alter table events add column if not exists is_special_event boolean default false;
+        alter table events add column if not exists special_event_info_url text;
+
+        -- One-time setup for uploading special event info PDFs directly from the
+        -- Admin panel (Supabase Dashboard -> Storage -> New bucket):
+        --   Name: event-documents
+        --   Public bucket: ON (so the PDF link works for signed-out visitors too)
+        -- No SQL is required for this - it's a Dashboard action - but if you'd
+        -- rather script it (run once; policy names must be unique per table so
+        -- drop them first if re-running this block), the equivalent is:
+        --   insert into storage.buckets (id, name, public) values ('event-documents', 'event-documents', true)
+        --   on conflict (id) do nothing;
+        --   create policy "Public read event-documents" on storage.objects
+        --     for select using (bucket_id = 'event-documents');
+        --   create policy "Anyone can upload event-documents" on storage.objects
+        --     for insert with check (bucket_id = 'event-documents');
+
         -- Signups table
         create table signups (
           id uuid primary key default gen_random_uuid(),
@@ -1587,7 +1611,9 @@
                     !!e.newcomers_only,
 					!!e.under18_only,
 					!!e.female_only,
-					!!e.all_ages
+					!!e.all_ages,
+					!!e.is_special_event,
+					e.special_event_info_url || ''
 					]),
                 signups: signups.map(s => [
                     s.event_id,
@@ -2255,6 +2281,26 @@
 				return sessionId;
 			}
 
+        // Storage bucket for admin-uploaded Special Event info PDFs (see the setup
+        // comment near the `events` table above). Uploading here - instead of
+        // linking to a code-hosted file - is what lets admins add/replace/remove a
+        // tournament's info PDF entirely from the Create/Edit Event form, with no
+        // code changes needed for each new event.
+        const SPECIAL_EVENT_BUCKET = 'event-documents';
+
+        async function uploadSpecialEventPdf(file) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `special-events/${Date.now()}-${safeName}`;
+            const { error } = await supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).upload(path, file, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: file.type || 'application/pdf'
+            });
+            if (error) throw new Error(`Could not upload PDF (${error.message}). Make sure the "${SPECIAL_EVENT_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
+            const { data: publicUrlData } = supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).getPublicUrl(path);
+            return publicUrlData.publicUrl;
+        }
+
         async function addEvent(data) {
             const { error } = await supabaseClient.from('events').insert({
                 title: data.title,
@@ -2270,7 +2316,9 @@
                 non_member_price: Number(data.nonMemberPrice || 0),
 				under18_only: !!data.under18Only,
 				female_only: !!data.femaleOnly,
-				all_ages: !!data.allAges
+				all_ages: !!data.allAges,
+				is_special_event: !!data.isSpecialEvent,
+				special_event_info_url: data.isSpecialEvent ? (data.specialEventInfoUrl || null) : null
             });
             if (error) throw new Error(error.message);
             return refreshAllData();
@@ -2290,7 +2338,9 @@
 				non_member_price: Number(data.nonMemberPrice || 0),
 				under18_only: !!data.under18Only,
 				female_only: !!data.femaleOnly,
-				all_ages: !!data.allAges
+				all_ages: !!data.allAges,
+				is_special_event: !!data.isSpecialEvent,
+				special_event_info_url: data.isSpecialEvent ? (data.specialEventInfoUrl || null) : null
 			}).eq('id', eventId);
 			if (error) throw new Error(error.message);
 
@@ -3210,6 +3260,7 @@
             renderAdminHistory();
             renderEvents();
             renderMembershipPage();
+            renderSpecialEventBanner();
 
             // Populate location dropdown
             const locationSelect = document.getElementById('evtLocation');
@@ -4550,6 +4601,10 @@
 				document.getElementById('evtUnder18Only').checked = !!event[14];
 				document.getElementById('evtFemaleOnly').checked = !!event[15];
 				document.getElementById('evtAllAges').checked = !!event[16];
+				document.getElementById('evtSpecialEvent').checked = !!event[17];
+				document.getElementById('evtSpecialEventUrl').value = event[18] || "";
+				document.getElementById('evtSpecialEventFile').value = "";
+				toggleSpecialEventFields();
 				document.getElementById('evtMemberPrice').value = event[11] ?? "";
 				document.getElementById('evtNonMemberPrice').value = event[12] ?? "";
 				document.getElementById('evtPriceFields').style.display = 'grid';
@@ -4569,6 +4624,10 @@
 				document.getElementById('evtUnder18Only').checked = false;
 				document.getElementById('evtFemaleOnly').checked = false;
 				document.getElementById('evtAllAges').checked = false;
+				document.getElementById('evtSpecialEvent').checked = false;
+				document.getElementById('evtSpecialEventUrl').value = "";
+				document.getElementById('evtSpecialEventFile').value = "";
+				toggleSpecialEventFields();
 				document.getElementById('evtMemberPrice').value = "";
 				document.getElementById('evtNonMemberPrice').value = "";
 				document.getElementById('evtPriceFields').style.display = 'grid';
@@ -4577,6 +4636,11 @@
 
         function toggleNewcomersOnlyFields() {
             // Price fields always visible now
+        }
+
+        function toggleSpecialEventFields() {
+            const checked = document.getElementById('evtSpecialEvent').checked;
+            document.getElementById('evtSpecialEventFields').classList.toggle('hidden', !checked);
         }
 
         function toggleUnder18Fields() {
@@ -4604,7 +4668,7 @@
 			editingEventId = null;
 		}
 
-        function submitNewEvent() {
+        async function submitNewEvent() {
 			if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
 
 			const data = {
@@ -4619,6 +4683,8 @@
 				under18Only: document.getElementById('evtUnder18Only').checked,
 				femaleOnly: document.getElementById('evtFemaleOnly').checked,
 				allAges: document.getElementById('evtAllAges').checked,
+				isSpecialEvent: document.getElementById('evtSpecialEvent').checked,
+				specialEventInfoUrl: document.getElementById('evtSpecialEventUrl').value.trim(),
 				memberPrice: document.getElementById('evtMemberPrice').value,
 				nonMemberPrice: document.getElementById('evtNonMemberPrice').value,
 			};
@@ -4635,20 +4701,26 @@
 			const isEditing = !!editingEventId;
 			btn.disabled = true; btn.innerText = isEditing ? "Saving..." : "Creating...";
 
-			const savePromise = isEditing ? updateEvent(editingEventId, data) : addEvent(data);
+			try {
+				// An uploaded PDF file always takes priority over a pasted link.
+				const fileInput = document.getElementById('evtSpecialEventFile');
+				const file = fileInput && fileInput.files && fileInput.files[0];
+				if (data.isSpecialEvent && file) {
+					btn.innerText = "Uploading PDF...";
+					data.specialEventInfoUrl = await uploadSpecialEventPdf(file);
+					btn.innerText = isEditing ? "Saving..." : "Creating...";
+				}
 
-			savePromise
-				.then(res => {
-					render(res);
-					triggerToast(isEditing ? "Event Updated!" : "Event Created!");
-					editingEventId = null;
-					closeEventModal();
-					btn.disabled = false; btn.innerText = isEditing ? "Save Changes" : "Create Event";
-				})
-				.catch(err => {
-					triggerError(err.message);
-					btn.disabled = false; btn.innerText = isEditing ? "Save Changes" : "Create Event";
-				});
+				const res = isEditing ? await updateEvent(editingEventId, data) : await addEvent(data);
+				render(res);
+				triggerToast(isEditing ? "Event Updated!" : "Event Created!");
+				editingEventId = null;
+				closeEventModal();
+				btn.disabled = false; btn.innerText = isEditing ? "Save Changes" : "Create Event";
+			} catch (err) {
+				triggerError(err.message);
+				btn.disabled = false; btn.innerText = isEditing ? "Save Changes" : "Create Event";
+			}
 		}
 
         // --- MEMBERSHIP MODAL FUNCTIONS (admin) ---
@@ -5139,6 +5211,106 @@
 			return { ...status_, places };
 		}
 
+        // --- SPECIAL EVENT (TOURNAMENT) HOMEPAGE BANNER ---
+        let specialEventCountdownInterval = null;
+
+        // Picks the soonest-starting, non-cancelled event flagged as a Special
+        // Event that hasn't started yet. If admins flag more than one at a time,
+        // only the nearest one is shown so the banner never has to pick between
+        // two "now" countdowns.
+        function getActiveSpecialEvent() {
+            const events = globalData.events || [];
+            const now = serverNow();
+            return events
+                .filter(e => (e[7] || '').toString().trim() !== 'Cancelled')
+                .filter(e => !!e[17])
+                .map(e => ({ event: e, start: getEventStartDateTime(e) }))
+                .filter(e => e.start && e.start > now)
+                .sort((a, b) => a.start - b.start)
+                .map(e => e.event)[0] || null;
+        }
+
+        function renderSpecialEventBanner() {
+            const banner = document.getElementById('specialEventBanner');
+            if (!banner) return;
+
+            if (specialEventCountdownInterval) {
+                clearInterval(specialEventCountdownInterval);
+                specialEventCountdownInterval = null;
+            }
+
+            const event = getActiveSpecialEvent();
+            if (!event) {
+                banner.classList.add('hidden');
+                banner.innerHTML = '';
+                return;
+            }
+
+            const eventId = event[0];
+            const title = event[1];
+            const infoUrl = event[18];
+
+            const infoBtnHtml = infoUrl ? `
+                <a href="${infoUrl}" target="_blank" rel="noopener noreferrer"
+                   class="inline-block w-full md:w-auto text-center bg-white text-black px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg hover:bg-gray-100 transition">
+                   Click Here For More Information
+                </a>` : '';
+
+            banner.innerHTML = `
+                <div class="rounded-2xl shadow-2xl p-6 md:p-10 text-center text-white space-y-4" style="background: linear-gradient(135deg, #000000 0%, #3f0a14 55%, #e11d48 160%); border: 2px solid #e11d48;">
+                    <p class="text-[11px] font-black uppercase tracking-[0.35em] text-rose-400">🏆 Special Event</p>
+                    <h3 class="text-2xl md:text-4xl font-black italic uppercase tracking-tight">${title}</h3>
+                    <p class="text-sm md:text-base font-bold text-gray-200 max-w-2xl mx-auto">To sign up, go to the event on the <button onclick="showTab('events-page')" class="underline decoration-2 text-rose-400 hover:text-rose-300">Events page</button> and click Sign Up.</p>
+                    <div id="specialEventCountdown" class="flex items-center justify-center gap-3 md:gap-6 py-2"></div>
+                    <div class="flex flex-col md:flex-row items-center justify-center gap-3 pt-2 max-w-md mx-auto">
+                        <button onclick="showTab('events-page'); setTimeout(function(){ openCalendarEventModal('${eventId}'); }, 50)"
+                            class="btn-red w-full md:w-auto px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">
+                            View Event &amp; Sign Up
+                        </button>
+                        ${infoBtnHtml}
+                    </div>
+                </div>`;
+            banner.classList.remove('hidden');
+
+            updateSpecialEventCountdown(event);
+            specialEventCountdownInterval = setInterval(() => updateSpecialEventCountdown(event), 1000);
+        }
+
+        function updateSpecialEventCountdown(event) {
+            const el = document.getElementById('specialEventCountdown');
+            if (!el) {
+                if (specialEventCountdownInterval) { clearInterval(specialEventCountdownInterval); specialEventCountdownInterval = null; }
+                return;
+            }
+
+            const target = getEventStartDateTime(event);
+            const diffMs = target ? target.getTime() - serverNow().getTime() : 0;
+
+            if (!target || diffMs <= 0) {
+                el.innerHTML = `<span class="text-lg font-black uppercase text-rose-400">This event is starting now!</span>`;
+                if (specialEventCountdownInterval) { clearInterval(specialEventCountdownInterval); specialEventCountdownInterval = null; }
+                // The event that just started may no longer be "active" for the
+                // banner (or another special event may now be next up) - re-render.
+                renderSpecialEventBanner();
+                return;
+            }
+
+            const totalSeconds = Math.floor(diffMs / 1000);
+            const days = Math.floor(totalSeconds / 86400);
+            const hours = Math.floor((totalSeconds % 86400) / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+
+            const unit = (value, label) => `
+                <div class="flex flex-col items-center">
+                    <span class="text-2xl md:text-3xl font-black" style="font-variant-numeric: tabular-nums;">${String(value).padStart(2, '0')}</span>
+                    <span class="text-[9px] font-bold uppercase tracking-widest text-gray-300">${label}</span>
+                </div>`;
+            const sep = `<span class="text-2xl font-black text-rose-400">:</span>`;
+
+            el.innerHTML = unit(days, 'Days') + sep + unit(hours, 'Hrs') + sep + unit(minutes, 'Min') + sep + unit(seconds, 'Sec');
+        }
+
         function renderEventsList() {
             renderEventFilterChips();
 
@@ -5180,6 +5352,10 @@
                                 <p class="font-black uppercase text-sm truncate flex-1 min-w-0">${event[1]}</p>
                             </div>
                             <div class="flex items-center gap-1.5 flex-wrap">
+                                ${event[17] ? `
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide bg-amber-500 text-white">
+                                    🏆 Special Event
+                                </span>` : ''}
                                 <span style="${quickStatus.style}" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
                                     ${quickStatus.label}
                                 </span>
@@ -5443,6 +5619,7 @@
                 <div class="bg-black text-white p-5 flex items-start justify-between gap-4">
                     <div class="flex-1">
                         <div class="flex flex-wrap gap-2 mb-2">
+                            ${event[17] ? `<span class="bg-amber-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">🏆 Special Event</span>` : ''}
                             ${under18Only ? `<span class="bg-blue-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👦 Junior</span>` : ''}
 							${allAges ? `<span class="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👨‍👧 All Ages</span>` : ''}
 							${femaleOnly ? `<span class="bg-purple-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">♀️ Women Only</span>` : ''}
@@ -5503,6 +5680,9 @@
                     ` : ''}
                     ${!under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] === 'Paid' ? `
                         <span class="w-full inline-block text-center bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest">💳 Paid</span>
+                    ` : ''}
+                    ${event[17] && event[18] ? `
+                        <a href="${event[18]}" target="_blank" rel="noopener noreferrer" class="w-full inline-block text-center border-2 border-amber-500 text-amber-600 py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-amber-500 hover:text-white transition">🏆 More Info (PDF)</a>
                     ` : ''}
                 </div>
 
@@ -6938,6 +7118,19 @@
 					<input type="checkbox" id="evtFemaleOnly" class="w-5 h-5 accent-purple-600">
 					<span class="text-xs font-bold text-left uppercase text-purple-700">Female Only Event</span>
 				</label>
+
+				<label class="flex items-center gap-3 bg-amber-50 p-4 rounded-xl mt-2 cursor-pointer border border-amber-200">
+					<input type="checkbox" id="evtSpecialEvent" onchange="toggleSpecialEventFields()" class="w-5 h-5 accent-amber-600">
+					<span class="text-xs font-bold text-left uppercase text-amber-700">🏆 Special Event (Tournament)</span>
+					<span class="text-[9px] font-bold text-amber-500 normal-case block">Shows a countdown banner on the homepage</span>
+				</label>
+				<div id="evtSpecialEventFields" class="hidden space-y-2 bg-amber-50 border border-amber-200 rounded-xl p-4 mt-1">
+					<label class="block text-[10px] font-black uppercase text-amber-600 tracking-widest">Info PDF Link (optional)</label>
+					<input type="url" id="evtSpecialEventUrl" placeholder="https://... (link to an existing PDF)" class="input-field border-2">
+					<label class="block text-[10px] font-black uppercase text-amber-600 tracking-widest">— or — Upload a PDF</label>
+					<input type="file" id="evtSpecialEventFile" accept="application/pdf" class="input-field border-2">
+					<p class="text-[9px] text-gray-500 normal-case">If you upload a file it's used instead of the link above. Leave both blank to hide the "more information" button on the banner.</p>
+				</div>
 				
                 <div id="evtPriceFields" class="grid grid-cols-2 gap-2 mt-2 items-end">
                     <div class="space-y-1">
