@@ -2682,16 +2682,21 @@
 		}
 
         async function cancelSignup(payload) {
-			let removedSignupEmail = null;
-			if (payload.removedByAdmin) {
-				const { data: removedSignup } = await supabaseClient
-					.from('signups')
-					.select('email')
-					.eq('event_id', payload.eventId)
-					.eq('player_name', payload.name)
-					.limit(1);
-				if (removedSignup && removedSignup.length > 0) removedSignupEmail = removedSignup[0].email;
-			}
+			// Fetch the signup being removed BEFORE deleting it, so we know both its
+			// email (for the admin_removed notice) and its status. We need the status
+			// regardless of who cancelled: a real seat only opens up - and a reserve
+			// should only be promoted - if the person leaving was actually "Confirmed".
+			// Previously the promotion step only ran when `removedByAdmin` was true, so
+			// a member cancelling their own confirmed spot left it looking taken while
+			// a waiting reserve never got promoted or notified.
+			const { data: removedRows, error: removedFetchErr } = await supabaseClient
+				.from('signups')
+				.select('email, status')
+				.eq('event_id', payload.eventId)
+				.eq('player_name', payload.name)
+				.limit(1);
+			if (removedFetchErr) throw new Error(removedFetchErr.message);
+			const removedSignup = (removedRows && removedRows.length > 0) ? removedRows[0] : null;
 
 			const { error } = await supabaseClient
 				.from('signups')
@@ -2700,19 +2705,21 @@
 				.eq('player_name', payload.name);
 			if (error) throw new Error(error.message);
 
-			if (payload.removedByAdmin) {
-				if (removedSignupEmail && removedSignupEmail.indexOf('@') !== -1) {
-					const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-					sendEmail('admin_removed', {
-						name: payload.name,
-						email: removedSignupEmail,
-						eventTitle: eventRow ? eventRow[1] : '',
-						eventDate: eventRow ? eventRow[2] : '',
-						eventTime: eventRow ? eventRow[3] : '',
-						eventLocation: eventRow ? eventRow[8] : ''
-					});
-				}
+			if (payload.removedByAdmin && removedSignup && removedSignup.email && removedSignup.email.indexOf('@') !== -1) {
+				const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+				sendEmail('admin_removed', {
+					name: payload.name,
+					email: removedSignup.email,
+					eventTitle: eventRow ? eventRow[1] : '',
+					eventDate: eventRow ? eventRow[2] : '',
+					eventTime: eventRow ? eventRow[3] : '',
+					eventLocation: eventRow ? eventRow[8] : ''
+				});
+			}
 
+			// Only promote a reserve when a CONFIRMED seat was actually vacated - not
+			// when someone merely leaves the reserve list (no seat freed up there).
+			if (removedSignup && removedSignup.status === 'Confirmed') {
 				const { data: reserves, error: reserveErr } = await supabaseClient
 						.from('signups')
 						.select('*')
