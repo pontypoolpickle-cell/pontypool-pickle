@@ -1261,6 +1261,14 @@
           created_at timestamptz default now()
         );
 
+        -- Enforce case-insensitive username uniqueness at the database level too
+        -- (the app already checks this case-insensitively before signup/login, but
+        -- this stops it being bypassed by two clients racing to register the same
+        -- username in different cases at the same time). If this fails with a
+        -- duplicate-key error, find and rename/merge the conflicting accounts first:
+        --   select username from users group by lower(username) having count(*) > 1;
+        create unique index if not exists users_username_lower_idx on users (lower(username));
+
         -- Junior consent verification audit fields (not displayed anywhere in the site) --
         alter table users add column if not exists consent_verified_by text;
         alter table users add column if not exists consent_verified_at timestamptz;
@@ -1423,6 +1431,22 @@
 
         function normalizeName(name) {
             return String(name || '').trim().toLowerCase();
+        }
+
+        // Usernames/passwords are trimmed of accidental leading/trailing whitespace
+        // (a common signup/login mistake) and usernames are always matched
+        // case-insensitively so "JohnSmith" and "johnsmith" are treated as the same
+        // account. We keep the username's original casing when storing it (nicer to
+        // display) and instead do case-insensitive lookups via `.ilike()`.
+        function normalizeCredential(value) {
+            return String(value || '').trim();
+        }
+
+        // Escapes Postgres ILIKE wildcard characters (`%`, `_`, and the escape
+        // character itself) so a username/email containing them is matched literally
+        // instead of as a pattern.
+        function escapeIlikeValue(value) {
+            return String(value || '').replace(/[\\%_]/g, (m) => '\\' + m);
         }
 
         function parseDateOnly(value) {
@@ -2743,17 +2767,20 @@
 		}
 
         async function registerUser(data) {
+            const username = normalizeCredential(data.username);
+            const password = normalizeCredential(data.password);
+
             const { data: existing, error: existingErr } = await supabaseClient
                 .from('users')
                 .select('id')
-                .eq('username', data.username)
+                .ilike('username', escapeIlikeValue(username))
                 .limit(1);
             if (existingErr) throw new Error(existingErr.message);
             if (existing && existing.length > 0) throw new Error('Username already exists.');
 
             const { error } = await supabaseClient.from('users').insert({
-                username: data.username,
-                password_hash: hashPassword(data.password),
+                username: username,
+                password_hash: hashPassword(password),
                 first_name: data.firstName,
                 surname: data.surname,
                 email: data.email || null,
@@ -2770,7 +2797,7 @@
             sendEmail('new_member_admin', {
                 firstName: data.firstName,
                 surname: data.surname,
-                username: data.username,
+                username: username,
                 email: data.email || 'Not provided',
                 isUnder18: !!data.isUnder18
             });
@@ -2778,7 +2805,7 @@
                 sendEmail(data.isUnder18 ? 'application_received_u18' : 'application_received_adult', {
                     firstName: data.firstName,
                     surname: data.surname,
-                    username: data.username,
+                    username: username,
                     email: data.email
                 });
             }
@@ -2787,17 +2814,20 @@
         }
 
         async function loginUser(payload) {
+            const username = normalizeCredential(payload.username);
+            const password = normalizeCredential(payload.password);
+
             const { data, error } = await supabaseClient
                 .from('users')
                 .select('*')
-                .eq('username', payload.username)
+                .ilike('username', escapeIlikeValue(username))
                 .eq('status', 'Approved')
                 .limit(1);
             if (error) throw new Error(error.message);
             if (!data || data.length === 0) throw new Error('Invalid username or password.');
 
             const user = data[0];
-            if (user.password_hash !== hashPassword(payload.password)) throw new Error('Invalid username or password.');
+            if (user.password_hash !== hashPassword(password)) throw new Error('Invalid username or password.');
 
             // Client-side safety net: auto-expire a lapsed membership as soon as the member
             // logs in. The authoritative check lives in the scheduled Supabase Edge Function.
@@ -2905,11 +2935,11 @@
         }
 
         async function requestPasswordReset(payload) {
-            const identifier = payload.identifier;
+            const identifier = escapeIlikeValue(normalizeCredential(payload.identifier));
             const { data: users, error } = await supabaseClient
                 .from('users')
                 .select('*')
-                .or(`username.eq.${identifier},email.eq.${identifier}`)
+                .or(`username.ilike.${identifier},email.ilike.${identifier}`)
                 .limit(1);
             if (error) throw new Error(error.message);
             if (!users || users.length === 0) throw new Error('No account found for that username/email.');
@@ -2935,11 +2965,12 @@
         }
 
         async function resetPassword(payload) {
-            const { identifier, token, newPassword } = payload;
+            const { token, newPassword } = payload;
+            const identifier = escapeIlikeValue(normalizeCredential(payload.identifier));
             const { data: users, error } = await supabaseClient
                 .from('users')
                 .select('*')
-                .or(`username.eq.${identifier},email.eq.${identifier}`)
+                .or(`username.ilike.${identifier},email.ilike.${identifier}`)
                 .limit(1);
             if (error) throw new Error(error.message);
             if (!users || users.length === 0) throw new Error('Account not found.');
@@ -2953,7 +2984,7 @@
             const { error: updateErr } = await supabaseClient
                 .from('users')
                 .update({
-                    password_hash: hashPassword(newPassword),
+                    password_hash: hashPassword(normalizeCredential(newPassword)),
                     reset_token: null,
                     reset_token_expiry: null
                 })
@@ -5789,8 +5820,11 @@
                 firstName: document.getElementById('regFirst').value,
                 surname: document.getElementById('regLast').value,
                 email: document.getElementById('regEmail').value,
-                username: document.getElementById('regUser').value,
-                password: document.getElementById('regPass').value,
+                // Trim accidental leading/trailing spaces here so the duplicate-username
+                // check below and the eventual registerUser() call both see the same,
+                // clean value the user meant to enter.
+                username: document.getElementById('regUser').value.trim(),
+                password: document.getElementById('regPass').value.trim(),
                 gender: document.getElementById('regGender').value,
                 startingElo: document.getElementById('regSkillLevel').value,
                 isUnder18: isUnder18
@@ -5798,7 +5832,7 @@
 
                 const btn = document.getElementById('signupSubmitBtn');
 
-                const confirmPass = document.getElementById('regPassConfirm').value;
+                const confirmPass = document.getElementById('regPassConfirm').value.trim();
 
                 if (!data.username || !data.password || !data.firstName) {
                     return triggerError("Please fill in all required fields.");
@@ -5848,8 +5882,8 @@
         }
 
         function processLogin() {
-            const user = document.getElementById('loginUser').value;
-            const pass = document.getElementById('loginPass').value;
+            const user = document.getElementById('loginUser').value.trim();
+            const pass = document.getElementById('loginPass').value.trim();
             const btn = document.getElementById('loginSubmitBtn');
             
             if (!user || !pass) return triggerError("Please enter both username and password.");
@@ -6032,8 +6066,8 @@
         function processPasswordReset() {
             const identifier = document.getElementById('resetIdentifier').dataset.confirmed;
             const token = document.getElementById('resetToken').value.trim();
-            const newPassword = document.getElementById('resetNewPassword').value;
-            const confirmPassword = document.getElementById('resetConfirmPassword').value;
+            const newPassword = document.getElementById('resetNewPassword').value.trim();
+            const confirmPassword = document.getElementById('resetConfirmPassword').value.trim();
             const btn = document.getElementById('resetSubmitBtn');
 
             if (!token) return triggerError("Please enter your reset code.");
