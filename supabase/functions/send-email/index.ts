@@ -145,6 +145,25 @@ serve(async (req) => {
         break;
       }
 
+      // EMAIL 2b: Payment Required - 15-Minute Reservation (item #14)
+      case "payment_required": {
+        const minutes = data.reservationMinutes || 15;
+        const body = `
+          <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.name},</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Your place has been reserved for <strong>${minutes} minutes</strong> to allow you time to complete payment.</p>
+          ${eventBox(data.eventTitle, data.eventDate, data.eventTime, data.eventLocation)}
+          <div style="background-color:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin:20px 0;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#9a3412;font-weight:700;">⏰ Please make your bank transfer now, then return to the website and click <strong>Paid</strong> on this event.</p>
+          </div>
+          <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">⚠️ If payment isn't confirmed within ${minutes} minutes, your reservation will automatically expire and your place may be offered to another player.</p>
+          </div>
+          <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">See you on the court!<br><strong>Pontypool Pickle Club</strong></p>
+        `;
+        await sendEmail(data.email, `⏰ Payment Required — ${data.eventTitle}`, buildEmailHtml("Payment Required", body));
+        break;
+      }
+
       // EMAIL 3: New Member Application (to admin)
       case "new_member_admin": {
         const under18Warning = data.isUnder18 ? `
