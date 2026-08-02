@@ -1022,6 +1022,10 @@
                         <button onclick="openManagePlayersModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">👥 Manage Players</button>
                         <button onclick="openManageVenuesModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">📍 Manage Venues</button>
                     </div>
+                    <!-- Row 1c: Cross-Event Cancellations Report -->
+                    <div class="grid grid-cols-1 gap-4 mb-4">
+                        <button onclick="openCancellationsReportModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">🚫 Cancellations Report</button>
+                    </div>
 
                     <!-- Row 2: Centered Underneath -->
                     <div class="flex justify-center">
@@ -1113,6 +1117,23 @@
 		if (isNaN(date.getTime())) return timestampStr;
 		const pad = n => String(n).padStart(2, '0');
 		return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+	}
+
+	// Item #5: how long before an event someone withdrew, and whether that falls
+	// inside the club's 48-hour cancellation window (for refund/policy purposes).
+	function formatTimeUntilEvent(eventStartDate, atDate) {
+		if (!eventStartDate || !atDate || isNaN(atDate.getTime())) return { label: 'Unknown', isWithin48h: false };
+		const diffMs = eventStartDate.getTime() - atDate.getTime();
+		if (diffMs <= 0) return { label: 'After event started', isWithin48h: true };
+		const totalHours = diffMs / (60 * 60 * 1000);
+		if (totalHours < 48) {
+			const hours = Math.max(1, Math.round(totalHours));
+			return { label: hours + (hours === 1 ? ' hour before event' : ' hours before event'), isWithin48h: true };
+		}
+		const days = Math.floor(totalHours / 24);
+		const hours = Math.round(totalHours % 24);
+		const label = days + (days === 1 ? ' day' : ' days') + (hours > 0 ? ', ' + hours + (hours === 1 ? ' hour' : ' hours') : '') + ' before event';
+		return { label, isWithin48h: false };
 	}
 
 	// --- Date input handling -----------------------------------------------
@@ -1281,6 +1302,15 @@
           payment_status text default 'Unpaid',
           created_at timestamptz default now()
         );
+
+        -- Drop-out audit trail (item #5) - cancelling now soft-deletes a signup
+        -- (status -> 'Withdrawn', withdrawn_at stamped) instead of removing the row,
+        -- so admins can see who cancelled an event and when, including within the
+        -- 48-hour cancellation window. Every existing query that reads "signups for
+        -- this event" filters Withdrawn rows out at the mapGlobalData boundary, so
+        -- this is invisible to all the pre-existing signup/reserve/payment logic -
+        -- only the new admin Drop-Outs section and Cancellations report read it.
+        alter table signups add column if not exists withdrawn_at timestamptz;
 
         -- Users table
         create table users (
@@ -1594,6 +1624,13 @@
             const matches = payload.matches || [];
             const events = payload.events || [];
             const signups = payload.signups || [];
+            // Item #5: Withdrawn rows are a soft-delete audit trail, not a normal
+            // signup state - every existing feature (counts, "my signup" lookups,
+            // reserve promotion, payment status, etc.) should behave exactly as if
+            // they were deleted, so they're filtered out here at the single boundary
+            // where raw DB rows become the `signups` array the rest of the app reads.
+            const activeSignups = signups.filter(s => s.status !== 'Withdrawn');
+            const withdrawnSignups = signups.filter(s => s.status === 'Withdrawn');
             const locations = payload.locations || [];
             const pendingUsers = payload.pendingUsers || [];
 			const ladderSessionsRaw = payload.ladderSessions || [];
@@ -1678,7 +1715,7 @@
 					!!e.is_special_event,
 					e.special_event_info_url || ''
 					]),
-                signups: signups.map(s => [
+                signups: activeSignups.map(s => [
                     s.event_id,
                     s.player_name,
                     s.created_at || '',
@@ -1687,6 +1724,19 @@
                     s.status || 'Confirmed',
                     s.payment_status || 'Unpaid'
                 ]),
+                // Item #5 admin-only drop-out audit trail. Kept as its own array
+                // (rather than mixed into `signups`) so nothing else needs to know
+                // Withdrawn rows exist at all.
+                withdrawals: withdrawnSignups
+                    .map(s => [
+                        s.event_id,
+                        s.player_name,
+                        s.created_at || '',
+                        s.withdrawn_at || '',
+                        s.player_type || '',
+                        s.email || ''
+                    ])
+                    .sort((a, b) => new Date(b[3]) - new Date(a[3])),
                 names: players
 					.filter(p => !p.is_hidden)
 					.map(p => p.name),
@@ -2879,15 +2929,22 @@
 				.select('email, status')
 				.eq('event_id', payload.eventId)
 				.eq('player_name', payload.name)
+				.neq('status', 'Withdrawn')
 				.limit(1);
 			if (removedFetchErr) throw new Error(removedFetchErr.message);
 			const removedSignup = (removedRows && removedRows.length > 0) ? removedRows[0] : null;
 
+			// Soft-delete (item #5): keep the row as an audit trail of who withdrew
+			// and when, instead of deleting it outright. Every read of "signups for
+			// this event" elsewhere in the app filters out Withdrawn rows in
+			// mapGlobalData, so this has no effect on existing signup/reserve/payment
+			// behaviour - a player who re-signs up later just gets a fresh row.
 			const { error } = await supabaseClient
 				.from('signups')
-				.delete()
+				.update({ status: 'Withdrawn', withdrawn_at: serverNow().toISOString() })
 				.eq('event_id', payload.eventId)
-				.eq('player_name', payload.name);
+				.eq('player_name', payload.name)
+				.neq('status', 'Withdrawn');
 			if (error) throw new Error(error.message);
 
 			if (payload.removedByAdmin && removedSignup && removedSignup.email && removedSignup.email.indexOf('@') !== -1) {
@@ -2943,7 +3000,11 @@
                 .from('signups')
                 .update({ payment_status: 'Paid' })
                 .eq('event_id', payload.eventId)
-                .eq('player_name', payload.name);
+                .eq('player_name', payload.name)
+                // Exclude Withdrawn rows so a player who withdrew and later re-signed
+                // up for the same event can't accidentally have their old, unrelated
+                // audit record touched by this update.
+                .neq('status', 'Withdrawn');
             if (error) throw new Error(error.message);
             return refreshAllData();
         }
@@ -4444,6 +4505,52 @@
 				if (resetBtn) resetBtn.classList.add('hidden');
 			}
 		}
+
+        // Item #15: build a ladder session directly from an event's confirmed
+        // signup list instead of an admin re-selecting every player by hand. Pulls
+        // from confirmed players only (not reserves) - the admin still reviews and
+        // can tick/untick anyone on the Ladders page before starting, e.g. to drop
+        // someone who didn't actually show up.
+        function createLadderFromEvent() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const eventId = document.getElementById('eventSignupsTitle').dataset.eventId;
+            const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+            if (!eventRow) return triggerError("Event not found.");
+
+            const confirmedNames = (globalData.signups || [])
+                .filter(s => s[0] === eventId && s[5] === 'Confirmed')
+                .map(s => s[1]);
+            if (confirmedNames.length < 4) return triggerError("Need at least 4 confirmed players to start a ladder.");
+
+            closeEventSignupsModal();
+            showTab('ladders-page');
+
+            // showTab()/renderLadderSession() rebuild the checkboxes and reset the
+            // session name field - wait a tick so our pre-fill runs after that, not
+            // before it gets wiped out.
+            setTimeout(() => {
+                if (ladderSessionsState.find(s => s.session.id === activeLadderSessionId)) {
+                    return triggerError('Please finish or reset the current ladder session before starting a new one from an event.');
+                }
+                document.getElementById('ladderSessionName').value = eventRow[1];
+
+                let matched = 0;
+                const unmatched = [];
+                confirmedNames.forEach(name => {
+                    const checkbox = Array.from(document.querySelectorAll('.ladder-check'))
+                        .find(cb => normalizeName(cb.value) === normalizeName(name));
+                    if (checkbox) { checkbox.checked = true; matched++; }
+                    else unmatched.push(name);
+                });
+                validateLadderHeadcount();
+
+                if (unmatched.length > 0) {
+                    triggerToast(`Pre-selected ${matched} player(s). Couldn't match: ${unmatched.join(', ')} - add manually if needed.`);
+                } else {
+                    triggerToast(`Pre-selected ${matched} confirmed player(s) from "${eventRow[1]}" - review below, then start the session.`);
+                }
+            }, 150);
+        }
 
         function renderLadderCheckboxes() {
             const container = document.getElementById('ladderPlayerCheckboxes');
@@ -6668,15 +6775,18 @@
             const signups = globalData.signups.filter(s => s[0] === eventId);
             const confirmed = signups.filter(s => s[5] === "Confirmed");
             const reserves = signups.filter(s => s[5] === "Reserve");
+            const isAdminViewer = !!(currentUser && currentUser.role === 'Admin');
+            const withdrawals = isAdminViewer ? (globalData.withdrawals || []).filter(w => w[0] === eventId) : [];
 
             const eventRow = globalData.events.find(e => e[0] === eventId);
             const isFreeEvent = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
+            const eventStart = eventRow ? getEventStartDateTime(eventRow) : null;
 
             document.getElementById('eventSignupsTitle').innerText = title;
             document.getElementById('eventSignupsTitle').dataset.eventId = eventId;
             
             const body = document.getElementById('eventSignupsBody');
-            if (signups.length === 0) {
+            if (signups.length === 0 && withdrawals.length === 0) {
                 body.innerHTML = `<p class="text-center text-gray-400 italic py-8 text-sm">No signups yet.</p>`;
             } else {
                 body.innerHTML = `
@@ -6726,9 +6836,29 @@
                             `).join('')}
                         </div>
                     ` : ''}
+                    ${withdrawals.length > 0 ? `
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2 mt-6 pt-4 border-t border-gray-100">🚫 Drop-Outs (${withdrawals.length}) <span class="normal-case font-bold text-gray-300">— admin only</span></p>
+                        <div class="space-y-2">
+                            ${withdrawals.map(w => {
+                                const timing = formatTimeUntilEvent(eventStart, new Date(w[3]));
+                                return `
+                                    <div class="flex justify-between items-center py-2 border-b border-gray-50">
+                                        <div>
+                                            <p class="font-black text-sm uppercase text-gray-500">${w[1]}</p>
+                                            <p class="text-[10px] text-gray-400 font-bold">Signed up ${formatSignupTimestamp(w[2])} &bull; Withdrew ${formatSignupTimestamp(w[3])}</p>
+                                        </div>
+                                        <span class="text-[9px] px-2 py-1 rounded font-black whitespace-nowrap ${timing.isWithin48h ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-500'}">${timing.label}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : ''}
                 `;
             }
-            
+
+            const ladderBtn = document.getElementById('createLadderFromEventBtn');
+            if (ladderBtn) ladderBtn.classList.toggle('hidden', confirmed.length < 4);
+
             openModal('eventSignupsModal');
         }
 
@@ -7486,6 +7616,24 @@
                         Cancel
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+    <!-- CANCELLATIONS REPORT MODAL (item #5 - cross-event pattern spotting) -->
+    <div id="cancellationsReportModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800" style="max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <div>
+                    <h3 class="text-2xl font-black uppercase italic">🚫 Cancellations Report</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Every event drop-out, across all events, newest first</p>
+                </div>
+                <button onclick="closeModal('cancellationsReportModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-4 flex-shrink-0">
+                <input type="text" id="cancellationsReportSearch" placeholder="Filter by player name..." class="input-field border-2 w-full" oninput="renderCancellationsReport()">
+            </div>
+            <div class="px-6 pb-6 overflow-y-auto flex-1">
+                <div id="cancellationsReportList" class="space-y-2"></div>
             </div>
         </div>
     </div>
