@@ -896,9 +896,10 @@
                         <button onclick="openManagePlayersModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">👥 Manage Players</button>
                         <button onclick="openManageVenuesModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">📍 Manage Venues</button>
                     </div>
-                    <!-- Row 1c: Cross-Event Cancellations Report -->
-                    <div class="grid grid-cols-1 gap-4 mb-4">
+                    <!-- Row 1c: Cross-Event Cancellations Report + Finance -->
+                    <div class="grid grid-cols-2 gap-4 mb-4">
                         <button onclick="openCancellationsReportModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">🚫 Cancellations Report</button>
+                        <button onclick="openFinanceModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">💰 Finance</button>
                     </div>
 
                     <!-- Row 2: Centered Underneath -->
@@ -1191,6 +1192,29 @@
         -- to now() + 15 minutes, instead of going straight to 'Confirmed'. See
         -- holdsSpot()/signupForEvent()/markSignupPaid() in this file.
         alter table signups add column if not exists reserved_until timestamptz;
+
+        -- Finance system (item #12) - a running ledger of all money in/out.
+        -- Event signup payments and membership activations are recorded here
+        -- automatically (see markSignupPaid()/activateMembership()); admins can
+        -- also add manual entries (e.g. buying balls/nets) and void mistaken ones.
+        -- Voided rows are kept (not deleted) so there's always a full audit trail
+        -- of who removed what and why - they're just excluded from the balance.
+        create table finance_transactions (
+          id uuid primary key default gen_random_uuid(),
+          transaction_date date not null default current_date,
+          direction text not null default 'In',
+          amount numeric(10,2) not null,
+          category text not null default 'Other',
+          description text,
+          player_name text,
+          source text not null default 'Manual',
+          added_by text,
+          created_at timestamptz not null default now(),
+          voided boolean not null default false,
+          voided_by text,
+          voided_at timestamptz,
+          void_reason text
+        );
 
         -- Users table
         create table users (
@@ -2576,6 +2600,28 @@
             return user;
         }
 
+        // Item #12: best-effort finance ledger insert - deliberately never throws,
+        // so a missing/not-yet-migrated finance_transactions table (or any other
+        // finance-side hiccup) can never block the real action (a payment being
+        // confirmed, a membership being activated) that triggered it.
+        async function recordFinanceTransaction(fields) {
+            try {
+                const { error } = await supabaseClient.from('finance_transactions').insert({
+                    transaction_date: fields.date || todayStr(),
+                    direction: fields.direction,
+                    amount: Number(fields.amount || 0),
+                    category: fields.category || 'Other',
+                    description: fields.description || null,
+                    player_name: fields.playerName || null,
+                    source: fields.source || 'Manual',
+                    added_by: fields.addedBy || null
+                });
+                if (error) throw new Error(error.message);
+            } catch (e) {
+                console.warn('Could not auto-record finance transaction:', e.message);
+            }
+        }
+
         async function addLocation(name) {
             const { error } = await supabaseClient.from('locations').insert({ name: name });
             if (error) throw new Error(error.message);
@@ -2824,6 +2870,21 @@
                     startDate: newStart,
                     endDate: newEnd,
                     perks: MEMBERSHIP_PERKS_EMAIL
+                });
+            }
+
+            // Item #12: record the payment this activation represents. Uses the
+            // admin-facing price list rather than trusting a client-supplied amount.
+            const plan = (globalData.membershipPlans || []).find(p => p.durationWeeks === durationWeeks);
+            if (plan && plan.price > 0) {
+                recordFinanceTransaction({
+                    direction: 'In',
+                    amount: plan.price,
+                    category: 'Membership',
+                    description: `Membership - ${durationWeeks} weeks${isExtension ? ' (renewal)' : ''}`,
+                    playerName: `${userRow.first_name} ${userRow.surname}`.trim(),
+                    source: 'Membership',
+                    addedBy: currentUser ? `${currentUser.firstName} ${currentUser.surname}`.trim() : null
                 });
             }
 
@@ -3111,6 +3172,15 @@
 			return refreshAllData();
 		}
 
+        // Item #12: works out what this signup should be recorded as having paid,
+        // using the event's member/non-member price and the price actually shown
+        // to that player type at signup time.
+        function eventFeeAmount(eventRow, playerType) {
+            if (!eventRow) return 0;
+            const isMemberRate = playerType === 'Member' || playerType === 'Admin';
+            return Number((isMemberRate ? eventRow.member_price : eventRow.non_member_price) || 0);
+        }
+
         async function markSignupPaid(payload) {
             // Item #14: if this was a temporary 15-minute hold, confirming payment
             // immediately confirms the seat outright and clears the countdown - per
@@ -3119,29 +3189,55 @@
             // always has been for regular signups; admins still verify against the
             // bank statement after the fact and can remove the signup if payment
             // never actually shows up).
+            // Both update paths below also .select() and check .neq('payment_status',
+            // 'Paid') so a repeat click/page reload can never record the same
+            // payment in the finance ledger (item #12) twice.
             const { data: pendingRows, error: pendingErr } = await supabaseClient
                 .from('signups')
                 .update({ payment_status: 'Paid', status: 'Confirmed', reserved_until: null })
                 .eq('event_id', payload.eventId)
                 .eq('player_name', payload.name)
                 .eq('status', 'Pending Payment')
+                .neq('payment_status', 'Paid')
                 .select();
             if (pendingErr) throw new Error(pendingErr.message);
-            if (pendingRows && pendingRows.length > 0) return refreshAllData();
 
-            // Otherwise this is an already-Confirmed (or pre-paying Reserve) signup -
-            // just record payment without touching their status, so a Reserve player
-            // paying early doesn't get incorrectly bumped to Confirmed.
-            const { error } = await supabaseClient
-                .from('signups')
-                .update({ payment_status: 'Paid' })
-                .eq('event_id', payload.eventId)
-                .eq('player_name', payload.name)
-                // Exclude Withdrawn rows so a player who withdrew and later re-signed
-                // up for the same event can't accidentally have their old, unrelated
-                // audit record touched by this update.
-                .neq('status', 'Withdrawn');
-            if (error) throw new Error(error.message);
+            let paidRow = pendingRows && pendingRows.length > 0 ? pendingRows[0] : null;
+
+            if (!paidRow) {
+                // Otherwise this is an already-Confirmed (or pre-paying Reserve) signup -
+                // just record payment without touching their status, so a Reserve player
+                // paying early doesn't get incorrectly bumped to Confirmed.
+                const { data: otherRows, error } = await supabaseClient
+                    .from('signups')
+                    .update({ payment_status: 'Paid' })
+                    .eq('event_id', payload.eventId)
+                    .eq('player_name', payload.name)
+                    .neq('payment_status', 'Paid')
+                    // Exclude Withdrawn rows so a player who withdrew and later re-signed
+                    // up for the same event can't accidentally have their old, unrelated
+                    // audit record touched by this update.
+                    .neq('status', 'Withdrawn')
+                    .select();
+                if (error) throw new Error(error.message);
+                paidRow = otherRows && otherRows.length > 0 ? otherRows[0] : null;
+            }
+
+            if (paidRow) {
+                const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+                const amount = eventFeeAmount({ member_price: eventRow ? eventRow[11] : 0, non_member_price: eventRow ? eventRow[12] : 0 }, paidRow.player_type);
+                if (amount > 0) {
+                    recordFinanceTransaction({
+                        direction: 'In',
+                        amount: amount,
+                        category: 'Event Fees',
+                        description: eventRow ? eventRow[1] : 'Event signup',
+                        playerName: payload.name,
+                        source: 'Event Signup'
+                    });
+                }
+            }
+
             return refreshAllData();
         }
 
@@ -4075,6 +4171,197 @@
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
         }
+        // --- FINANCE (item #12) ---------------------------------------------
+        // Kept as its own on-demand fetch (not part of globalData / the main
+        // Promise.all every visitor triggers on every page load) since financial
+        // records are admin-only and can grow large over time - there's no reason
+        // for this to be downloaded into every logged-out visitor's browser.
+        let financeTransactions = [];
+
+        async function loadFinanceTransactions() {
+            const { data, error } = await supabaseClient
+                .from('finance_transactions')
+                .select('*')
+                .order('transaction_date', { ascending: false })
+                .order('created_at', { ascending: false });
+            if (error) throw new Error(error.message);
+            financeTransactions = data || [];
+        }
+
+        function openFinanceModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            document.getElementById('financeSearch').value = '';
+            document.getElementById('financeCategoryFilter').value = '';
+            document.getElementById('financeDirectionFilter').value = '';
+
+            openModal('financeModal');
+            document.getElementById('financeList').innerHTML = `<p class="text-center text-gray-400 italic py-8 text-sm">Loading...</p>`;
+
+            loadFinanceTransactions()
+                .then(renderFinanceList)
+                .catch(err => {
+                    document.getElementById('financeList').innerHTML = `<p class="text-center text-rose-600 font-bold py-8 text-sm">${err.message.includes('does not exist') || err.message.includes('Could not find the table') ? 'The finance_transactions table hasn\'t been created yet - see the migration comment near the top of index.html.' : err.message}</p>`;
+                });
+        }
+
+        function renderFinanceList() {
+            const search = (document.getElementById('financeSearch').value || '').toLowerCase().trim();
+            const categoryFilter = document.getElementById('financeCategoryFilter').value;
+            const directionFilter = document.getElementById('financeDirectionFilter').value;
+
+            const filtered = financeTransactions.filter(t => {
+                if (categoryFilter && t.category !== categoryFilter) return false;
+                if (directionFilter && t.direction !== directionFilter) return false;
+                if (search) {
+                    const haystack = `${t.description || ''} ${t.player_name || ''} ${t.category || ''}`.toLowerCase();
+                    if (!haystack.includes(search)) return false;
+                }
+                return true;
+            });
+
+            // Totals/balance always reflect ALL non-voided transactions, regardless
+            // of the current filter/search - the filter is just for finding things.
+            const active = financeTransactions.filter(t => !t.voided);
+            const totalIn = active.filter(t => t.direction === 'In').reduce((sum, t) => sum + Number(t.amount), 0);
+            const totalOut = active.filter(t => t.direction === 'Out').reduce((sum, t) => sum + Number(t.amount), 0);
+            document.getElementById('financeTotalIn').innerText = '£' + totalIn.toFixed(2);
+            document.getElementById('financeTotalOut').innerText = '£' + totalOut.toFixed(2);
+            document.getElementById('financeBalance').innerText = '£' + (totalIn - totalOut).toFixed(2);
+
+            const categoryTotals = {};
+            active.forEach(t => {
+                const sign = t.direction === 'In' ? 1 : -1;
+                categoryTotals[t.category] = (categoryTotals[t.category] || 0) + sign * Number(t.amount);
+            });
+            const categoryTotalsEl = document.getElementById('financeCategoryTotals');
+            if (categoryTotalsEl) {
+                categoryTotalsEl.innerHTML = Object.keys(categoryTotals).sort().map(cat => `
+                    <span class="text-[9px] font-black uppercase px-2 py-1 rounded-full ${categoryTotals[cat] >= 0 ? 'bg-green-50 text-green-700' : 'bg-rose-50 text-rose-600'}">${cat}: ${categoryTotals[cat] >= 0 ? '+' : '-'}£${Math.abs(categoryTotals[cat]).toFixed(2)}</span>
+                `).join('');
+            }
+
+            const list = document.getElementById('financeList');
+            if (filtered.length === 0) {
+                list.innerHTML = `<p class="text-center text-gray-400 italic py-8 text-sm">No transactions found.</p>`;
+                return;
+            }
+
+            list.innerHTML = filtered.map(t => `
+                <div class="flex justify-between items-center gap-3 py-3 px-3 rounded-lg border-b border-gray-50 ${t.voided ? 'opacity-50' : ''}">
+                    <div class="min-w-0">
+                        <p class="font-black text-sm ${t.voided ? 'line-through' : ''}">${t.description || t.category}${t.player_name ? ' — ' + t.player_name : ''}</p>
+                        <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wide">${t.transaction_date} &bull; ${t.category} &bull; ${t.source}${t.added_by ? ' &bull; by ' + t.added_by : ''}</p>
+                        ${t.voided ? `<p class="text-[10px] text-rose-500 font-bold mt-0.5">Removed by ${t.voided_by || 'an admin'} on ${formatSignupTimestamp(t.voided_at)}${t.void_reason ? ' — "' + t.void_reason + '"' : ''}</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-3 flex-shrink-0">
+                        <p class="font-black text-sm whitespace-nowrap ${t.voided ? 'text-gray-400 line-through' : t.direction === 'In' ? 'text-green-600' : 'text-rose-600'}">${t.direction === 'In' ? '+' : '-'}£${Number(t.amount).toFixed(2)}</p>
+                        ${!t.voided ? `<button onclick="confirmVoidFinanceTransaction('${t.id}')" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Remove transaction">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function setFinanceAddDirection(direction) {
+            document.getElementById('financeAddDirection').value = direction;
+            const inBtn = document.getElementById('financeAddDirectionIn');
+            const outBtn = document.getElementById('financeAddDirectionOut');
+            inBtn.style.cssText = direction === 'In' ? 'background-color:#16a34a !important; color:#fff !important; border-color:#16a34a !important;' : 'background-color:#fff; color:#374151; border-color:#e5e7eb;';
+            outBtn.style.cssText = direction === 'Out' ? 'background-color:#e11d48 !important; color:#fff !important; border-color:#e11d48 !important;' : 'background-color:#fff; color:#374151; border-color:#e5e7eb;';
+        }
+
+        function openAddFinanceModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            setFinanceAddDirection('In');
+            setDateInputToday('financeAddDate');
+            document.getElementById('financeAddAmount').value = '';
+            document.getElementById('financeAddCategory').value = 'Other';
+            document.getElementById('financeAddCategoryOther').value = '';
+            document.getElementById('financeAddCategoryOther').classList.remove('hidden');
+            document.getElementById('financeAddPlayerName').value = '';
+            document.getElementById('financeAddDescription').value = '';
+            openModal('financeAddModal');
+        }
+
+        function saveManualFinanceTransaction() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const direction = document.getElementById('financeAddDirection').value;
+            const date = document.getElementById('financeAddDate').value;
+            const amount = Number(document.getElementById('financeAddAmount').value);
+            const categorySelect = document.getElementById('financeAddCategory').value;
+            const categoryOther = document.getElementById('financeAddCategoryOther').value.trim();
+            const category = categorySelect === 'Other' && categoryOther ? categoryOther : categorySelect;
+            const playerName = document.getElementById('financeAddPlayerName').value.trim();
+            const description = document.getElementById('financeAddDescription').value.trim();
+
+            if (!date) return triggerError("Please pick a date.");
+            if (!amount || amount <= 0) return triggerError("Please enter an amount greater than zero.");
+            if (!description && !playerName) return triggerError("Please add a description or a player name so this is identifiable later.");
+
+            const btn = document.getElementById('financeAddSaveBtn');
+            btn.disabled = true; btn.innerText = 'Saving...';
+
+            const addedBy = currentUser ? `${currentUser.firstName} ${currentUser.surname}`.trim() : null;
+
+            supabaseClient.from('finance_transactions').insert({
+                transaction_date: date,
+                direction: direction,
+                amount: amount,
+                category: category || 'Other',
+                description: description || null,
+                player_name: playerName || null,
+                source: 'Manual',
+                added_by: addedBy
+            }).then(({ error }) => {
+                if (error) throw new Error(error.message);
+                return loadFinanceTransactions();
+            }).then(() => {
+                renderFinanceList();
+                triggerToast("Transaction added.");
+                closeModal('financeAddModal');
+            }).catch(err => triggerError(err.message))
+              .finally(() => { btn.disabled = false; btn.innerText = 'Save Transaction'; });
+        }
+
+        let financeVoidTargetId = null;
+
+        function confirmVoidFinanceTransaction(id) {
+            const t = financeTransactions.find(x => x.id === id);
+            if (!t) return;
+            financeVoidTargetId = id;
+            document.getElementById('financeVoidSummary').innerText = `${t.direction === 'In' ? '+' : '-'}£${Number(t.amount).toFixed(2)} — ${t.description || t.category}`;
+            document.getElementById('financeVoidReason').value = '';
+            openModal('financeVoidModal');
+        }
+
+        function executeVoidFinanceTransaction() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!financeVoidTargetId) return;
+
+            const btn = document.getElementById('financeVoidFinalBtn');
+            btn.disabled = true; btn.innerText = 'Removing...';
+
+            const voidedBy = currentUser ? `${currentUser.firstName} ${currentUser.surname}`.trim() : null;
+            const reason = document.getElementById('financeVoidReason').value.trim();
+
+            supabaseClient.from('finance_transactions').update({
+                voided: true,
+                voided_by: voidedBy,
+                voided_at: new Date().toISOString(),
+                void_reason: reason || null
+            }).eq('id', financeVoidTargetId).then(({ error }) => {
+                if (error) throw new Error(error.message);
+                return loadFinanceTransactions();
+            }).then(() => {
+                renderFinanceList();
+                triggerToast("Transaction removed.");
+                closeModal('financeVoidModal');
+                financeVoidTargetId = null;
+            }).catch(err => triggerError(err.message))
+              .finally(() => { btn.disabled = false; btn.innerText = 'Remove Transaction'; });
+        }
+
         function openCancellationsReportModal() {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
             document.getElementById('cancellationsReportSearch').value = '';
@@ -8089,6 +8376,131 @@
                         Permanently Remove
                     </button>
                     <button onclick="closeModal('deletePlayerModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- FINANCE MODAL (item #12) -->
+    <div id="financeModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 60px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden border-t-8 border-black" style="max-height: calc(100dvh - 90px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <div>
+                    <h3 class="text-2xl font-black uppercase italic">💰 Finance</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Every payment in, every payment out - like a bank statement</p>
+                </div>
+                <button onclick="closeModal('financeModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+
+            <div class="px-6 flex-shrink-0">
+                <div class="grid grid-cols-3 gap-3 mb-4">
+                    <div class="bg-green-50 rounded-xl p-4 text-center border border-green-100">
+                        <p class="text-[9px] font-bold text-green-600 uppercase">Total In</p>
+                        <p id="financeTotalIn" class="font-black text-lg text-green-700">£0.00</p>
+                    </div>
+                    <div class="bg-rose-50 rounded-xl p-4 text-center border border-rose-100">
+                        <p class="text-[9px] font-bold text-rose-500 uppercase">Total Out</p>
+                        <p id="financeTotalOut" class="font-black text-lg text-rose-600">£0.00</p>
+                    </div>
+                    <div class="bg-black rounded-xl p-4 text-center">
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Balance</p>
+                        <p id="financeBalance" class="font-black text-lg text-white">£0.00</p>
+                    </div>
+                </div>
+
+                <button onclick="openAddFinanceModal()" class="w-full bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-rose-600 transition mb-4">+ Add Transaction</button>
+
+                <div id="financeCategoryTotals" class="flex flex-wrap gap-2 mb-4"></div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+                    <input type="text" id="financeSearch" placeholder="Search description / player..." class="input-field border-2" oninput="renderFinanceList()">
+                    <select id="financeCategoryFilter" class="input-field border-2" onchange="renderFinanceList()">
+                        <option value="">All Categories</option>
+                        <option>Event Fees</option>
+                        <option>Membership</option>
+                        <option>Equipment</option>
+                        <option>Court Hire</option>
+                        <option>Other</option>
+                    </select>
+                    <select id="financeDirectionFilter" class="input-field border-2" onchange="renderFinanceList()">
+                        <option value="">In &amp; Out</option>
+                        <option value="In">Money In</option>
+                        <option value="Out">Money Out</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="px-6 pb-6 overflow-y-auto flex-1">
+                <div id="financeList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+    <!-- ADD FINANCE TRANSACTION MODAL -->
+    <div id="financeAddModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 800 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border-t-8 border-gray-800">
+            <div class="p-6 pb-4 flex justify-between items-start">
+                <h3 class="text-2xl font-black uppercase italic">Add Transaction</h3>
+                <button onclick="closeModal('financeAddModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-6 space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <button type="button" id="financeAddDirectionIn" onclick="setFinanceAddDirection('In')" class="py-3 rounded-xl font-black uppercase text-xs tracking-widest border-2 transition">🟢 Money In</button>
+                    <button type="button" id="financeAddDirectionOut" onclick="setFinanceAddDirection('Out')" class="py-3 rounded-xl font-black uppercase text-xs tracking-widest border-2 transition">🔴 Money Out</button>
+                </div>
+                <input type="hidden" id="financeAddDirection" value="In">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Date</label>
+                        <input type="date" id="financeAddDate" class="input-field border-2 w-full">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Amount (£)</label>
+                        <input type="number" id="financeAddAmount" min="0" step="0.01" placeholder="0.00" class="input-field border-2 w-full">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Category</label>
+                    <select id="financeAddCategory" class="input-field border-2 w-full" onchange="document.getElementById('financeAddCategoryOther').classList.toggle('hidden', this.value !== 'Other')">
+                        <option>Event Fees</option>
+                        <option>Membership</option>
+                        <option>Equipment</option>
+                        <option>Court Hire</option>
+                        <option selected>Other</option>
+                    </select>
+                    <input type="text" id="financeAddCategoryOther" placeholder="Specify category" class="input-field border-2 w-full mt-2">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Player Name (optional)</label>
+                    <input type="text" id="financeAddPlayerName" placeholder="e.g. Jane Smith" class="input-field border-2 w-full">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Description / Notes</label>
+                    <textarea id="financeAddDescription" rows="2" placeholder="e.g. New set of balls from Decathlon" class="input-field border-2 w-full"></textarea>
+                </div>
+                <button onclick="saveManualFinanceTransaction()" id="financeAddSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save Transaction</button>
+            </div>
+        </div>
+    </div>
+    <!-- VOID FINANCE TRANSACTION MODAL -->
+    <div id="financeVoidModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 850 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-rose-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-black uppercase italic mb-1">Remove This Transaction?</h3>
+                <p id="financeVoidSummary" class="text-lg font-black text-rose-600 uppercase mb-4"></p>
+                <p class="text-gray-600 mb-4 text-sm font-bold">It stays visible in the ledger (crossed out, with your name and the time) so there's always a full audit trail - it just won't count towards the balance any more.</p>
+                <textarea id="financeVoidReason" rows="2" placeholder="Reason (optional) - e.g. bank transfer never went through" class="input-field border-2 w-full mb-4"></textarea>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeVoidFinanceTransaction()" id="financeVoidFinalBtn"
+                            class="w-full bg-rose-600 text-white py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-rose-700 transition">
+                        Remove Transaction
+                    </button>
+                    <button onclick="closeModal('financeVoidModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
                         Cancel
                     </button>
                 </div>
