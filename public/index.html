@@ -5626,25 +5626,42 @@
 			const status = (event[7] || '').toString().trim();
 			const signups = (globalData.signups || []).filter(s => s[0] === event[0]);
 			const confirmedCount = signups.filter(s => s[5] === 'Confirmed').length;
+			const reserveCount = signups.filter(s => s[5] === 'Reserve').length;
 			const maxPlayers = event[4] ? Number(event[4]) : null;
+			const spacesAvailable = maxPlayers ? Math.max(0, maxPlayers - confirmedCount) : null;
 			const isFull = maxPlayers && confirmedCount >= maxPlayers;
 			const isPast = getEventStartDateTime(event) < serverNow();
 			const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
 			const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
+			const isPaidIn = !!(mySignup && mySignup[5] === 'Confirmed' && mySignup[6] === 'Paid');
 
-			// Always-visible places count, e.g. "6/10 Places" — shown regardless of status.
+			// Item #4: Players/Spaces Available/Reserves should always be visible
+			// together regardless of status, so this figure never "disappears" even
+			// once reserves have been promoted into confirmed spots.
 			const places = maxPlayers ? { label: confirmedCount + '/' + maxPlayers + ' Places', style: 'background:#f3f4f6; color:#4b5563;' } : null;
+			const reserves = { label: reserveCount + (reserveCount === 1 ? ' Reserve' : ' Reserves'), style: 'background:#f3f4f6; color:#4b5563;' };
+
+			// Item #16: colour-code by % of spaces remaining for anyone not yet
+			// signed up (>80% green, 40-80% yellow, <40% red).
+			let availabilityStyle = 'background:#fff1f2; color:#be123c;';
+			if (maxPlayers) {
+				const pctAvailable = (spacesAvailable / maxPlayers) * 100;
+				if (pctAvailable > 80) availabilityStyle = 'background:#f0fdf4; color:#15803d;';
+				else if (pctAvailable > 40) availabilityStyle = 'background:#fffbeb; color:#b45309;';
+				else availabilityStyle = 'background:#fff1f2; color:#be123c;';
+			}
 
 			let status_;
 			if (status === 'Cancelled') status_ = { label: 'Cancelled', style: 'background:#f3f4f6; color:#9ca3af;' };
 			else if (isPast) status_ = { label: 'Past', style: 'background:#f3f4f6; color:#9ca3af;' };
+			else if (isPaidIn) status_ = { label: "YOU'RE IN 🟡", style: `background:${'#c9a227'}; color:#1a1400;` };
 			else if (mySignup && mySignup[5] === 'Confirmed') status_ = { label: "You're In ✅", style: 'background:#f0fdf4; color:#15803d;' };
 			else if (mySignup && mySignup[5] === 'Reserve') status_ = { label: 'On Reserve List', style: 'background:#f9fafb; color:#6b7280;' };
 			else if (isFull) status_ = { label: 'Full — Reserve Available', style: 'background:#fff7ed; color:#c2410c;' };
-			else if (maxPlayers) status_ = { label: (maxPlayers - confirmedCount) + (maxPlayers - confirmedCount === 1 ? ' Spot Left' : ' Spots Left'), style: 'background:#fff1f2; color:#be123c;' };
+			else if (maxPlayers) status_ = { label: spacesAvailable + (spacesAvailable === 1 ? ' Spot Left' : ' Spots Left'), style: availabilityStyle };
 			else status_ = { label: 'Open', style: 'background:#fff1f2; color:#be123c;' };
 
-			return { ...status_, places };
+			return { ...status_, places, reserves, spacesAvailable, confirmedCount, reserveCount, maxPlayers };
 		}
 
         // --- SPECIAL EVENT (TOURNAMENT) HOMEPAGE BANNER ---
@@ -5799,6 +5816,9 @@
                                 <span style="${quickStatus.places.style}" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
                                     ${quickStatus.places.label}
                                 </span>` : ''}
+                                <span style="${quickStatus.reserves.style}" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
+                                    ${quickStatus.reserves.label}
+                                </span>
                             </div>
                             <p class="text-[11px] font-bold text-gray-400 truncate">${event[3] ? event[3] + ' · ' : ''}${event[8] || ''}</p>
                         </div>
@@ -5975,9 +5995,14 @@
 
             const content = document.getElementById('calendarEventModalContent');
             const signups = (globalData.signups || []).filter(s => s[0] === event[0]);
+            const confirmedSignups = signups.filter(s => s[5] === 'Confirmed');
+            const reserveSignups = signups.filter(s => s[5] === 'Reserve');
             const maxPlayers = event[4] ? Number(event[4]) : null;
-            const spotsLeft = maxPlayers ? maxPlayers - signups.length : null;
-            const isFull = maxPlayers && signups.length >= maxPlayers;
+            // Item #4 fix: spots left/full must be judged against confirmed players
+            // only - reserves shouldn't count against capacity (this previously used
+            // signups.length, which double-counted anyone on the reserve list too).
+            const spotsLeft = maxPlayers ? Math.max(0, maxPlayers - confirmedSignups.length) : null;
+            const isFull = maxPlayers && confirmedSignups.length >= maxPlayers;
             const status = (event[7] || "").toString().trim();
             const under18Only = !!event[14];
 			const femaleOnly = !!event[15];
@@ -6077,7 +6102,14 @@
                 <div class="p-5 space-y-3">
                     ${event[8] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[8]}</p></div>` : ''}
                     ${event[10] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[10]} ${Number(event[10]) === 1 ? 'hour' : 'hours'}</p></div>` : ''}
-                    ${maxPlayers ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold ${isFull ? 'text-rose-600' : 'text-gray-600'}">${signups.length} / ${maxPlayers} signed up${spotsLeft > 0 ? ' — ' + spotsLeft + (spotsLeft === 1 ? ' spot left' : ' spots left') : ' — FULL'}</p></div>` : ''}
+                    ${maxPlayers ? `
+                    <div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold ${isFull ? 'text-rose-600' : 'text-gray-600'}">${confirmedSignups.length} / ${maxPlayers} signed up${spotsLeft > 0 ? ' — ' + spotsLeft + (spotsLeft === 1 ? ' spot left' : ' spots left') : ' — FULL'}</p></div>
+                    <!-- Item #4: these three figures stay visible at all times, so the reserve count never "disappears" once someone's promoted into a confirmed spot -->
+                    <div class="grid grid-cols-3 gap-2 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        <div class="text-center"><p class="text-[9px] font-bold text-gray-400 uppercase">Players</p><p class="font-black text-sm">${confirmedSignups.length}/${maxPlayers}</p></div>
+                        <div class="text-center border-l border-r border-gray-200"><p class="text-[9px] font-bold text-gray-400 uppercase">Spaces Available</p><p class="font-black text-sm">${spotsLeft}</p></div>
+                        <div class="text-center"><p class="text-[9px] font-bold text-gray-400 uppercase">Reserves</p><p class="font-black text-sm">${reserveSignups.length}</p></div>
+                    </div>` : ''}
                     ${!under18Only ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">£${userPrice || nonMemberPrice} <span class="text-gray-400">(Members £${memberPrice} / Non-members £${nonMemberPrice})</span></p></div>` : ''}
                 </div>
 
