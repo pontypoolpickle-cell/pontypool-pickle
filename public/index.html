@@ -5233,13 +5233,18 @@
         // Single source of truth for event categories. To add a new type later
         // (e.g. Singles, Tournament), add an entry here + one line in getEventTypeKey().
         const EVENT_TYPES = {
+            special: { key: 'special', label: 'Special Event', icon: '🏆', logo: 'https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg', color: '#d97706', bg: '#fffbeb', text: '#b45309' },
             mixed:  { key: 'mixed',  label: 'Mixed Doubles', icon: '🎾', logo: 'https://i.postimg.cc/W1Wps66D/Logo-red.jpg',    color: '#e11d48', bg: '#fff1f2', text: '#be123c' },
             female: { key: 'female', label: 'Female Only',   icon: '♀️', logo: 'https://i.postimg.cc/13J2HkH9/Logo-purple.jpg', color: '#9333ea', bg: '#faf5ff', text: '#7e22ce' },
             junior: { key: 'junior', label: 'Junior',        icon: '👦', logo: 'https://i.postimg.cc/zGtDqSSb/Logo-Blue.jpg',   color: '#3b82f6', bg: '#eff6ff', text: '#1d4ed8' }
         };
         let currentEventFilter = 'all';
 
+        // Special Event takes priority over the demographic categories below - it's
+        // the club's headline/tournament flag, and should always stand out in gold
+        // regardless of whether the event is also Female/Junior only.
         function getEventTypeKey(event) {
+            if (!!event[17]) return 'special';
             if (!!event[15]) return 'female';
             if (!!event[14]) return 'junior';
             return 'mixed';
@@ -5570,14 +5575,17 @@
                 const visibleEvents = dayEvents.slice(0, maxVisible);
                 const extraCount = dayEvents.length - maxVisible;
 
-                visibleEvents.forEach(ev => {
+				visibleEvents.forEach(ev => {
 					const isPastEvent = new Date(ev[2]) < today;
+					const isSpecialEvent = !!ev[17];
 					const under18Only = !!ev[14];
 					const femaleOnly = !!ev[15];
 
 					let markerHtml;
 					if (isPastEvent) {
 						markerHtml = `<img src="https://i.postimg.cc/W1Wps66D/Logo-red.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; opacity:0.35; border: 2px solid #d1d5db;" alt="${ev[1]}">`;
+					} else if (isSpecialEvent) {
+						markerHtml = `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; border: 2px solid #d97706;" alt="${ev[1]}" title="🏆 Special Event">`;
 					} else if (femaleOnly) {
 						markerHtml = `<img src="https://i.postimg.cc/13J2HkH9/Logo-purple.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; border: 2px solid #9333ea;" alt="${ev[1]}">`;
 					} else if (under18Only) {
