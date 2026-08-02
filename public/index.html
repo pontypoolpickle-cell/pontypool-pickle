@@ -134,8 +134,8 @@
                 <button onclick="showTab('scramble-page')" id="nav-scramble" class="nav-link py-1">Scramble</button>
                 <button onclick="showTab('ladders-page')" id="nav-ladders" class="nav-link py-1">Ladders</button>
                 <button onclick="showTab('events-page')" id="nav-events" class="nav-link py-1">Events</button>
-                <button onclick="showTab('rules-page')" id="nav-rules" class="nav-link py-1">Rules</button>
                 <button onclick="showTab('club-info-page')" id="nav-club-info" class="nav-link py-1">Club Info & Resources</button>
+                <button onclick="showTab('merchandise-page')" id="nav-merchandise" class="nav-link py-1">Merchandise</button>
                 <button onclick="showTab('membership-page')" id="nav-membership" class="nav-link nav-link-gold py-1">⭐ Membership</button>
                 <button onclick="showTab('admin')" id="nav-admin" class="btn-red px-4 py-2 rounded font-black hidden">Admin</button>
                 <button onclick="openAuthModal()" id="nav-auth" class="bg-white text-black px-4 py-2 rounded-full font-black hover:bg-rose-600 hover:text-white transition">Login / Sign Up</button>
@@ -164,8 +164,8 @@
                 <button onclick="showTab('history-page'); closeMobileMenu();" id="nav-history-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">📖 History</button>
                 <button onclick="showTab('scramble-page'); closeMobileMenu();" id="nav-scramble-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🔀 Scramble</button>
                 <button onclick="showTab('ladders-page'); closeMobileMenu();" id="nav-ladders-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🪜 Ladders</button>
-                <button onclick="showTab('rules-page'); closeMobileMenu();" id="nav-rules-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">📋 Rules</button>
                 <button onclick="showTab('club-info-page'); closeMobileMenu();" id="nav-club-info-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">ℹ️ Club Info & Resources</button>
+                <button onclick="showTab('merchandise-page'); closeMobileMenu();" id="nav-merchandise-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🛍️ Merchandise</button>
                 <button onclick="showTab('membership-page'); closeMobileMenu();" id="nav-membership-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 nav-link-gold transition">⭐ Membership</button>
                 <button onclick="showTab('admin'); closeMobileMenu();" id="nav-admin-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 text-rose-400 hover:text-rose-300 transition">⚙️ Admin</button>
 				<button onclick="openAuthModal(); closeMobileMenu();" id="nav-auth-m" class="text-left px-2 py-3 text-rose-400 hover:text-rose-300 transition">Login / Sign Up</button>
@@ -280,7 +280,7 @@
                                 class="btn-red w-full md:w-auto px-12 py-5 rounded-full font-black uppercase tracking-widest shadow-xl transform hover:scale-105 transition">
                             Send us a Message
                         </button>
-                        <button onclick="showTab('rules-page')" 
+                        <button onclick="showTab('club-info-page')" 
                                 class="w-full md:w-auto px-12 py-5 rounded-full font-black uppercase tracking-widest border-2 border-black hover:bg-black hover:text-white transition">
                             See the Rules
                         </button>
@@ -290,137 +290,6 @@
             <div class="h-16 md:hidden"></div>
         </div>
 
-        <!-- RULES PAGE -->
-        <div id="rules-page" class="tab-content hidden">
-            <!-- LOGIN-REQUIRED MESSAGE (item #2) -->
-            <div id="rulesRestricted" class="card p-12 text-center space-y-6 border-t-8 border-black">
-                <div class="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
-                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                    </svg>
-                </div>
-                <div class="space-y-2">
-                    <h3 class="text-2xl font-black uppercase italic">Login Required</h3>
-                    <p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">
-                        You must be logged in to view this page.
-                    </p>
-                </div>
-                <div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
-                    <button onclick="openAuthModal()" class="btn-red px-8 py-3 rounded-full font-black uppercase text-sm shadow-lg">Login / Sign Up</button>
-                </div>
-            </div>
-            <div id="rulesMainContent" class="hidden">
-            <div class="flex flex-col xl:flex-row gap-8">
-                <div class="xl:w-1/2 space-y-2 text-left">
-                    <h2 class="text-5xl font-black mb-6 border-b-4 border-rose-600 pb-2 italic">Standard Rules</h2>
-                    
-                    <details><summary>Basic Rules Overview</summary>
-                        <div class="rule-content space-y-2">
-                            <p>Pickleball is played either as doubles (two players per team) or singles; doubles is most common. The same size playing area and rules are used for both singles and doubles.</p>
-                        </div>
-                    </details>
-                    
-                    <details><summary>The Serve</summary>
-                        <div class="rule-content space-y-2">
-                            <p>• The server’s arm must be moving in an upward arc when the ball is struck.</p>
-                            <p>• Paddle contact with the ball must not be made above the waist level.</p>
-                            <p>• The head of the paddle must not be above the wrist at contact.</p>
-                            <p>• <strong>Foot Follow-through:</strong> At the time the ball is struck, the server’s feet may not touch the court. You may follow through into the court area only after striking the ball. If your foot is over the line before the ball is struck, it is a fault and the turn is over.</p>
-                            <p>• The serve is made diagonally crosscourt and must land within the confines of the opposite diagonal court.</p>
-                        </div>
-                    </details>
-
-                    <details><summary>Service Sequence</summary>
-                        <div class="rule-content space-y-2">
-                            <p>• Both players on the serving doubles team have the opportunity to serve until they commit a fault.</p>
-                            <p>• The first serve of each team is made from the right-hand court.</p>
-                            <p>• If a point is scored, the server switches sides and initiates the next serve from the left-hand court.</p>
-                        </div>
-                    </details>
-
-                    <details><summary>Scoring</summary>
-                        <div class="rule-content space-y-2">
-                            <p>• Pickleball scoring uses a 3-number system for doubles (e.g., 4-2-1): your team's score, the opposing team's score, and your server number (1 or 2)</p>
-                            <p>• Points are scored only by the serving team.</p>
-                            <p>• Games are normally played to 11 points, win by 2.</p>
-                            <p>• Tournament games may be to 15 or 21, win by 2.</p>
-                            <p>• When the serving team’s score is even (0, 2, 4, 6, 8, 10), the player who was the first server in the game for that team will be in the right/even court when serving or receiving; when odd (1, 3, 5, 7, 9) that player will be in the left/odd court when serving or receiving.</p>
-                        </div>
-                    </details>
-
-                    <details><summary>Two-Bounce Rule</summary>
-                        <div class="rule-content space-y-2">
-                            <p>• When the ball is served, the receiving team must let it bounce before returning, and then the serving team must let it bounce before returning, thus two bounces.</p>
-                            <p>• After the ball has bounced once in each team’s court, both teams may either volley the ball (hit the ball before it bounces) or play it off a bounce (ground stroke).</p>
-                            <p>• The two-bounce rule eliminates the serve and volley advantage and extends rallies.</p>
-                        </div>
-                    </details>
-
-                    <details><summary>Line Calls</summary>
-                        <div class="rule-content space-y-2">
-                            <p>• A ball contacting any part of any line, except the non-volley zone line on a serve, is considered “in.”</p>
-                            <p>• A serve contacting the non-volley zone line is short and a fault.</p>
-                        </div>
-                    </details>
-
-                    <details><summary>Non-Volley Zone or Kitchen</summary>
-                        <div class="rule-content space-y-2">
-                            <p>• The non-volley zone is the court area within 7 feet on both sides of the net.</p>
-                            <p>• Volleying is prohibited within the non-volley zone. This rule prevents players from executing smashes from a position within the zone.</p>
-                            <p>• It is a fault if, when volleying a ball, the player steps on the non-volley zone, including the line and/or when the player’s momentum causes them or anything they are wearing or carrying to touch the non-volley zone including the associated lines.</p>
-                            <p>• It is a fault if, after volleying, a player is carried by momentum into or touches the non-volley zone, even if the volleyed ball is declared dead before this happens.</p>
-                            <p>• A player may legally be in the non-volley zone any time other than when volleying a ball.</p>
-                            <p>• The non-volley zone is commonly referred to as “the kitchen.”</p>
-                        </div>
-                    </details>
-
-                    <details><summary>Faults</summary>
-                        <div class="rule-content space-y-2">
-                            <p>• A fault is any action that stops play because of a rule violation.</p>
-                            <p>• A fault by the receiving team results in a point for the serving team.</p>
-                            <p>• A fault by the serving team results in the server’s loss of serve or side out.</p>
-                        </div>
-                    </details>
-
-                    <details><summary>Determining Serving Team</summary>
-                        <div class="rule-content">
-                            Any fair method can be used to determine which player or team has first choice of side, service, or receive. (Example: coin flip)
-                        </div>
-                    </details>
-                </div>
-
-                <!-- 2D Heritage Map with Dimensions -->
-                <div class="xl:w-1/2">
-                    <div class="sticky-court p-6 shadow-2xl">
-                        <svg viewBox="0 0 1000 700" class="w-full">
-                            <rect x="100" y="100" width="800" height="400" fill="#e11d48" stroke="white" stroke-width="6"/> 
-                            <rect x="375" y="100" width="250" height="400" fill="#000000" stroke="white" stroke-width="6"/>
-                            <line x1="500" y1="80" x2="500" y2="520" stroke="white" stroke-width="8"/>
-                            <line x1="100" y1="300" x2="375" y2="300" stroke="white" stroke-width="4"/>
-                            <line x1="625" y1="300" x2="900" y2="300" stroke="white" stroke-width="4"/>
-                            <text x="560" y="300" text-anchor="middle" class="court-label" transform="rotate(-90, 560, 300)">Non-Volley Zone (NVZ OR KITCHEN)</text>
-                            <text x="410" y="300" text-anchor="middle" class="court-label" transform="rotate(-90, 410, 300)">NVZ LINE</text>
-                            <text x="750" y="200" text-anchor="middle" class="court-label">RIGHT SERVICE AREA</text>
-                            <text x="750" y="400" text-anchor="middle" class="court-label">LEFT SERVICE AREA</text>
-                            <g stroke="white" stroke-width="2">
-                                <path d="M 100,550 L 375,550" marker-start="url(#dot)" marker-end="url(#dot)"/>
-                                <path d="M 500,550 L 625,550" marker-start="url(#dot)" marker-end="url(#dot)"/>
-                                <path d="M 100,600 L 900,600" marker-start="url(#dot)" marker-end="url(#dot)"/>
-                                <path d="M 940,100 L 940,300" marker-start="url(#dot)" marker-end="url(#dot)"/>
-                                <path d="M 970,100 L 970,500" marker-start="url(#dot)" marker-end="url(#dot)"/>
-                            </g>
-                            <text x="237" y="580" text-anchor="middle" class="dim-text">15 FT</text>
-                            <text x="562" y="580" text-anchor="middle" class="dim-text">7 FT</text>
-                            <text x="500" y="635" text-anchor="middle" class="dim-text" font-size="22">44 FT</text>
-                            <text x="955" y="200" text-anchor="middle" class="dim-text" transform="rotate(90, 955, 200)">10 FT</text>
-                            <text x="990" y="300" text-anchor="middle" class="dim-text" font-size="22" transform="rotate(90, 990, 300)">20 FT</text>
-                            <defs><marker id="dot" markerWidth="8" markerHeight="8" refX="4" refY="4"><circle cx="4" cy="4" r="3" fill="white"/></marker></defs>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-            </div>
-        </div>
         <div id="club-info-page" class="tab-content hidden max-w-4xl mx-auto space-y-16 px-4 pb-20">
 
             <!-- CONTACT SECTION -->
@@ -556,6 +425,9 @@
                         </div>
                     </div>
 
+                    <!-- Club Rules (item #9 - admin-uploadable PDF) -->
+                    <div id="rulesPdfCard"></div>
+
                 </div>
             </div>
 
@@ -601,128 +473,50 @@
                 </div>
             </div>
 
-            <!-- FAQ SECTION -->
+            <!-- FAQ SECTION (item #7 - database-backed, admin-editable) -->
             <div class="space-y-6">
-                <h2 class="text-5xl font-black mb-10 border-b-4 border-rose-600 pb-2 italic">Frequently Asked Questions</h2>
+                <div class="flex items-center justify-between mb-10 border-b-4 border-rose-600 pb-2 flex-wrap gap-2">
+                    <h2 class="text-5xl font-black italic">Frequently Asked Questions</h2>
+                </div>
+                <div id="faqListContainer" class="space-y-2"></div>
+            </div>
+            </div>
+            </div>
+        <!-- MERCHANDISE PAGE (item #10) -->
+        <div id="merchandise-page" class="tab-content hidden max-w-4xl mx-auto space-y-6 px-4 pb-20">
+            <h2 class="text-4xl md:text-5xl font-black border-l-8 border-rose-600 pl-4 italic uppercase">Merchandise</h2>
+
+            <!-- LOGGED-OUT MESSAGE - deliberately different wording to item #2's
+                 pages, per the spec for this tab specifically. -->
+            <div id="merchandiseRestricted" class="card p-12 text-center space-y-6 border-t-8 border-black">
+                <div class="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg>
+                </div>
                 <div class="space-y-2">
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">Can I play for more than one club?</summary>
-                    <div class="rule-content space-y-3">
-                        <p>Absolutely! At the heart of pickleball is the community, and we know how incredibly positive social play is for your health and wellbeing. We would never want to stand in the way of that. By playing at different clubs, you’ll meet new people and sharpen your skills against a wider variety of players.</p>
-                        <p>Just keep one thing in mind if you decide to "put the paddle to the metal" in competitive leagues: you can generally only represent one club per league season. It could get a little awkward if you found yourself having to play against yourself in a league fixture! Whoops!</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">I don't live in Pontypool, is this a problem?</summary>
-                    <div class="rule-content">
-                        Not at all! Everyone is welcome at Pontypool Pickle. Whether you are coming from just down the road or further afield, we are simply glad to have you choose our club. Grab your paddle and come join us!
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">I've never played, can I join in the fun?</summary>
-                    <div class="rule-content space-y-3">
-                        <p>Absolutely! In fact, having no previous experience just means you don't have any bad habits to break!</p>
-                        <p>As a new club, we are incredibly excited to welcome beginners. Come meet the gang, learn the ropes, and discover why this sport is growing so fast. Everyone is welcome, no matter your starting skill level.</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">I can't play every day because of other commitments—is that a problem?</summary>
-                    <div class="rule-content">
-                        Not at all! We know life gets busy, which is exactly why we do our best to organize sessions and events on different days of the week. Our schedule is designed to fit around various diaries and lifestyles, so you can just dip in and play whenever it suits you.
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">Can children play?</summary>
-                    <div class="rule-content space-y-3">
-                        <p>Because the club is in its early development stages, we don't currently offer specific sessions or coaching for children. Ensuring the safety and proper safeguarding of young people is incredibly important to us, so establishing a dedicated junior section is something we plan to look into once the club is fully established.</p>
-                        <p>To make this happen, we will need qualified volunteers and a solid safeguarding framework in place. If you'd like to help us get a youth programme off the ground, please visit our Contact Us page to express your interest. For the time being, our sessions are open exclusively to adults (ages 18 and over).</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">Can I play against whoever I want?</summary>
-                    <div class="rule-content space-y-3">
-                        <p>During our dedicated Ladder Sessions, unfortunately not. To keep things fair and competitive, the ladder system automatically pairs you with players of a similar or slightly higher skill level. This structure encourages consistent challenges on the court, helping you test your limits and steadily improve your game. It also ensures that everyone gets high-quality matches and that our court time is utilized as effectively as possible for the whole club.</p>
-                        <p>However, we love social, relaxed play just as much as competitive matches! While our current focus is on the ladder league, we hope to host Open Sessions in the future where you can mix, match, and play against whoever you like just for fun, without the scores affecting your online club rating.</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">What if I'm simply not good enough to play?</summary>
-                    <div class="rule-content space-y-3">
-                        <p>There is no such thing as "not good enough" at Pontypool Pickle—we've completely got you covered!</p>
-                        <p>To help build your confidence, we use a ladder system. This ensures you are always paired with and playing against people of a similar skill level. Here is how it works:</p>
-                        <p><strong>A Welcoming Start:</strong> If you are new to the club, you will automatically start with a base score of 1200.</p>
-                        <p><strong>No Pressure:</strong> This starting score places you comfortably in our introductory rankings so you won't ever feel overwhelmed on court.</p>
-                        <p><strong>Find Your Groove:</strong> The more games you play, the more accurate your rating becomes. As you win games and your confidence grows, you will "climb the ladder" to play on higher courts!</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">How does the rating system work?</summary>
-                    <div class="rule-content space-y-3">
-                        <p>We use a dynamic rating system based on the traditional Elo method (similar to how global DUPR ratings operate) to ensure you are always playing against people of a similar skill level.</p>
-                        <p><strong>Your Starting Block:</strong> When you create your account, you'll self-select your starting level based on your background or existing 4DR/DUPR rating (ranging from 1000 for beginners up to 1800 for Elite players). This ensures you land on the right court from day one.</p>
-                        <p><strong>The Provisional Period:</strong> Your first 10 matches are "provisional." During this time, the system applies a boosted multiplier to your points so it can quickly find your natural level on the ladder.</p>
-                        <p><strong>Every Point Counts:</strong> Once settled, your rating shifts after every match. Winning by a wide margin earns you more points than scraping a close 11-9 win. The same applies to losses.</p>
-                        <p><strong>The Underdog Advantage:</strong> Beating a higher-rated player gives your ranking a massive boost! Flip side? If you lose to a heavily favoured, higher-ranked player, your score barely takes a hit.</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">
-                        Why does it say "Decaying" below certain players' ratings and what does it mean?
-                    </summary>
-                    <div class="rule-content space-y-3">
-                        <p>If you see "Decay" next to a player's name on the leaderboard, it just means they've been away from the courts for a little while! Our leaderboard is dynamic and designed to reflect current, active skill. To stop inactive players from permanently holding top spots without playing, we use a "decay" system.</p>
-                        
-                        <p>If someone takes an extended break from the club, their ranking points will gradually drop until they return and play a match. Everyone gets a <strong>30-day grace period</strong> of inactivity. A player's points will only start to drop—and the "Decay" tag will only appear—if they haven't played a match at the club for more than 30 consecutive days.</p>
-
-                        <div class="bg-gray-50 p-4 rounded-lg border-l-4 border-rose-600">
-                            <p class="font-black uppercase text-xs mb-2">The Inactivity Scale:</p>
-                            <ul class="space-y-1 font-bold text-xs italic">
-                                <li>• Week 1 of decay: -5 points</li>
-                                <li>• Week 2 of decay: -10 points</li>
-                                <li>• Week 3 of decay: -15 points</li>
-                                <li>• Week 4 of decay: -20 points</li>
-                            </ul>
-                        </div>
-
-                        <p>There are two safety nets in place to protect everyone's hard-earned scores:</p>
-                        <p>1. <strong>The Absence Cap:</strong> The maximum total loss for any single period of absence is capped at 50 points. Once a player has lost 50 points, their score freezes.<br>
-                        2. <strong>The Floor Limit:</strong> Decay will never drop a rating below 1200 points. If a player's score is already at or near 1200 when they go inactive, the decay stops automatically.</p>
-
-                        <p>Playing just a <strong>single match</strong> instantly removes the "Decay" tag, stops the point drops, and resets the clock! However, any points lost during the absence are gone—they will need to win matches to climb back up. If they return and then go inactive again in the future, the 30-day clock restarts from zero.</p>
-                        
-                        <p>If a player is inactive for <strong>100 consecutive days</strong>, their profile will be automatically hidden from the active leaderboard to keep the standings fresh and clean for our regulars. Their points remain safely frozen, and their name will instantly reappear on the ladder as soon as they come back and play their first match.</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">
-                        I just registered - why can't I see myself on the leaderboard?
-                    </summary>
-                    <div class="rule-content space-y-3">
-                        <p>New accounts stay visible on the leaderboard for the first <strong>7 days</strong> after registering. If you haven't played a game at the club within those 7 days, your name is automatically hidden from the public rankings so the leaderboard stays accurate and uncluttered for active players.</p>
-                        <p>Your account isn't affected in any other way, and your name will <strong>instantly reappear</strong> the moment your first match is recorded - there's nothing you need to do to fix it, just get out on the courts!</p>
-                    </div>
-                </details>
-
-                <details class="bg-white rounded-lg shadow-sm">
-                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">Do you have a downloadable app?</summary>
-                    <div class="rule-content space-y-3">
-                        <p>Not quite yet! The club is still in its foundation stages, but launching a dedicated mobile app is definitely an exciting milestone we are striving toward for the future.</p>
-                        <p>In the meantime, our website is fully optimized for mobile devices. You can easily view our schedule, check player rankings, and secure your spot on the courts directly from your phone's web browser!</p>
-                    </div>
-                </details>
+                    <h3 class="text-2xl font-black uppercase italic">Login Required</h3>
+                    <p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">
+                        Please log in to view this content.
+                    </p>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+                    <button onclick="openAuthModal()" class="btn-red px-8 py-3 rounded-full font-black uppercase text-sm shadow-lg">Login / Sign Up</button>
+                </div>
             </div>
+
+            <!-- LOGGED-IN CONTENT -->
+            <div id="merchandiseMainContent" class="hidden">
+                <div class="card p-16 text-center space-y-4 border-t-8 border-black">
+                    <p class="text-6xl">🛍️</p>
+                    <h3 class="text-3xl font-black uppercase italic">Merchandise Coming Soon</h3>
+                    <p class="text-gray-500 max-w-md mx-auto font-bold uppercase text-xs leading-relaxed">
+                        We're working on club apparel and gear - check back soon!
+                    </p>
+                </div>
             </div>
-            </div>
-        </div>       
+        </div>
+
         <!-- MEMBERSHIP PAGE -->
         <div id="membership-page" class="tab-content hidden max-w-4xl mx-auto space-y-12 px-4 pb-20">
             <div class="text-center space-y-4">
@@ -1281,7 +1075,7 @@
 		document.getElementById('hamburgerIcon').classList.remove('hidden');
 		document.getElementById('hamburgerClose').classList.add('hidden');
 	}
-      let globalData = { history: [], standings: [], names: [] };
+      let globalData = { history: [], standings: [], names: [], siteSettings: {}, faqs: [] };
         const MEMBER_PRICE_PER_HOUR = 2.50;
         const NON_MEMBER_PRICE_PER_HOUR = 4.00;
         let currentGender = 'Everyone';
@@ -1431,6 +1225,26 @@
         alter table users add column if not exists membership_number integer;
         create unique index if not exists users_membership_number_idx
             on users (membership_number) where membership_number is not null;
+
+        -- Site settings (item #9) - simple key/value store for singleton
+        -- admin-managed values (currently just the Rules PDF link) so future
+        -- one-off settings don't each need their own dedicated column/table.
+        create table site_settings (
+          key text primary key,
+          value text
+        );
+
+        -- FAQs (item #7) - admin-editable, ordered list. The first time this table
+        -- is empty, the app automatically seeds it with the FAQ content that used
+        -- to be hardcoded (see seedDefaultFaqsIfEmpty() in this file) - no manual
+        -- SQL copy/paste needed.
+        create table faqs (
+          id uuid primary key default gen_random_uuid(),
+          question text not null,
+          answer text not null,
+          sort_order integer not null default 0,
+          created_at timestamptz default now()
+        );
 
         -- Membership fields (added for the Membership feature) --
         alter table users add column if not exists membership_status text default 'None';
@@ -1842,7 +1656,14 @@
                     !!u.consent_verified
                 ]),
                 ladderSessions: ladderSessionsRaw.map(entry => mapLadderSession(entry.session, entry.courts, entry.games)),
-                activeScramble
+                activeScramble,
+                // Item #9: key/value settings, exposed as a plain object (e.g.
+                // siteSettings.rules_pdf_url) rather than the raw row array.
+                siteSettings: Object.fromEntries((payload.siteSettings || []).map(s => [s.key, s.value])),
+                // Item #7: admin-editable FAQ list, sorted for display.
+                faqs: (payload.faqs || [])
+                    .map(f => ({ id: f.id, question: f.question, answer: f.answer, sortOrder: Number(f.sort_order || 0) }))
+                    .sort((a, b) => a.sortOrder - b.sortOrder)
             };
         }
 		
@@ -1875,6 +1696,29 @@
 			};
 		}
 
+        // Item #7: the FAQ content that used to be hardcoded on the Club Info page,
+        // used to auto-seed the new `faqs` table the very first time it's empty.
+        const DEFAULT_FAQS = [
+            { question: "Can I play for more than one club?", answer: `<p>Absolutely! At the heart of pickleball is the community, and we know how incredibly positive social play is for your health and wellbeing. We would never want to stand in the way of that. By playing at different clubs, you’ll meet new people and sharpen your skills against a wider variety of players.</p><p>Just keep one thing in mind if you decide to "put the paddle to the metal" in competitive leagues: you can generally only represent one club per league season. It could get a little awkward if you found yourself having to play against yourself in a league fixture! Whoops!</p>` },
+            { question: "I don't live in Pontypool, is this a problem?", answer: `Not at all! Everyone is welcome at Pontypool Pickle. Whether you are coming from just down the road or further afield, we are simply glad to have you choose our club. Grab your paddle and come join us!` },
+            { question: "I've never played, can I join in the fun?", answer: `<p>Absolutely! In fact, having no previous experience just means you don't have any bad habits to break!</p><p>As a new club, we are incredibly excited to welcome beginners. Come meet the gang, learn the ropes, and discover why this sport is growing so fast. Everyone is welcome, no matter your starting skill level.</p>` },
+            { question: "I can't play every day because of other commitments—is that a problem?", answer: `Not at all! We know life gets busy, which is exactly why we do our best to organize sessions and events on different days of the week. Our schedule is designed to fit around various diaries and lifestyles, so you can just dip in and play whenever it suits you.` },
+            { question: "Can children play?", answer: `<p>Because the club is in its early development stages, we don't currently offer specific sessions or coaching for children. Ensuring the safety and proper safeguarding of young people is incredibly important to us, so establishing a dedicated junior section is something we plan to look into once the club is fully established.</p><p>To make this happen, we will need qualified volunteers and a solid safeguarding framework in place. If you'd like to help us get a youth programme off the ground, please visit our Contact Us page to express your interest. For the time being, our sessions are open exclusively to adults (ages 18 and over).</p>` },
+            { question: "Can I play against whoever I want?", answer: `<p>During our dedicated Ladder Sessions, unfortunately not. To keep things fair and competitive, the ladder system automatically pairs you with players of a similar or slightly higher skill level. This structure encourages consistent challenges on the court, helping you test your limits and steadily improve your game. It also ensures that everyone gets high-quality matches and that our court time is utilized as effectively as possible for the whole club.</p><p>However, we love social, relaxed play just as much as competitive matches! While our current focus is on the ladder league, we hope to host Open Sessions in the future where you can mix, match, and play against whoever you like just for fun, without the scores affecting your online club rating.</p>` },
+            { question: "What if I'm simply not good enough to play?", answer: `<p>There is no such thing as "not good enough" at Pontypool Pickle—we've completely got you covered!</p><p>To help build your confidence, we use a ladder system. This ensures you are always paired with and playing against people of a similar skill level. Here is how it works:</p><p><strong>A Welcoming Start:</strong> If you are new to the club, you will automatically start with a base score of 1200.</p><p><strong>No Pressure:</strong> This starting score places you comfortably in our introductory rankings so you won't ever feel overwhelmed on court.</p><p><strong>Find Your Groove:</strong> The more games you play, the more accurate your rating becomes. As you win games and your confidence grows, you will "climb the ladder" to play on higher courts!</p>` },
+            { question: "How does the rating system work?", answer: `<p>We use a dynamic rating system based on the traditional Elo method (similar to how global DUPR ratings operate) to ensure you are always playing against people of a similar skill level.</p><p><strong>Your Starting Block:</strong> When you create your account, you'll self-select your starting level based on your background or existing 4DR/DUPR rating (ranging from 1000 for beginners up to 1800 for Elite players). This ensures you land on the right court from day one.</p><p><strong>The Provisional Period:</strong> Your first 10 matches are "provisional." During this time, the system applies a boosted multiplier to your points so it can quickly find your natural level on the ladder.</p><p><strong>Every Point Counts:</strong> Once settled, your rating shifts after every match. Winning by a wide margin earns you more points than scraping a close 11-9 win. The same applies to losses.</p><p><strong>The Underdog Advantage:</strong> Beating a higher-rated player gives your ranking a massive boost! Flip side? If you lose to a heavily favoured, higher-ranked player, your score barely takes a hit.</p>` },
+            { question: `Why does it say "Decaying" below certain players' ratings and what does it mean?`, answer: `<p>If you see "Decay" next to a player's name on the leaderboard, it just means they've been away from the courts for a little while! Our leaderboard is dynamic and designed to reflect current, active skill. To stop inactive players from permanently holding top spots without playing, we use a "decay" system.</p><p>If someone takes an extended break from the club, their ranking points will gradually drop until they return and play a match. Everyone gets a <strong>30-day grace period</strong> of inactivity. A player's points will only start to drop—and the "Decay" tag will only appear—if they haven't played a match at the club for more than 30 consecutive days.</p><div class="bg-gray-50 p-4 rounded-lg border-l-4 border-rose-600"><p class="font-black uppercase text-xs mb-2">The Inactivity Scale:</p><ul class="space-y-1 font-bold text-xs italic"><li>• Week 1 of decay: -5 points</li><li>• Week 2 of decay: -10 points</li><li>• Week 3 of decay: -15 points</li><li>• Week 4 of decay: -20 points</li></ul></div><p>There are two safety nets in place to protect everyone's hard-earned scores:</p><p>1. <strong>The Absence Cap:</strong> The maximum total loss for any single period of absence is capped at 50 points. Once a player has lost 50 points, their score freezes.<br>2. <strong>The Floor Limit:</strong> Decay will never drop a rating below 1200 points. If a player's score is already at or near 1200 when they go inactive, the decay stops automatically.</p><p>Playing just a <strong>single match</strong> instantly removes the "Decay" tag, stops the point drops, and resets the clock! However, any points lost during the absence are gone—they will need to win matches to climb back up. If they return and then go inactive again in the future, the 30-day clock restarts from zero.</p><p>If a player is inactive for <strong>100 consecutive days</strong>, their profile will be automatically hidden from the active leaderboard to keep the standings fresh and clean for our regulars. Their points remain safely frozen, and their name will instantly reappear on the ladder as soon as they come back and play their first match.</p>` },
+            { question: "I just registered - why can't I see myself on the leaderboard?", answer: `<p>New accounts stay visible on the leaderboard for the first <strong>7 days</strong> after registering. If you haven't played a game at the club within those 7 days, your name is automatically hidden from the public rankings so the leaderboard stays accurate and uncluttered for active players.</p><p>Your account isn't affected in any other way, and your name will <strong>instantly reappear</strong> the moment your first match is recorded - there's nothing you need to do to fix it, just get out on the courts!</p>` },
+            { question: "Do you have a downloadable app?", answer: `<p>Not quite yet! The club is still in its foundation stages, but launching a dedicated mobile app is definitely an exciting milestone we are striving toward for the future.</p><p>In the meantime, our website is fully optimized for mobile devices. You can easily view our schedule, check player rankings, and secure your spot on the courts directly from your phone's web browser!</p>` }
+        ];
+
+        async function seedDefaultFaqs() {
+            const { error } = await supabaseClient.from('faqs').insert(
+                DEFAULT_FAQS.map((f, i) => ({ question: f.question, answer: f.answer, sort_order: i }))
+            );
+            if (error) throw new Error(error.message);
+        }
+
         async function fetchAllDataFromSupabase() {
             const [
                 playersRes,
@@ -1887,7 +1731,9 @@
                 scrambleRes,
                 membersRes,
                 memberExtrasRes,
-                membershipPlansRes
+                membershipPlansRes,
+                siteSettingsRes,
+                faqsRes
             ] = await Promise.all([
                 supabaseClient.from('players').select('*').order('name', { ascending: true }),
                 supabaseClient.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -1904,8 +1750,25 @@
                 // Membership panel - this just silently degrades to "Unknown"/no
                 // membership number in the newer Manage Players screen instead.
                 supabaseClient.from('users').select('username, created_at, membership_number').eq('status', 'Approved'),
-                supabaseClient.from('membership_plans').select('*').order('duration_weeks', { ascending: true })
+                supabaseClient.from('membership_plans').select('*').order('duration_weeks', { ascending: true }),
+                supabaseClient.from('site_settings').select('*'),
+                supabaseClient.from('faqs').select('*').order('sort_order', { ascending: true })
             ]);
+
+            // Item #7: first-run auto-seed - if the faqs table exists but is empty
+            // (i.e. this migration has just been applied), populate it with the FAQ
+            // content that used to be hardcoded so nobody sees a blank FAQ section.
+            // If the table doesn't exist yet at all, faqsRes.error is set and we
+            // skip this entirely rather than throwing - same "degrade gracefully
+            // until the migration is run" pattern used elsewhere in this file.
+            let faqRows = faqsRes.data || [];
+            if (!faqsRes.error && faqRows.length === 0) {
+                try {
+                    await seedDefaultFaqs();
+                    const reseeded = await supabaseClient.from('faqs').select('*').order('sort_order', { ascending: true });
+                    faqRows = reseeded.data || [];
+                } catch (e) { console.warn('FAQ auto-seed skipped:', e.message); }
+            }
 
             const activeSessions = ladderSessionRes.data || [];
 			const ladderSessions = await Promise.all(activeSessions.map(async session => {
@@ -1929,7 +1792,9 @@
 				liveScramble: scrambleRes.data || [],
 				members: membersRes.data || [],
 				memberExtras: memberExtrasRes.data || [],
-				membershipPlans: membershipPlansRes.data || []
+				membershipPlans: membershipPlansRes.data || [],
+				siteSettings: siteSettingsRes.data || [],
+				faqs: faqRows
 			});
         }
 
@@ -2504,6 +2369,94 @@
             if (error) throw new Error(`Could not upload PDF (${error.message}). Make sure the "${SPECIAL_EVENT_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).getPublicUrl(path);
             return publicUrlData.publicUrl;
+        }
+
+        // Item #9: Club Rules PDF - reuses the same public "event-documents"
+        // storage bucket as the Special Event info PDF above (just a different
+        // path prefix) so there's no extra bucket for the site owner to create.
+        async function uploadRulesPdf(file) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `rules/${Date.now()}-${safeName}`;
+            const { error } = await supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).upload(path, file, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: file.type || 'application/pdf'
+            });
+            if (error) throw new Error(`Could not upload PDF (${error.message}). Make sure the "${SPECIAL_EVENT_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
+            const { data: publicUrlData } = supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).getPublicUrl(path);
+            return publicUrlData.publicUrl;
+        }
+
+        async function saveSiteSetting(key, value) {
+            const { error } = await supabaseClient.from('site_settings').upsert({ key, value });
+            if (error) throw new Error(error.message);
+        }
+
+        function renderRulesPdfCard() {
+            const container = document.getElementById('rulesPdfCard');
+            if (!container) return;
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            const rulesUrl = globalData.siteSettings ? globalData.siteSettings.rules_pdf_url : null;
+
+            const viewLinkHtml = rulesUrl ? `
+                <a href="${rulesUrl}" target="_blank" rel="noopener noreferrer"
+                  class="card p-6 border-l-8 border-black flex items-start gap-5 hover:shadow-xl transition group">
+                    <div class="w-12 h-12 bg-black text-white rounded-xl flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Policy Document</p>
+                        <h4 class="font-black text-lg uppercase italic group-hover:text-rose-600 transition">Club Rules</h4>
+                        <p class="text-xs text-gray-400 font-bold uppercase mt-1">View PDF ↗</p>
+                    </div>
+                </a>` : `
+                <div class="card p-6 border-l-8 border-gray-300 flex items-start gap-5">
+                    <div class="w-12 h-12 bg-gray-300 text-white rounded-xl flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Policy Document</p>
+                        <h4 class="font-black text-lg uppercase italic text-gray-400">Club Rules</h4>
+                        <p class="text-xs text-gray-400 font-bold uppercase mt-1">Not uploaded yet</p>
+                    </div>
+                </div>`;
+
+            const adminControlsHtml = isAdmin ? `
+                <label class="card p-4 border-l-8 border-rose-600 flex items-center gap-3 cursor-pointer hover:shadow-lg transition mt-2 text-xs font-black uppercase tracking-widest text-rose-600">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    <span id="rulesPdfUploadLabel">${rulesUrl ? 'Upload New Rules PDF (Replaces Current)' : 'Upload Rules PDF'}</span>
+                    <input type="file" accept="application/pdf" class="hidden" onchange="handleRulesPdfUpload(this)">
+                </label>` : '';
+
+            container.innerHTML = viewLinkHtml + adminControlsHtml;
+        }
+
+        function handleRulesPdfUpload(input) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (file.type !== 'application/pdf') return triggerError("Please choose a PDF file.");
+
+            const label = document.getElementById('rulesPdfUploadLabel');
+            const originalText = label.innerText;
+            label.innerText = 'Uploading...';
+
+            uploadRulesPdf(file)
+                .then(url => saveSiteSetting('rules_pdf_url', url))
+                .then(() => refreshAllData())
+                .then(r => {
+                    render(r);
+                    triggerToast("Rules PDF updated.");
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    label.innerText = originalText;
+                })
+                .finally(() => { input.value = ''; });
         }
 
         // Assigns the next sequential membership number (PPC-0001, PPC-0002, ...)
@@ -3428,8 +3381,8 @@
 				// Contact/policy-documents section of Club Info stay public).
 				if(id === 'events-page') applyLoginGate('eventsRestricted', 'eventsMainContent');
 				if(id === 'history-page') applyLoginGate('historyRestricted', 'historyMainContent');
-				if(id === 'rules-page') applyLoginGate('rulesRestricted', 'rulesMainContent');
 				if(id === 'club-info-page') applyLoginGate('clubInfoRestricted', 'clubInfoGatedContent');
+				if(id === 'merchandise-page') applyLoginGate('merchandiseRestricted', 'merchandiseMainContent');
             }
             // render() calls showTab(currentTabId, { scroll: false }) purely to
             // re-apply visibility/access state for whatever tab is already open -
@@ -3564,6 +3517,8 @@
             renderEvents();
             renderMembershipPage();
             renderSpecialEventBanner();
+            renderFaqList();
+            renderRulesPdfCard();
 
             // Populate location dropdown
             const locationSelect = document.getElementById('evtLocation');
@@ -5581,6 +5536,128 @@
             return (globalData.membershipPlans && globalData.membershipPlans.length)
                 ? globalData.membershipPlans
                 : [{ durationWeeks: 13, price: 10 }, { durationWeeks: 26, price: 15 }, { durationWeeks: 52, price: 20 }];
+        }
+
+        // --- FAQ (item #7) ---------------------------------------------------
+        function renderFaqList() {
+            const container = document.getElementById('faqListContainer');
+            if (!container) return;
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            const faqs = [...(globalData.faqs || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+
+            if (faqs.length === 0) {
+                container.innerHTML = `<p class="text-gray-400 italic text-sm">No FAQs yet.</p>`;
+            } else {
+                container.innerHTML = faqs.map((f, i) => `
+                    <details class="bg-white rounded-lg shadow-sm"
+                        ${isAdmin ? `draggable="true" ondragstart="faqDragStart(event, ${i})" ondragover="faqDragOver(event)" ondragleave="faqDragLeave(event)" ondrop="faqDrop(event, ${i})"` : ''}>
+                        <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition flex items-center justify-between gap-3">
+                            <span class="flex-1">${f.question}</span>
+                            ${isAdmin ? `
+                                <span class="flex items-center gap-3 flex-shrink-0 normal-case">
+                                    <span class="text-gray-300 text-lg" title="Drag to reorder" style="cursor:grab;">⠿</span>
+                                    <button type="button" onclick="event.preventDefault(); event.stopPropagation(); openEditFaqModal('${f.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Edit FAQ">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                    </button>
+                                </span>
+                            ` : ''}
+                        </summary>
+                        <div class="rule-content space-y-3">${f.answer}</div>
+                    </details>
+                `).join('');
+            }
+
+            const addBtnHtml = `<button onclick="openAddFaqModal()" class="w-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-4 font-black uppercase text-xs tracking-widest transition">+ Add New FAQ</button>`;
+            if (isAdmin) container.innerHTML += addBtnHtml;
+        }
+
+        let faqDragSourceIndex = null;
+        function faqDragStart(e, index) {
+            faqDragSourceIndex = index;
+            e.dataTransfer.effectAllowed = 'move';
+            e.currentTarget.style.opacity = '0.4';
+        }
+        function faqDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            e.currentTarget.style.background = '#fff1f2';
+        }
+        function faqDragLeave(e) {
+            e.currentTarget.style.background = '';
+        }
+        function faqDrop(e, targetIndex) {
+            e.preventDefault();
+            e.currentTarget.style.background = '';
+            document.querySelectorAll('#faqListContainer > details').forEach(d => d.style.opacity = '');
+            if (faqDragSourceIndex === null || faqDragSourceIndex === targetIndex) { faqDragSourceIndex = null; return; }
+
+            const faqs = [...(globalData.faqs || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+            const [moved] = faqs.splice(faqDragSourceIndex, 1);
+            faqs.splice(targetIndex, 0, moved);
+            faqDragSourceIndex = null;
+            persistFaqOrder(faqs);
+        }
+
+        function persistFaqOrder(orderedFaqs) {
+            // Update optimistically so the reorder feels instant, then persist in
+            // the background - matches sort_order to each row's new position.
+            orderedFaqs.forEach((f, i) => { f.sortOrder = i; });
+            globalData.faqs = orderedFaqs;
+            renderFaqList();
+
+            Promise.all(orderedFaqs.map((f, i) => supabaseClient.from('faqs').update({ sort_order: i }).eq('id', f.id)))
+                .then(results => {
+                    const failed = results.find(r => r.error);
+                    if (failed) throw new Error(failed.error.message);
+                    triggerToast("FAQ order updated.");
+                })
+                .catch(err => triggerError("Could not save the new order: " + err.message));
+        }
+
+        let faqEditTarget = null;
+
+        function openAddFaqModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            faqEditTarget = null;
+            document.getElementById('faqEditModalTitle').innerText = 'Add New FAQ';
+            document.getElementById('faqEditQuestion').value = '';
+            document.getElementById('faqEditAnswer').value = '';
+            openModal('faqEditModal');
+        }
+
+        function openEditFaqModal(id) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const faq = (globalData.faqs || []).find(f => f.id === id);
+            if (!faq) return triggerError("FAQ not found.");
+            faqEditTarget = faq;
+            document.getElementById('faqEditModalTitle').innerText = 'Edit FAQ';
+            document.getElementById('faqEditQuestion').value = faq.question;
+            document.getElementById('faqEditAnswer').value = faq.answer;
+            openModal('faqEditModal');
+        }
+
+        function saveFaq() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const question = document.getElementById('faqEditQuestion').value.trim();
+            const answer = document.getElementById('faqEditAnswer').value.trim();
+            if (!question || !answer) return triggerError("Please fill in both the question and the answer.");
+
+            const btn = document.getElementById('faqEditSaveBtn');
+            btn.disabled = true; btn.innerText = 'Saving...';
+
+            const request = faqEditTarget
+                ? supabaseClient.from('faqs').update({ question, answer }).eq('id', faqEditTarget.id)
+                : supabaseClient.from('faqs').insert({ question, answer, sort_order: (globalData.faqs || []).length });
+
+            request.then(({ error }) => {
+                if (error) throw new Error(error.message);
+                return refreshAllData();
+            }).then(r => {
+                render(r);
+                triggerToast(faqEditTarget ? "FAQ updated." : "FAQ added.");
+                closeModal('faqEditModal');
+            }).catch(err => triggerError(err.message))
+              .finally(() => { btn.disabled = false; btn.innerText = 'Save'; });
         }
 
         function renderMembershipPage() {
@@ -7713,6 +7790,27 @@
             </div>
         </div>
     </div>
+    <!-- FAQ EDIT MODAL (item #7) -->
+    <div id="faqEditModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800">
+            <div class="p-6 pb-4 flex justify-between items-start">
+                <h3 id="faqEditModalTitle" class="text-2xl font-black uppercase italic">Edit FAQ</h3>
+                <button onclick="closeModal('faqEditModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-6 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Question</label>
+                    <input type="text" id="faqEditQuestion" placeholder="e.g. Can I play for more than one club?" class="input-field border-2 w-full">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Answer</label>
+                    <textarea id="faqEditAnswer" rows="6" placeholder="Your answer... basic HTML like <p>, <strong>, <br> is supported and will match the styling of the other FAQs." class="input-field border-2 w-full font-normal normal-case"></textarea>
+                    <p class="text-[10px] text-gray-400 font-bold mt-1">Tip: wrap separate paragraphs in &lt;p&gt;...&lt;/p&gt; so the spacing matches the rest of the FAQs.</p>
+                </div>
+                <button onclick="saveFaq()" id="faqEditSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
+            </div>
+        </div>
+    </div>
     <!-- MANAGE PLAYERS MODAL -->
     <div id="managePlayersModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800" style="max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
@@ -9129,7 +9227,6 @@
 
                 <!-- Navigation Links -->
                 <div class="flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest">
-                    <button onclick="showTab('rules-page')" style="color: #666 !important;" class="hover:text-white transition">Rules</button>
                     <button onclick="showTab('club-info-page')" style="color: #666 !important;" class="hover:text-white transition">Club Info & Resources</button>
                     <button onclick="showTab('membership-page')" style="color: var(--ponty-gold-light) !important;" class="hover:text-white transition">⭐ Membership</button>
                 </div>
