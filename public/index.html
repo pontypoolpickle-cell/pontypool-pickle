@@ -1007,8 +1007,9 @@
                         <button onclick="openEventModal()" class="w-full bg-white text-black border-2 border-black py-4 rounded-xl font-black uppercase hover:bg-gray-200 transition shadow-lg">+ Create Event</button>
                         <button onclick="openMembershipModal()" class="w-full bg-black text-white border-2 py-4 rounded-xl font-black uppercase shadow-lg" style="border-color: var(--ponty-gold) !important;">⭐ Manage Membership</button>
                     </div>
-                    <!-- Row 1b: Venue Management -->
-                    <div class="grid grid-cols-1 gap-4 mb-4">
+                    <!-- Row 1b: Players & Venue Management -->
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <button onclick="openManagePlayersModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">👥 Manage Players</button>
                         <button onclick="openManageVenuesModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">📍 Manage Venues</button>
                     </div>
 
@@ -1302,6 +1303,15 @@
         alter table users add column if not exists consent_verified_by text;
         alter table users add column if not exists consent_verified_at timestamptz;
 
+        -- Membership Number (item #17) - a permanent "PPC-0001" style identifier
+        -- assigned once per account and never reused, even if membership lapses.
+        -- New approvals get the next number automatically; existing/legacy members
+        -- need their historical number backfilled once via the admin player
+        -- profile (Manage Players) - see assignNextMembershipNumber() in the app.
+        alter table users add column if not exists membership_number integer;
+        create unique index if not exists users_membership_number_idx
+            on users (membership_number) where membership_number is not null;
+
         -- Membership fields (added for the Membership feature) --
         alter table users add column if not exists membership_status text default 'None';
         alter table users add column if not exists membership_duration_weeks numeric;
@@ -1526,7 +1536,11 @@
             };
         }
 
-        function toMembershipView(u) {
+        function formatMembershipNumber(n) {
+            return n ? 'PPC-' + String(n).padStart(4, '0') : null;
+        }
+
+        function toMembershipView(u, extra) {
             const fullName = `${u.first_name || ''} ${u.surname || ''}`.trim();
             return {
                 id: u.id,
@@ -1534,6 +1548,9 @@
                 name: fullName,
                 email: u.email || '',
                 role: u.role || 'Non-Member',
+                createdAt: extra ? extra.created_at : null,
+                membershipNumber: extra ? extra.membership_number : null,
+                membershipNumberFormatted: extra ? formatMembershipNumber(extra.membership_number) : null,
                 status: u.membership_status || 'None',
                 durationWeeks: u.membership_duration_weeks || null,
                 requestedDurationWeeks: u.membership_requested_duration_weeks || null,
@@ -1556,12 +1573,16 @@
             const scrambleRows = payload.liveScramble || [];
             const membersRaw = payload.members || [];
             const membershipPlansRaw = payload.membershipPlans || [];
+            const memberExtrasRaw = payload.memberExtras || [];
 
             const memberMap = new Map();
             membersRaw.forEach(u => {
                 const fullName = normalizeName(`${u.first_name || ''} ${u.surname || ''}`);
                 if (fullName) memberMap.set(fullName, u);
             });
+
+            const memberExtrasMap = new Map();
+            memberExtrasRaw.forEach(e => memberExtrasMap.set(e.username, e));
 
             liveScrambleIdMap = {};
             const activeScramble = scrambleRows.map((r, i) => {
@@ -1582,7 +1603,7 @@
 
             return {
                 standings: players.map(p => toPlayerView(p, memberMap)),
-                members: membersRaw.map(toMembershipView),
+                members: membersRaw.map(u => toMembershipView(u, memberExtrasMap.get(u.username))),
                 membershipPlans: membershipPlansRaw.map(p => ({ durationWeeks: Number(p.duration_weeks), price: Number(p.price), label: p.label || (p.duration_weeks + ' Weeks') })),
                 history: matches
                     .map(m => ({
@@ -1698,6 +1719,7 @@
                 ladderSessionRes,
                 scrambleRes,
                 membersRes,
+                memberExtrasRes,
                 membershipPlansRes
             ] = await Promise.all([
                 supabaseClient.from('players').select('*').order('name', { ascending: true }),
@@ -1709,6 +1731,12 @@
                 supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
                 supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true }),
                 supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref').eq('status', 'Approved').order('first_name', { ascending: true }),
+                // Fetched separately (not merged into the query above) so that sites
+                // which haven't yet run the membership_number/created_at migration
+                // comment near the top of this file don't lose the existing Manage
+                // Membership panel - this just silently degrades to "Unknown"/no
+                // membership number in the newer Manage Players screen instead.
+                supabaseClient.from('users').select('username, created_at, membership_number').eq('status', 'Approved'),
                 supabaseClient.from('membership_plans').select('*').order('duration_weeks', { ascending: true })
             ]);
 
@@ -1733,6 +1761,7 @@
 				ladderSessions,
 				liveScramble: scrambleRes.data || [],
 				members: membersRes.data || [],
+				memberExtras: memberExtrasRes.data || [],
 				membershipPlans: membershipPlansRes.data || []
 			});
         }
@@ -2308,6 +2337,56 @@
             if (error) throw new Error(`Could not upload PDF (${error.message}). Make sure the "${SPECIAL_EVENT_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).getPublicUrl(path);
             return publicUrlData.publicUrl;
+        }
+
+        // Assigns the next sequential membership number (PPC-0001, PPC-0002, ...)
+        // to a newly-approved account, unless it somehow already has one. Historical
+        // members backfilled from banking records get their number set manually via
+        // the admin "Manage Players" profile instead of through this auto-assign path.
+        async function assignNextMembershipNumber(username) {
+            const { data: rows, error: fetchErr } = await supabaseClient
+                .from('users').select('membership_number').eq('username', username).limit(1);
+            if (fetchErr) throw new Error(fetchErr.message);
+            if (rows && rows[0] && rows[0].membership_number) return;
+
+            const { data: maxRows, error: maxErr } = await supabaseClient
+                .from('users').select('membership_number')
+                .not('membership_number', 'is', null)
+                .order('membership_number', { ascending: false })
+                .limit(1);
+            if (maxErr) throw new Error(maxErr.message);
+            const next = (maxRows && maxRows[0] ? Number(maxRows[0].membership_number) : 0) + 1;
+
+            const { error: updateErr } = await supabaseClient
+                .from('users').update({ membership_number: next }).eq('username', username);
+            if (updateErr) throw new Error(updateErr.message);
+        }
+
+        async function setMembershipNumber(username, number) {
+            const { error } = await supabaseClient.from('users').update({ membership_number: number }).eq('username', username);
+            if (error) throw new Error(error.message);
+        }
+
+        // Permanently removes a player's account (item #1). The `players` row
+        // (rating/match history) is deliberately left untouched so past match
+        // history and opponents' win/loss records stay intact.
+        async function deleteUserAccount(username) {
+            const { data: rows, error: fetchErr } = await supabaseClient.from('users').select('*').eq('username', username).limit(1);
+            if (fetchErr) throw new Error(fetchErr.message);
+            const user = rows && rows.length ? rows[0] : null;
+            if (!user) throw new Error('Player not found.');
+            if (user.role === 'Admin') throw new Error("Admin accounts can't be removed from here.");
+
+            const { error: deleteErr } = await supabaseClient.from('users').delete().eq('username', username);
+            if (deleteErr) throw new Error(deleteErr.message);
+
+            if (user.email && user.email.indexOf('@') !== -1) {
+                await sendEmail('account_removed', {
+                    firstName: user.first_name,
+                    email: user.email
+                });
+            }
+            return user;
         }
 
         async function addLocation(name) {
@@ -2954,6 +3033,10 @@
                         is_under18: !!user.is_under18
                     });
                 }
+                // Best-effort: never let a missing membership_number column (see the
+                // migration comment near the top of this file) block approving a
+                // new member, which is the far more important action here.
+                try { await assignNextMembershipNumber(username); } catch (e) { console.warn('assignNextMembershipNumber skipped:', e.message); }
                 if (user.email) {
                     sendEmail('account_approved', {
                         firstName: user.first_name,
@@ -3733,6 +3816,112 @@
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
         }
+        function openManagePlayersModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            document.getElementById('managePlayersSearch').value = '';
+            renderManagePlayersList();
+            openModal('managePlayersModal');
+        }
+
+        function renderManagePlayersList() {
+            const container = document.getElementById('managePlayersList');
+            if (!container) return;
+            const search = (document.getElementById('managePlayersSearch').value || '').toLowerCase().trim();
+
+            const rows = [...(globalData.members || [])]
+                .filter(m => !search || m.name.toLowerCase().includes(search) || m.username.toLowerCase().includes(search))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            if (rows.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-400 italic py-8 text-sm">No players found.</p>`;
+                return;
+            }
+
+            container.innerHTML = rows.map(m => `
+                <div onclick="openAdminPlayerProfile('${m.username.replace(/'/g, "\\'")}')" class="flex justify-between items-center bg-gray-50 hover:bg-gray-100 rounded-lg px-4 py-3 cursor-pointer transition">
+                    <div class="min-w-0">
+                        <p class="font-black text-sm uppercase truncate">${m.name}${m.membershipNumberFormatted ? ` <span class="text-[9px] font-black text-gray-400">${m.membershipNumberFormatted}</span>` : ''}</p>
+                        <p class="text-[10px] text-gray-400 font-bold">@${m.username} &bull; ${m.role}</p>
+                    </div>
+                    <svg class="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </div>
+            `).join('');
+        }
+
+        let currentAdminPlayerProfile = null;
+
+        function openAdminPlayerProfile(username) {
+            const m = (globalData.members || []).find(x => x.username === username);
+            if (!m) return triggerError("Player not found.");
+            currentAdminPlayerProfile = m;
+
+            const standing = (globalData.standings || []).find(s => normalizeName(s.name) === normalizeName(m.name));
+            const registeredDate = m.createdAt ? new Date(m.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown';
+
+            document.getElementById('playerProfileName').innerText = m.name;
+            document.getElementById('playerProfileUsername').innerText = '@' + m.username;
+            document.getElementById('playerProfileRegistered').innerText = registeredDate;
+            document.getElementById('playerProfileGames').innerText = standing ? standing.totalGames : '0';
+            document.getElementById('playerProfileEmail').innerText = m.email || 'Not provided';
+            document.getElementById('playerProfileRole').innerText = `${m.role} / ${m.status}`;
+            document.getElementById('playerProfileMembershipNumberInput').value = m.membershipNumber || '';
+
+            openModal('adminPlayerProfileModal');
+        }
+
+        function savePlayerMembershipNumber() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!currentAdminPlayerProfile) return;
+            const raw = document.getElementById('playerProfileMembershipNumberInput').value;
+            const number = raw ? Number(raw) : null;
+            if (raw && (!Number.isInteger(number) || number < 1)) return triggerError("Membership number must be a positive whole number.");
+
+            const btn = document.getElementById('playerProfileMembershipSaveBtn');
+            btn.disabled = true; btn.innerText = 'Saving...';
+
+            setMembershipNumber(currentAdminPlayerProfile.username, number)
+                .then(() => refreshAllData())
+                .then(r => {
+                    render(r);
+                    triggerToast("Membership number updated.");
+                    openAdminPlayerProfile(currentAdminPlayerProfile.username);
+                })
+                .catch(err => {
+                    if (err.message.includes('duplicate')) return triggerError("That membership number is already in use.");
+                    if (err.message.includes('does not exist')) return triggerError("The membership_number column hasn't been added to the database yet - see the migration comment near the top of index.html.");
+                    triggerError(err.message);
+                })
+                .finally(() => { btn.disabled = false; btn.innerText = 'Save'; });
+        }
+
+        function confirmDeletePlayer() {
+            if (!currentAdminPlayerProfile) return;
+            if (currentAdminPlayerProfile.role === 'Admin') return triggerError("Admin accounts can't be removed from here.");
+            document.getElementById('deletePlayerName').innerText = currentAdminPlayerProfile.name;
+            openModal('deletePlayerModal');
+        }
+
+        function executeDeletePlayer() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!currentAdminPlayerProfile) return;
+
+            const btn = document.getElementById('deletePlayerFinalBtn');
+            btn.disabled = true; btn.innerText = "Removing...";
+
+            deleteUserAccount(currentAdminPlayerProfile.username)
+                .then(() => refreshAllData())
+                .then(r => {
+                    render(r);
+                    triggerToast(`"${currentAdminPlayerProfile.name}" has been removed.`);
+                    closeModal('deletePlayerModal');
+                    closeModal('adminPlayerProfileModal');
+                    renderManagePlayersList();
+                    currentAdminPlayerProfile = null;
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Permanently Remove"; });
+        }
+
         function openManageVenuesModal() {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
             renderManageVenuesList();
@@ -3977,11 +4166,16 @@
             const winPct = p.totalGames > 0 ? Math.round((p.wins / p.totalGames) * 100) : 0;
             
             // 5. Inject Header
+            const memberRecord = (globalData.members || []).find(m => normalizeName(m.name) === normalizeName(p.name));
+            const membershipNumberBadge = memberRecord && memberRecord.membershipNumberFormatted
+                ? `<span class="bg-white bg-opacity-10 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest" style="color: var(--ponty-gold) !important;">${memberRecord.membershipNumberFormatted}</span>`
+                : '';
             document.getElementById('profileHeaderTitle').innerHTML = `
-                <div class="flex items-center gap-2 mb-1">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
                     <span class="skill-badge ${badgeClass}" style="font-size: 9px; padding: 3px 10px;">${badgeText}</span>
                     <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank}</span>
                     ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
+                    ${membershipNumberBadge}
                 </div>
                 <h2 class="text-3xl font-black italic tracking-tight uppercase text-white">${p.name}</h2>
             `;
@@ -7166,6 +7360,92 @@
                         Recalculate Now
                     </button>
                     <button onclick="closeRecalcEloModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- MANAGE PLAYERS MODAL -->
+    <div id="managePlayersModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800" style="max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <div>
+                    <h3 class="text-2xl font-black uppercase italic">👥 Manage Players</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">View and manage every registered account</p>
+                </div>
+                <button onclick="closeModal('managePlayersModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-4 flex-shrink-0">
+                <input type="text" id="managePlayersSearch" placeholder="Search by name or username..." class="input-field border-2 w-full" oninput="renderManagePlayersList()">
+            </div>
+            <div class="px-6 pb-6 overflow-y-auto flex-1">
+                <div id="managePlayersList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+    <!-- ADMIN PLAYER PROFILE MODAL -->
+    <div id="adminPlayerProfileModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 780 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border-t-8 border-black" style="max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
+            <div class="bg-black text-white p-6 flex justify-between items-start flex-shrink-0">
+                <div>
+                    <button onclick="closeModal('adminPlayerProfileModal')" class="text-gray-400 hover:text-white transition text-[10px] font-black uppercase tracking-widest mb-2">&larr; Back to Players</button>
+                    <h3 id="playerProfileName" class="text-2xl font-black italic uppercase"></h3>
+                    <p id="playerProfileUsername" class="text-xs text-gray-400 font-bold"></p>
+                </div>
+            </div>
+            <div class="p-6 space-y-4 overflow-y-auto flex-1">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Registered</p>
+                        <p id="playerProfileRegistered" class="font-black text-sm"></p>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Games Played</p>
+                        <p id="playerProfileGames" class="font-black text-sm"></p>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Email</p>
+                        <p id="playerProfileEmail" class="font-black text-sm break-all"></p>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Role / Status</p>
+                        <p id="playerProfileRole" class="font-black text-sm"></p>
+                    </div>
+                </div>
+                <div class="bg-rose-50 rounded-xl p-4 border border-rose-100">
+                    <p class="text-[9px] font-bold text-rose-400 uppercase mb-2">Membership Number</p>
+                    <div class="flex gap-2 items-center">
+                        <input type="number" id="playerProfileMembershipNumberInput" min="1" step="1" placeholder="e.g. 1" class="input-field border-2 flex-1">
+                        <button onclick="savePlayerMembershipNumber()" id="playerProfileMembershipSaveBtn" class="bg-black text-white px-4 py-3 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition whitespace-nowrap">Save</button>
+                    </div>
+                    <p class="text-[10px] text-gray-400 font-bold mt-2">New approvals get the next number automatically - use this to backfill a historical member's correct number (e.g. enter 1 for PPC-0001).</p>
+                </div>
+                <button onclick="confirmDeletePlayer()" class="w-full flex items-center justify-center gap-2 bg-white text-rose-600 border-2 border-rose-600 py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-rose-600 hover:text-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    Delete Account
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- DELETE PLAYER CONFIRM MODAL -->
+    <div id="deletePlayerModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 790 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-rose-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-black uppercase italic mb-1">Permanently Remove This Account?</h3>
+                <p id="deletePlayerName" class="text-xl font-black text-rose-600 uppercase mb-4"></p>
+                <p class="text-gray-600 mb-6 text-sm font-bold">This deletes their login/account permanently and cannot be undone. Their match history and ratings are kept. They'll be emailed to let them know their account was removed due to inactivity.</p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeDeletePlayer()" id="deletePlayerFinalBtn"
+                            class="w-full bg-rose-600 text-white py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-rose-700 transition">
+                        Permanently Remove
+                    </button>
+                    <button onclick="closeModal('deletePlayerModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
                         Cancel
                     </button>
                 </div>
