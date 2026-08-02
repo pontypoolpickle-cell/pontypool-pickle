@@ -663,6 +663,16 @@
                 </details>
 
                 <details class="bg-white rounded-lg shadow-sm">
+                    <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">
+                        I just registered - why can't I see myself on the leaderboard?
+                    </summary>
+                    <div class="rule-content space-y-3">
+                        <p>New accounts stay visible on the leaderboard for the first <strong>7 days</strong> after registering. If you haven't played a game at the club within those 7 days, your name is automatically hidden from the public rankings so the leaderboard stays accurate and uncluttered for active players.</p>
+                        <p>Your account isn't affected in any other way, and your name will <strong>instantly reappear</strong> the moment your first match is recorded - there's nothing you need to do to fix it, just get out on the courts!</p>
+                    </div>
+                </details>
+
+                <details class="bg-white rounded-lg shadow-sm">
                     <summary class="p-4 font-black uppercase text-sm md:text-base cursor-pointer hover:text-rose-600 transition">Do you have a downloadable app?</summary>
                     <div class="rule-content space-y-3">
                         <p>Not quite yet! The club is still in its foundation stages, but launching a dedicated mobile app is definitely an exciting milestone we are striving toward for the future.</p>
@@ -1517,8 +1527,24 @@
             return !!(u && u.membership_status === 'Active' && u.membership_end_date && u.membership_end_date >= todayStr());
         }
 
-        function toPlayerView(row, memberMap) {
+        // Item #3: a brand-new registration that hasn't played a single game within
+        // 7 days of creating their account is hidden from the public leaderboard
+        // (the account itself stays active - this only affects ranking visibility).
+        // They reappear the instant they play their first recorded match, since this
+        // is computed live from total_games rather than a stored flag that would
+        // need separately un-setting.
+        const NEW_PLAYER_GRACE_DAYS = 7;
+
+        function isNewUnprovenRegistration(row, registeredAt) {
+            if (Number(row.total_games || 0) > 0) return false;
+            if (!registeredAt) return false;
+            const daysSinceRegistration = (Date.now() - new Date(registeredAt).getTime()) / 86400000;
+            return daysSinceRegistration > NEW_PLAYER_GRACE_DAYS;
+        }
+
+        function toPlayerView(row, memberMap, memberCreatedAtByName) {
             const membershipUser = memberMap ? memberMap.get(normalizeName(row.name)) : null;
+            const registeredAt = memberCreatedAtByName ? memberCreatedAtByName.get(normalizeName(row.name)) : null;
             return {
                 name: row.name,
                 elo: Number(row.elo || DEFAULT_ELO),
@@ -1529,7 +1555,8 @@
                 weeklySum: Number(row.weekly_sum || 0),
                 lastMatchDate: row.last_match_date || '',
                 membership: row.membership || 'Non-Member',
-                isHidden: !!row.is_hidden,
+                registeredAt: registeredAt || null,
+                isHidden: !!row.is_hidden || isNewUnprovenRegistration(row, registeredAt),
                 isUnder18: !!row.is_under18,
                 isActiveMember: isMembershipActive(membershipUser),
                 membershipEndDate: membershipUser ? membershipUser.membership_end_date : null
@@ -1584,6 +1611,16 @@
             const memberExtrasMap = new Map();
             memberExtrasRaw.forEach(e => memberExtrasMap.set(e.username, e));
 
+            // Registration date per player name (item #3 - hiding new, never-played
+            // registrations from the leaderboard after 7 days). Joined via username
+            // since memberExtrasRaw only carries username/created_at/membership_number.
+            const memberCreatedAtByName = new Map();
+            membersRaw.forEach(u => {
+                const fullName = normalizeName(`${u.first_name || ''} ${u.surname || ''}`);
+                const extra = memberExtrasMap.get(u.username);
+                if (fullName && extra && extra.created_at) memberCreatedAtByName.set(fullName, extra.created_at);
+            });
+
             liveScrambleIdMap = {};
             const activeScramble = scrambleRows.map((r, i) => {
                 const displayId = i + 1;
@@ -1602,7 +1639,7 @@
             });
 
             return {
-                standings: players.map(p => toPlayerView(p, memberMap)),
+                standings: players.map(p => toPlayerView(p, memberMap, memberCreatedAtByName)),
                 members: membersRaw.map(u => toMembershipView(u, memberExtrasMap.get(u.username))),
                 membershipPlans: membershipPlansRaw.map(p => ({ durationWeeks: Number(p.duration_weeks), price: Number(p.price), label: p.label || (p.duration_weeks + ' Weeks') })),
                 history: matches
