@@ -1007,6 +1007,10 @@
                         <button onclick="openEventModal()" class="w-full bg-white text-black border-2 border-black py-4 rounded-xl font-black uppercase hover:bg-gray-200 transition shadow-lg">+ Create Event</button>
                         <button onclick="openMembershipModal()" class="w-full bg-black text-white border-2 py-4 rounded-xl font-black uppercase shadow-lg" style="border-color: var(--ponty-gold) !important;">⭐ Manage Membership</button>
                     </div>
+                    <!-- Row 1b: Venue Management -->
+                    <div class="grid grid-cols-1 gap-4 mb-4">
+                        <button onclick="openManageVenuesModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">📍 Manage Venues</button>
+                    </div>
 
                     <!-- Row 2: Centered Underneath -->
                     <div class="flex justify-center">
@@ -1629,6 +1633,10 @@
 					.filter(p => !p.is_hidden)
 					.map(p => p.name),
                 locations: locations.map(l => l.name).filter(Boolean),
+                // Full rows (id + name) so the admin "Manage Venues" UI can delete a
+                // specific venue - the plain-string `locations` array above is kept
+                // as-is since the event location <select> only needs names.
+                locationRows: locations.map(l => ({ id: l.id, name: l.name })),
                 pendingUsers: pendingUsers.map(u => [
                     u.username,
                     '',
@@ -2300,6 +2308,16 @@
             if (error) throw new Error(`Could not upload PDF (${error.message}). Make sure the "${SPECIAL_EVENT_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).getPublicUrl(path);
             return publicUrlData.publicUrl;
+        }
+
+        async function addLocation(name) {
+            const { error } = await supabaseClient.from('locations').insert({ name: name });
+            if (error) throw new Error(error.message);
+        }
+
+        async function deleteLocation(id) {
+            const { error } = await supabaseClient.from('locations').delete().eq('id', id);
+            if (error) throw new Error(error.message);
         }
 
         async function addEvent(data) {
@@ -3715,6 +3733,80 @@
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
         }
+        function openManageVenuesModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            renderManageVenuesList();
+            document.getElementById('newVenueName').value = '';
+            openModal('manageVenuesModal');
+        }
+
+        function renderManageVenuesList() {
+            const container = document.getElementById('manageVenuesList');
+            if (!container) return;
+            const rows = [...(globalData.locationRows || [])].sort((a, b) => a.name.localeCompare(b.name));
+            if (rows.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-400 italic py-4 text-sm">No venues yet - add one above.</p>`;
+                return;
+            }
+            container.innerHTML = rows.map(loc => `
+                <div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-3">
+                    <p class="font-bold text-sm">${loc.name}</p>
+                    <button onclick="confirmDeleteVenue('${loc.id}', '${loc.name.replace(/'/g, "\\'")}')" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Remove venue">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function addVenue() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const input = document.getElementById('newVenueName');
+            const name = input.value.trim();
+            if (!name) return triggerError("Please enter a venue name.");
+
+            const existing = (globalData.locationRows || []).some(l => l.name.toLowerCase() === name.toLowerCase());
+            if (existing) return triggerError("That venue already exists.");
+
+            const btn = document.getElementById('addVenueBtn');
+            btn.disabled = true; btn.innerText = '...';
+
+            addLocation(name)
+                .then(() => refreshAllData())
+                .then(r => {
+                    render(r);
+                    input.value = '';
+                    renderManageVenuesList();
+                    triggerToast(`"${name}" added to venues.`);
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = '+ Add'; });
+        }
+
+        let venueToDelete = { id: '', name: '' };
+
+        function confirmDeleteVenue(id, name) {
+            venueToDelete = { id, name };
+            document.getElementById('deleteVenueName').innerText = name;
+            openModal('deleteVenueModal');
+        }
+
+        function executeDeleteVenue() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const btn = document.getElementById('deleteVenueFinalBtn');
+            btn.disabled = true; btn.innerText = "Removing...";
+
+            deleteLocation(venueToDelete.id)
+                .then(() => refreshAllData())
+                .then(r => {
+                    render(r);
+                    renderManageVenuesList();
+                    triggerToast(`"${venueToDelete.name}" removed.`);
+                    closeModal('deleteVenueModal');
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Remove Venue"; });
+        }
+
         function openRecalcEloModal() {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
             openModal('recalcEloModal');
@@ -7065,6 +7157,51 @@
                         Recalculate Now
                     </button>
                     <button onclick="closeRecalcEloModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- MANAGE VENUES MODAL -->
+    <div id="manageVenuesModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 120px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border-t-8 border-gray-800">
+            <div class="p-6 pb-4 flex justify-between items-start">
+                <div>
+                    <h3 class="text-2xl font-black uppercase italic">📍 Manage Venues</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">These appear in the Location dropdown when creating or editing events</p>
+                </div>
+                <button onclick="closeModal('manageVenuesModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-4">
+                <div class="flex gap-2">
+                    <input type="text" id="newVenueName" placeholder="e.g. Bowden Active Living Centre" class="input-field border-2 flex-1" onkeydown="if(event.key==='Enter'){addVenue();}">
+                    <button onclick="addVenue()" id="addVenueBtn" class="bg-black text-white px-5 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition whitespace-nowrap">+ Add</button>
+                </div>
+            </div>
+            <div class="px-6 pb-6 max-h-96 overflow-y-auto">
+                <div id="manageVenuesList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+    <!-- DELETE VENUE CONFIRM MODAL -->
+    <div id="deleteVenueModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 760 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-rose-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-black uppercase italic mb-1">Remove This Venue?</h3>
+                <p id="deleteVenueName" class="text-xl font-black text-rose-600 uppercase mb-4"></p>
+                <p class="text-gray-600 mb-6 text-sm font-bold">This won't change the location text on any existing events - it just removes it from the dropdown for new/edited events.</p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeDeleteVenue()" id="deleteVenueFinalBtn"
+                            class="w-full bg-rose-600 text-white py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-rose-700 transition">
+                        Remove Venue
+                    </button>
+                    <button onclick="closeModal('deleteVenueModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
                         Cancel
                     </button>
                 </div>
