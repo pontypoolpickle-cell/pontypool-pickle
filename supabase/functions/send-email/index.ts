@@ -550,9 +550,12 @@ serve(async (req) => {
       // EMAIL 19: Payment Reminder (admin-triggered, to player)
       case "payment_reminder": {
         const paymentRef = data.paymentRef || `${data.name} - ${data.eventTitle}`;
+        const introText = data.alreadyPaid
+          ? `We can see you've marked the event below as <strong>paid</strong>, but we haven't been able to verify a matching bank transfer yet. Please double-check the payment was sent using the reference below, or make payment now if you haven't already.`
+          : `Our records show that you haven't yet paid for the event below. Please make payment via bank transfer as soon as possible to keep your spot.`;
         const body = `
           <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.name},</p>
-          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Our records show that you haven't yet paid for the event below. Please make payment via bank transfer as soon as possible to keep your spot.</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">${introText}</p>
           ${eventBox(data.eventTitle, data.eventDate, data.eventTime, data.eventLocation)}
           <div style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;padding:16px 20px;margin:0 0 20px;">
             <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">Bank Transfer Details</p>
@@ -564,15 +567,16 @@ serve(async (req) => {
               ${data.amount ? detailRow('Amount Due', `£${data.amount}`) : ''}
             </table>
           </div>
+          ${data.alreadyPaid ? '' : `
           <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin:0 0 20px;">
             <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#16a34a;font-weight:700;">✅ Already paid? If you're receiving this email but have already made the bank transfer, please go to <a href="https://www.pontypoolpickle.com" style="color:#16a34a;">www.pontypoolpickle.com</a>, open this event, and click <strong>I've Paid</strong> to update your status.</p>
-          </div>
+          </div>`}
           <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
             <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">⚠️ Failure to make payment can result in your spot being removed, with another player taking your place.</p>
           </div>
           <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">Thanks for your understanding.<br><strong>Pontypool Pickle Club</strong></p>
         `;
-        await sendEmail(data.email, `⏰ Payment Reminder — ${data.eventTitle}`, buildEmailHtml("Payment Reminder", body));
+        await sendEmail(data.email, data.alreadyPaid ? `⏰ Please Verify Your Payment — ${data.eventTitle}` : `⏰ Payment Reminder — ${data.eventTitle}`, buildEmailHtml(data.alreadyPaid ? "Verify Your Payment" : "Payment Reminder", body));
         break;
       }
 

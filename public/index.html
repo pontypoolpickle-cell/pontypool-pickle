@@ -2,6 +2,7 @@
 <html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <head>
+    <meta charset="UTF-8">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet">
@@ -1006,6 +1007,10 @@
                         <button onclick="openEventModal()" class="w-full bg-white text-black border-2 border-black py-4 rounded-xl font-black uppercase hover:bg-gray-200 transition shadow-lg">+ Create Event</button>
                         <button onclick="openMembershipModal()" class="w-full bg-black text-white border-2 py-4 rounded-xl font-black uppercase shadow-lg" style="border-color: var(--ponty-gold) !important;">⭐ Manage Membership</button>
                     </div>
+                    <!-- Row 1b: Venue Management -->
+                    <div class="grid grid-cols-1 gap-4 mb-4">
+                        <button onclick="openManageVenuesModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">📍 Manage Venues</button>
+                    </div>
 
                     <!-- Row 2: Centered Underneath -->
                     <div class="flex justify-center">
@@ -1628,6 +1633,10 @@
 					.filter(p => !p.is_hidden)
 					.map(p => p.name),
                 locations: locations.map(l => l.name).filter(Boolean),
+                // Full rows (id + name) so the admin "Manage Venues" UI can delete a
+                // specific venue - the plain-string `locations` array above is kept
+                // as-is since the event location <select> only needs names.
+                locationRows: locations.map(l => ({ id: l.id, name: l.name })),
                 pendingUsers: pendingUsers.map(u => [
                     u.username,
                     '',
@@ -2299,6 +2308,16 @@
             if (error) throw new Error(`Could not upload PDF (${error.message}). Make sure the "${SPECIAL_EVENT_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(SPECIAL_EVENT_BUCKET).getPublicUrl(path);
             return publicUrlData.publicUrl;
+        }
+
+        async function addLocation(name) {
+            const { error } = await supabaseClient.from('locations').insert({ name: name });
+            if (error) throw new Error(error.message);
+        }
+
+        async function deleteLocation(id) {
+            const { error } = await supabaseClient.from('locations').delete().eq('id', id);
+            if (error) throw new Error(error.message);
         }
 
         async function addEvent(data) {
@@ -3714,6 +3733,80 @@
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
         }
+        function openManageVenuesModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            renderManageVenuesList();
+            document.getElementById('newVenueName').value = '';
+            openModal('manageVenuesModal');
+        }
+
+        function renderManageVenuesList() {
+            const container = document.getElementById('manageVenuesList');
+            if (!container) return;
+            const rows = [...(globalData.locationRows || [])].sort((a, b) => a.name.localeCompare(b.name));
+            if (rows.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-400 italic py-4 text-sm">No venues yet - add one above.</p>`;
+                return;
+            }
+            container.innerHTML = rows.map(loc => `
+                <div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-3">
+                    <p class="font-bold text-sm">${loc.name}</p>
+                    <button onclick="confirmDeleteVenue('${loc.id}', '${loc.name.replace(/'/g, "\\'")}')" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Remove venue">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function addVenue() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const input = document.getElementById('newVenueName');
+            const name = input.value.trim();
+            if (!name) return triggerError("Please enter a venue name.");
+
+            const existing = (globalData.locationRows || []).some(l => l.name.toLowerCase() === name.toLowerCase());
+            if (existing) return triggerError("That venue already exists.");
+
+            const btn = document.getElementById('addVenueBtn');
+            btn.disabled = true; btn.innerText = '...';
+
+            addLocation(name)
+                .then(() => refreshAllData())
+                .then(r => {
+                    render(r);
+                    input.value = '';
+                    renderManageVenuesList();
+                    triggerToast(`"${name}" added to venues.`);
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = '+ Add'; });
+        }
+
+        let venueToDelete = { id: '', name: '' };
+
+        function confirmDeleteVenue(id, name) {
+            venueToDelete = { id, name };
+            document.getElementById('deleteVenueName').innerText = name;
+            openModal('deleteVenueModal');
+        }
+
+        function executeDeleteVenue() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const btn = document.getElementById('deleteVenueFinalBtn');
+            btn.disabled = true; btn.innerText = "Removing...";
+
+            deleteLocation(venueToDelete.id)
+                .then(() => refreshAllData())
+                .then(r => {
+                    render(r);
+                    renderManageVenuesList();
+                    triggerToast(`"${venueToDelete.name}" removed.`);
+                    closeModal('deleteVenueModal');
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Remove Venue"; });
+        }
+
         function openRecalcEloModal() {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
             openModal('recalcEloModal');
@@ -5140,13 +5233,18 @@
         // Single source of truth for event categories. To add a new type later
         // (e.g. Singles, Tournament), add an entry here + one line in getEventTypeKey().
         const EVENT_TYPES = {
+            special: { key: 'special', label: 'Special Event', icon: '🏆', logo: 'https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg', color: '#d97706', bg: '#fffbeb', text: '#b45309' },
             mixed:  { key: 'mixed',  label: 'Mixed Doubles', icon: '🎾', logo: 'https://i.postimg.cc/W1Wps66D/Logo-red.jpg',    color: '#e11d48', bg: '#fff1f2', text: '#be123c' },
             female: { key: 'female', label: 'Female Only',   icon: '♀️', logo: 'https://i.postimg.cc/13J2HkH9/Logo-purple.jpg', color: '#9333ea', bg: '#faf5ff', text: '#7e22ce' },
             junior: { key: 'junior', label: 'Junior',        icon: '👦', logo: 'https://i.postimg.cc/zGtDqSSb/Logo-Blue.jpg',   color: '#3b82f6', bg: '#eff6ff', text: '#1d4ed8' }
         };
         let currentEventFilter = 'all';
 
+        // Special Event takes priority over the demographic categories below - it's
+        // the club's headline/tournament flag, and should always stand out in gold
+        // regardless of whether the event is also Female/Junior only.
         function getEventTypeKey(event) {
+            if (!!event[17]) return 'special';
             if (!!event[15]) return 'female';
             if (!!event[14]) return 'junior';
             return 'mixed';
@@ -5205,7 +5303,7 @@
 			else if (mySignup && mySignup[5] === 'Confirmed') status_ = { label: "You're In ✅", style: 'background:#f0fdf4; color:#15803d;' };
 			else if (mySignup && mySignup[5] === 'Reserve') status_ = { label: 'On Reserve List', style: 'background:#f9fafb; color:#6b7280;' };
 			else if (isFull) status_ = { label: 'Full — Reserve Available', style: 'background:#fff7ed; color:#c2410c;' };
-			else if (maxPlayers) status_ = { label: (maxPlayers - confirmedCount) + ' Spots Left', style: 'background:#fff1f2; color:#be123c;' };
+			else if (maxPlayers) status_ = { label: (maxPlayers - confirmedCount) + (maxPlayers - confirmedCount === 1 ? ' Spot Left' : ' Spots Left'), style: 'background:#fff1f2; color:#be123c;' };
 			else status_ = { label: 'Open', style: 'background:#fff1f2; color:#be123c;' };
 
 			return { ...status_, places };
@@ -5477,14 +5575,17 @@
                 const visibleEvents = dayEvents.slice(0, maxVisible);
                 const extraCount = dayEvents.length - maxVisible;
 
-                visibleEvents.forEach(ev => {
+				visibleEvents.forEach(ev => {
 					const isPastEvent = new Date(ev[2]) < today;
+					const isSpecialEvent = !!ev[17];
 					const under18Only = !!ev[14];
 					const femaleOnly = !!ev[15];
 
 					let markerHtml;
 					if (isPastEvent) {
 						markerHtml = `<img src="https://i.postimg.cc/W1Wps66D/Logo-red.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; opacity:0.35; border: 2px solid #d1d5db;" alt="${ev[1]}">`;
+					} else if (isSpecialEvent) {
+						markerHtml = `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; border: 2px solid #d97706;" alt="${ev[1]}" title="🏆 Special Event">`;
 					} else if (femaleOnly) {
 						markerHtml = `<img src="https://i.postimg.cc/13J2HkH9/Logo-purple.jpg" style="width:22px; height:22px; border-radius:50%; object-fit:cover; border: 2px solid #9333ea;" alt="${ev[1]}">`;
 					} else if (under18Only) {
@@ -5638,7 +5739,7 @@
                 <div class="p-5 space-y-3">
                     ${event[8] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[8]}</p></div>` : ''}
                     ${event[10] ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">${event[10]} ${Number(event[10]) === 1 ? 'hour' : 'hours'}</p></div>` : ''}
-                    ${maxPlayers ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold ${isFull ? 'text-rose-600' : 'text-gray-600'}">${signups.length} / ${maxPlayers} signed up${spotsLeft > 0 ? ' — ' + spotsLeft + ' spots left' : ' — FULL'}</p></div>` : ''}
+                    ${maxPlayers ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><p class="text-xs font-bold ${isFull ? 'text-rose-600' : 'text-gray-600'}">${signups.length} / ${maxPlayers} signed up${spotsLeft > 0 ? ' — ' + spotsLeft + (spotsLeft === 1 ? ' spot left' : ' spots left') : ' — FULL'}</p></div>` : ''}
                     ${!under18Only ? `<div class="flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p class="text-xs font-bold text-gray-600">£${userPrice || nonMemberPrice} <span class="text-gray-400">(Members £${memberPrice} / Non-members £${nonMemberPrice})</span></p></div>` : ''}
                 </div>
 
@@ -6359,7 +6460,7 @@
                                     </div>
                                     <div class="flex items-center gap-2">
                                         ${!isFreeEvent ? `<span class="text-[9px] ${s[6] === 'Paid' ? 'bg-black text-white' : ''} px-2 py-1 rounded font-black" ${s[6] !== 'Paid' ? 'style="background-color: #fff1f2 !important; color: #e11d48 !important;"' : ''}>${s[6] === 'Paid' ? '💳 Paid' : '⏳ Unpaid'}</span>` : ''}
-                                        ${!isFreeEvent && s[6] !== 'Paid' && s[4] && s[4].indexOf('@') !== -1 ? `<button onclick="sendPaymentReminder('${eventId}', '${s[1].replace(/'/g, "\\'")}', this)" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Send Payment Reminder">
+                                        ${!isFreeEvent && s[4] && s[4].indexOf('@') !== -1 ? `<button onclick="sendPaymentReminder('${eventId}', '${s[1].replace(/'/g, "\\'")}', this, ${s[6] === 'Paid'})" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="${s[6] === 'Paid' ? 'Send Payment Verification Reminder' : 'Send Payment Reminder'}">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                                         </button>` : ''}
                                         <span class="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-black">#${i + 1}</span>
@@ -6382,7 +6483,7 @@
                                     </div>
                                     <div class="flex items-center gap-2">
                                         <span class="text-[9px] ${s[6] === 'Paid' ? 'bg-black text-white' : 'bg-amber-100 text-amber-700'} px-2 py-1 rounded font-black">${s[6] === 'Paid' ? '💳 Paid' : '⏳ Unpaid'}</span>
-                                        ${!isFreeEvent && s[6] !== 'Paid' && s[4] && s[4].indexOf('@') !== -1 ? `<button onclick="sendPaymentReminder('${eventId}', '${s[1].replace(/'/g, "\\'")}', this)" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Send Payment Reminder">
+                                        ${!isFreeEvent && s[4] && s[4].indexOf('@') !== -1 ? `<button onclick="sendPaymentReminder('${eventId}', '${s[1].replace(/'/g, "\\'")}', this, ${s[6] === 'Paid'})" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="${s[6] === 'Paid' ? 'Send Payment Verification Reminder' : 'Send Payment Reminder'}">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                                         </button>` : ''}
                                         <span class="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-black">#${i + 1}</span>
@@ -6404,7 +6505,7 @@
             closeModal('eventSignupsModal');
         }
 
-        function sendPaymentReminder(eventId, name, btn) {
+        function sendPaymentReminder(eventId, name, btn, alreadyPaid) {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
 
             const signup = (globalData.signups || []).find(s => s[0] === eventId && s[1] === name);
@@ -6428,9 +6529,10 @@
                 eventTime: eventRow[3] || 'TBC',
                 eventLocation: eventRow[8] || 'TBC',
                 amount: amount ? amount.toFixed(2) : '',
-                paymentRef: `${name} - ${eventRow[1]}`
+                paymentRef: `${name} - ${eventRow[1]}`,
+                alreadyPaid: !!alreadyPaid
             }).then(() => {
-                triggerToast("Payment reminder sent to " + name + ".");
+                triggerToast((alreadyPaid ? "Payment verification reminder" : "Payment reminder") + " sent to " + name + ".");
             }).finally(() => {
                 if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
             });
@@ -7064,6 +7166,51 @@
                         Recalculate Now
                     </button>
                     <button onclick="closeRecalcEloModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- MANAGE VENUES MODAL -->
+    <div id="manageVenuesModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 120px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border-t-8 border-gray-800">
+            <div class="p-6 pb-4 flex justify-between items-start">
+                <div>
+                    <h3 class="text-2xl font-black uppercase italic">📍 Manage Venues</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">These appear in the Location dropdown when creating or editing events</p>
+                </div>
+                <button onclick="closeModal('manageVenuesModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-4">
+                <div class="flex gap-2">
+                    <input type="text" id="newVenueName" placeholder="e.g. Bowden Active Living Centre" class="input-field border-2 flex-1" onkeydown="if(event.key==='Enter'){addVenue();}">
+                    <button onclick="addVenue()" id="addVenueBtn" class="bg-black text-white px-5 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition whitespace-nowrap">+ Add</button>
+                </div>
+            </div>
+            <div class="px-6 pb-6 max-h-96 overflow-y-auto">
+                <div id="manageVenuesList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+    <!-- DELETE VENUE CONFIRM MODAL -->
+    <div id="deleteVenueModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 760 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-rose-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-black uppercase italic mb-1">Remove This Venue?</h3>
+                <p id="deleteVenueName" class="text-xl font-black text-rose-600 uppercase mb-4"></p>
+                <p class="text-gray-600 mb-6 text-sm font-bold">This won't change the location text on any existing events - it just removes it from the dropdown for new/edited events.</p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeDeleteVenue()" id="deleteVenueFinalBtn"
+                            class="w-full bg-rose-600 text-white py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-rose-700 transition">
+                        Remove Venue
+                    </button>
+                    <button onclick="closeModal('deleteVenueModal')" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
                         Cancel
                     </button>
                 </div>
