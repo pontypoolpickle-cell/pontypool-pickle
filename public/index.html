@@ -3914,6 +3914,42 @@
                 .then(r => { render(r); triggerToast("Match Deleted."); closeMatchDeleteModal(); b.disabled = false; b.innerText = "Confirm Delete"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Confirm Delete"; }); // Removed adminPin
         }
+        function openCancellationsReportModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            document.getElementById('cancellationsReportSearch').value = '';
+            renderCancellationsReport();
+            openModal('cancellationsReportModal');
+        }
+
+        function renderCancellationsReport() {
+            const container = document.getElementById('cancellationsReportList');
+            if (!container) return;
+            const search = (document.getElementById('cancellationsReportSearch').value || '').toLowerCase().trim();
+
+            const rows = (globalData.withdrawals || [])
+                .filter(w => !search || w[1].toLowerCase().includes(search));
+
+            if (rows.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-400 italic py-8 text-sm">No cancellations recorded${search ? ' for that player' : ''}.</p>`;
+                return;
+            }
+
+            container.innerHTML = rows.map(w => {
+                const eventRow = (globalData.events || []).find(e => e[0] === w[0]);
+                const eventStart = eventRow ? getEventStartDateTime(eventRow) : null;
+                const timing = formatTimeUntilEvent(eventStart, new Date(w[3]));
+                return `
+                    <div class="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-3">
+                        <div class="min-w-0">
+                            <p class="font-black text-sm uppercase truncate">${w[1]}</p>
+                            <p class="text-[10px] text-gray-400 font-bold truncate">${eventRow ? eventRow[1] : 'Unknown Event'} &bull; Withdrew ${formatSignupTimestamp(w[3])}</p>
+                        </div>
+                        <span class="text-[9px] px-2 py-1 rounded font-black whitespace-nowrap flex-shrink-0 ml-2 ${timing.isWithin48h ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-500'}">${timing.label}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
         function openManagePlayersModal() {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
             document.getElementById('managePlayersSearch').value = '';
@@ -8277,7 +8313,8 @@
             <div id="eventSignupsBody" class="p-6 overflow-y-auto flex-grow">
                 <!-- Signups injected here -->
             </div>
-            <div class="p-6 border-t border-gray-100">
+            <div class="p-6 border-t border-gray-100 space-y-2">
+                <button id="createLadderFromEventBtn" onclick="createLadderFromEvent()" class="w-full hidden bg-white text-black border-2 border-black py-3 rounded font-black uppercase tracking-widest hover:bg-black hover:text-white transition">🏓 Create Ladder From Confirmed Players</button>
                 <button onclick="closeEventSignupsModal()" class="w-full bg-black text-white py-3 rounded font-black uppercase tracking-widest">Close</button>
             </div>
         </div>
