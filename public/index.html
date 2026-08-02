@@ -1186,6 +1186,12 @@
         -- only the new admin Drop-Outs section and Cancellations report read it.
         alter table signups add column if not exists withdrawn_at timestamptz;
 
+        -- 15-minute payment reservation window (item #14) - a new signup for a
+        -- paid event starts as status = 'Pending Payment' with reserved_until set
+        -- to now() + 15 minutes, instead of going straight to 'Confirmed'. See
+        -- holdsSpot()/signupForEvent()/markSignupPaid() in this file.
+        alter table signups add column if not exists reserved_until timestamptz;
+
         -- Users table
         create table users (
           id uuid primary key default gen_random_uuid(),
@@ -1406,6 +1412,15 @@
             return String(name || '').trim().toLowerCase();
         }
 
+        // Item #14: a temporary 'Pending Payment' hold occupies a real seat (that's
+        // the point of the 15-minute reservation window), so anywhere that counts
+        // "how many seats are taken" needs to treat it the same as 'Confirmed'.
+        // Works against both raw DB rows (status) and the [.., status, ..] tuples
+        // built by mapGlobalData, since both just pass a plain status string in.
+        function holdsSpot(status) {
+            return status === 'Confirmed' || status === 'Pending Payment';
+        }
+
         // Usernames/passwords are trimmed of accidental leading/trailing whitespace
         // (a common signup/login mistake) and usernames are always matched
         // case-insensitively so "JohnSmith" and "johnsmith" are treated as the same
@@ -1616,7 +1631,8 @@
                     s.player_type || '',
                     s.email || '',
                     s.status || 'Confirmed',
-                    s.payment_status || 'Unpaid'
+                    s.payment_status || 'Unpaid',
+                    s.reserved_until || null // item #14 - 15-minute payment hold deadline
                 ]),
                 // Item #5 admin-only drop-out audit trail. Kept as its own array
                 // (rather than mixed into `signups`) so nothing else needs to know
@@ -1719,7 +1735,58 @@
             if (error) throw new Error(error.message);
         }
 
+        // Item #14: expire any 'Pending Payment' holds whose 15-minute window has
+        // passed. Runs opportunistically at the start of every data load/refresh
+        // (which happens very often in this app - after almost every action, plus
+        // on every page load) rather than needing a separate server-side scheduled
+        // job - the next person to touch Supabase clears out any stale hold, which
+        // frees the seat for the next reserve exactly like a manual cancellation.
+        // This is a "best-effort, eventually-consistent" approach rather than a
+        // hard real-time guarantee (a hold could sit briefly past 15 minutes if
+        // nobody's browser talks to the site in the meantime) - reasonable for a
+        // club site's traffic patterns, but a proper pg_cron job (like the existing
+        // membership-reminders one) would make this fully time-accurate regardless
+        // of traffic if that's ever wanted as a follow-up.
+        async function expireStalePendingReservations() {
+            const nowIso = new Date().toISOString();
+            const { data: stale, error } = await supabaseClient
+                .from('signups')
+                .select('id, event_id, player_name, status')
+                .eq('status', 'Pending Payment')
+                .lt('reserved_until', nowIso);
+            if (error || !stale || stale.length === 0) return;
+
+            for (const row of stale) {
+                try {
+                    // The extra .eq('status', 'Pending Payment') guards against a race
+                    // with the player clicking "Paid" at the same moment - if that
+                    // already flipped their status, this update simply matches 0 rows.
+                    const { data: updatedRows } = await supabaseClient
+                        .from('signups')
+                        .update({ status: 'Withdrawn', withdrawn_at: nowIso })
+                        .eq('id', row.id)
+                        .eq('status', 'Pending Payment')
+                        .select();
+                    if (!updatedRows || updatedRows.length === 0) continue;
+
+                    const { data: eventRows } = await supabaseClient.from('events').select('*').eq('id', row.event_id).limit(1);
+                    const eventRow = eventRows && eventRows[0];
+                    if (eventRow && eventRow.max_players) {
+                        await promoteReservesForEvent(row.event_id, Number(eventRow.max_players), {
+                            title: eventRow.title,
+                            date: eventRow.event_date,
+                            time: eventRow.event_time,
+                            location: eventRow.location
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Could not expire stale reservation:', e.message);
+                }
+            }
+        }
+
         async function fetchAllDataFromSupabase() {
+            await expireStalePendingReservations();
             const [
                 playersRes,
                 matchesRes,
@@ -2582,7 +2649,11 @@
 				.order('created_at', { ascending: true });
 			if (error) throw new Error(error.message);
 
-			const confirmedCount = (allSignups || []).filter(s => s.status === 'Confirmed').length;
+			// Item #14: a 'Pending Payment' hold occupies a real seat (that's the whole
+			// point of the 15-minute reservation window - stopping someone else
+			// grabbing the last spot while a payment is in flight), so it counts
+			// towards capacity here exactly like 'Confirmed' does.
+			const confirmedCount = (allSignups || []).filter(s => holdsSpot(s.status)).length;
 			const spotsOpen = maxPlayers - confirmedCount;
 			if (spotsOpen <= 0) return;
 
@@ -2895,30 +2966,40 @@
             renderMembershipPage();
         }
 
+        const RESERVATION_WINDOW_MINUTES = 15;
+
         async function signupForEvent(payload) {
+			const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+			const isFree = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
+
+			// Item #14: paid events start as a temporary 'Pending Payment' hold with a
+			// 15-minute countdown rather than going straight to 'Confirmed' - this
+			// stops two people both thinking they've secured the last spot while one
+			// of them still owes a bank transfer. Free events skip this entirely,
+			// since there's nothing to pay and nothing to hold up.
+			const reservedUntil = isFree ? null : new Date(Date.now() + RESERVATION_WINDOW_MINUTES * 60000).toISOString();
+
 			const { error } = await supabaseClient.from('signups').insert({
 				event_id: payload.eventId,
 				player_name: payload.name,
 				player_type: payload.type || '',
 				email: payload.email || '',
-				status: 'Confirmed',
-				payment_status: 'Unpaid'
+				status: isFree ? 'Confirmed' : 'Pending Payment',
+				payment_status: 'Unpaid',
+				reserved_until: reservedUntil
 			});
 			if (error) throw new Error(error.message);
-			if (payload.email && payload.email.indexOf('@') !== -1) {
-				const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-				if (eventRow) {
-					const isFree = !!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]));
-					sendEmail('event_signup', {
-						name: payload.name,
-						email: payload.email,
-						eventTitle: eventRow[1],
-						eventDate: eventRow[2],
-						eventTime: eventRow[3] || 'TBC',
-						eventLocation: eventRow[8] || 'TBC',
-						isFree: isFree
-					});
-				}
+			if (payload.email && payload.email.indexOf('@') !== -1 && eventRow) {
+				sendEmail(isFree ? 'event_signup' : 'payment_required', {
+					name: payload.name,
+					email: payload.email,
+					eventTitle: eventRow[1],
+					eventDate: eventRow[2],
+					eventTime: eventRow[3] || 'TBC',
+					eventLocation: eventRow[8] || 'TBC',
+					isFree: isFree,
+					reservationMinutes: RESERVATION_WINDOW_MINUTES
+				});
 			}
 			return refreshAllData();
 		}
@@ -2992,9 +3073,11 @@
 				});
 			}
 
-			// Only promote a reserve when a CONFIRMED seat was actually vacated - not
-			// when someone merely leaves the reserve list (no seat freed up there).
-			if (removedSignup && removedSignup.status === 'Confirmed') {
+			// Only promote a reserve when a real seat was actually vacated - either a
+			// Confirmed player, or a Pending Payment hold (item #14) being cancelled
+			// or expiring - not when someone merely leaves the reserve list (no seat
+			// freed up there).
+			if (removedSignup && holdsSpot(removedSignup.status)) {
 				const { data: reserves, error: reserveErr } = await supabaseClient
 						.from('signups')
 						.select('*')
@@ -3029,6 +3112,26 @@
 		}
 
         async function markSignupPaid(payload) {
+            // Item #14: if this was a temporary 15-minute hold, confirming payment
+            // immediately confirms the seat outright and clears the countdown - per
+            // the agreed behaviour, there's no separate admin-verification step that
+            // blocks this, self-reporting "Paid" is what confirms it (same as it
+            // always has been for regular signups; admins still verify against the
+            // bank statement after the fact and can remove the signup if payment
+            // never actually shows up).
+            const { data: pendingRows, error: pendingErr } = await supabaseClient
+                .from('signups')
+                .update({ payment_status: 'Paid', status: 'Confirmed', reserved_until: null })
+                .eq('event_id', payload.eventId)
+                .eq('player_name', payload.name)
+                .eq('status', 'Pending Payment')
+                .select();
+            if (pendingErr) throw new Error(pendingErr.message);
+            if (pendingRows && pendingRows.length > 0) return refreshAllData();
+
+            // Otherwise this is an already-Confirmed (or pre-paying Reserve) signup -
+            // just record payment without touching their status, so a Reserve player
+            // paying early doesn't get incorrectly bumped to Confirmed.
             const { error } = await supabaseClient
                 .from('signups')
                 .update({ payment_status: 'Paid' })
@@ -5841,7 +5944,8 @@
         function getEventQuickStatus(event) {
 			const status = (event[7] || '').toString().trim();
 			const signups = (globalData.signups || []).filter(s => s[0] === event[0]);
-			const confirmedCount = signups.filter(s => s[5] === 'Confirmed').length;
+			// Item #14: a Pending Payment hold counts towards capacity just like Confirmed.
+			const confirmedCount = signups.filter(s => holdsSpot(s[5])).length;
 			const reserveCount = signups.filter(s => s[5] === 'Reserve').length;
 			const maxPlayers = event[4] ? Number(event[4]) : null;
 			const spacesAvailable = maxPlayers ? Math.max(0, maxPlayers - confirmedCount) : null;
@@ -5871,6 +5975,7 @@
 			if (status === 'Cancelled') status_ = { label: 'Cancelled', style: 'background:#f3f4f6; color:#9ca3af;' };
 			else if (isPast) status_ = { label: 'Past', style: 'background:#f3f4f6; color:#9ca3af;' };
 			else if (isPaidIn) status_ = { label: "YOU'RE IN 🟡", style: `background:${'#c9a227'}; color:#1a1400;` };
+			else if (mySignup && mySignup[5] === 'Pending Payment') status_ = { label: 'Payment Pending ⏳', style: 'background:#fff7ed; color:#c2410c;' };
 			else if (mySignup && mySignup[5] === 'Confirmed') status_ = { label: "You're In ✅", style: 'background:#f0fdf4; color:#15803d;' };
 			else if (mySignup && mySignup[5] === 'Reserve') status_ = { label: 'On Reserve List', style: 'background:#f9fafb; color:#6b7280;' };
 			else if (isFull) status_ = { label: 'Full — Reserve Available', style: 'background:#fff7ed; color:#c2410c;' };
@@ -6216,7 +6321,10 @@
 
             const content = document.getElementById('calendarEventModalContent');
             const signups = (globalData.signups || []).filter(s => s[0] === event[0]);
-            const confirmedSignups = signups.filter(s => s[5] === 'Confirmed');
+            // Item #14: a Pending Payment hold counts towards capacity just like
+            // Confirmed does (see holdsSpot()) - it's occupying a real seat while
+            // the 15-minute window is open.
+            const confirmedSignups = signups.filter(s => holdsSpot(s[5]));
             const reserveSignups = signups.filter(s => s[5] === 'Reserve');
             const maxPlayers = event[4] ? Number(event[4]) : null;
             // Item #4 fix: spots left/full must be judged against confirmed players
@@ -6255,6 +6363,9 @@
             const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
             const isConfirmed = !!mySignup && mySignup[5] === "Confirmed";
             const isReserve = !!mySignup && mySignup[5] === "Reserve";
+            // Item #14: a temporary 15-minute payment hold, distinct from a fully
+            // Confirmed seat.
+            const isPendingPayment = !!mySignup && mySignup[5] === "Pending Payment";
 
             let accessStatus = "locked";
             let statusMsg = "";
@@ -6273,7 +6384,9 @@
 				accessStatus = "locked"; statusMsg = "This event is for Teens only";
 			} else if (!allAges && !under18Only && viewerIsUnder18) {
 				accessStatus = "locked"; statusMsg = "This event is not available for Under 18s";
-			} else if (isConfirmed) {
+            } else if (isPendingPayment) {
+                accessStatus = "pendingPayment"; statusMsg = "Payment required to keep your spot ⏳";
+            } else if (isConfirmed) {
                 accessStatus = "signedup"; statusMsg = "You're in! ✅";
             } else if (isReserve) {
                 accessStatus = "reserve"; statusMsg = "You're on the reserve list 🔄";
@@ -6347,8 +6460,17 @@
                         </div>
                     </div>
                 ` : statusMsg ? `
-                    <div class="mx-5 mb-3 px-4 py-3 rounded-xl ${accessStatus === 'signedup' ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
-                        <p class="text-xs font-black uppercase ${accessStatus === 'signedup' ? 'text-green-700' : accessStatus === 'reserve' ? 'text-gray-600' : 'text-gray-500'}">${statusMsg}</p>
+                    <div class="mx-5 mb-3 px-4 py-3 rounded-xl ${accessStatus === 'signedup' ? 'bg-green-50 border border-green-200' : accessStatus === 'pendingPayment' ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50 border border-gray-200'}">
+                        <p class="text-xs font-black uppercase ${accessStatus === 'signedup' ? 'text-green-700' : accessStatus === 'reserve' ? 'text-gray-600' : accessStatus === 'pendingPayment' ? 'text-orange-700' : 'text-gray-500'}">${statusMsg}</p>
+                    </div>
+                ` : ''}
+
+                <!-- Item #14: live 15-minute countdown while a payment hold is active -->
+                ${accessStatus === 'pendingPayment' ? `
+                    <div class="mx-5 mb-3 px-4 py-4 rounded-xl bg-black text-white text-center">
+                        <p class="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-1">Reservation Expires In</p>
+                        <p id="reservationCountdown" class="text-3xl font-black italic tabular-nums">--:--</p>
+                        <p class="text-[10px] font-bold text-gray-400 mt-1 uppercase">Complete your bank transfer, then tap Make Payment below</p>
                     </div>
                 ` : ''}
 
@@ -6356,6 +6478,8 @@
                 <div class="p-5 pt-0 space-y-2">
                     ${accessStatus === 'open' ? `
                         <button onclick="handleEventClickFromCalendar('${event[0]}', false)" class="w-full bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-rose-600 transition">Sign Up${Number(userPrice) > 0 ? ' — £' + userPrice : ' — Free'}</button>
+                    ` : accessStatus === 'pendingPayment' ? `
+                        <button onclick="handleCancelSignupFromCalendar('${event[0]}')" class="w-full border-2 border-gray-200 text-gray-500 py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:border-rose-600 hover:text-rose-600 transition">Cancel Reservation</button>
                     ` : accessStatus === 'signedup' ? `
                         <button onclick="handleCancelSignupFromCalendar('${event[0]}')" class="w-full border-2 border-gray-200 text-gray-500 py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:border-rose-600 hover:text-rose-600 transition">Cancel Sign Up</button>
                     ` : accessStatus === 'reserve' ? `
@@ -6367,7 +6491,7 @@
                     ` : ''}
 
 
-                    ${!under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] !== 'Paid' ? `
+                    ${!under18Only && (isConfirmed || isReserve || isPendingPayment) && mySignup && mySignup[6] !== 'Paid' ? `
                         <button onclick="openPaymentModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}', '${userPrice}')" style="background-color: #e11d48 !important; color: #ffffff !important;" class="w-full py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-black transition">💳 Make Payment</button>
                     ` : ''}
                     ${!under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] === 'Paid' ? `
@@ -6388,11 +6512,43 @@
 
             document.getElementById('calendarEventModal').classList.remove('hidden');
             document.body.classList.add('modal-open');
+
+            // Item #14: live-update the 15-minute countdown while this modal is open
+            // and the viewer has an active payment hold on this event.
+            if (reservationCountdownInterval) { clearInterval(reservationCountdownInterval); reservationCountdownInterval = null; }
+            if (isPendingPayment && mySignup && mySignup[7]) {
+                updateReservationCountdown(mySignup[7], eventId);
+                reservationCountdownInterval = setInterval(() => updateReservationCountdown(mySignup[7], eventId), 1000);
+            }
+        }
+
+        let reservationCountdownInterval = null;
+
+        function updateReservationCountdown(reservedUntilIso, eventId) {
+            const el = document.getElementById('reservationCountdown');
+            if (!el) { clearInterval(reservationCountdownInterval); reservationCountdownInterval = null; return; }
+
+            const remainingMs = new Date(reservedUntilIso).getTime() - Date.now();
+            if (remainingMs <= 0) {
+                el.innerText = "00:00";
+                clearInterval(reservationCountdownInterval);
+                reservationCountdownInterval = null;
+                // The reservation has just expired locally - refresh so the modal
+                // picks up whatever the next data load resolves it to (freed spot,
+                // or a reserve promoted into it), rather than leaving a stale "Make
+                // Payment" button showing for a hold that no longer exists.
+                refreshAllData().then(r => { render(r); if (!document.getElementById('calendarEventModal').classList.contains('hidden')) openCalendarEventModal(eventId); });
+                return;
+            }
+            const mins = Math.floor(remainingMs / 60000);
+            const secs = Math.floor((remainingMs % 60000) / 1000);
+            el.innerText = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
         }
 
         function closeCalendarEventModal() {
             document.getElementById('calendarEventModal').classList.add('hidden');
             document.body.classList.remove('modal-open');
+            if (reservationCountdownInterval) { clearInterval(reservationCountdownInterval); reservationCountdownInterval = null; }
         }
 
         function handleEventClickFromCalendar(eventId, asReserve) {
@@ -6418,6 +6574,14 @@
             const onSuccess = (res) => {
                 closeCalendarEventModal();
                 render(res);
+                // Item #14: a fresh (non-reserve) signup for a paid event just created
+                // a 15-minute payment hold - show the "Payment Required" popup instead
+                // of the plain success toast, per the spec wording.
+                if (!asReserve) {
+                    const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+                    const isFree = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
+                    if (!isFree) { openPaymentRequiredModal(eventId); return; }
+                }
                 triggerToast(successMsg);
             };
 
@@ -6500,6 +6664,20 @@
             document.getElementById('cancelEventId').value = "";
             document.getElementById('cancelConfirmBtn').disabled = false;
             document.getElementById('cancelConfirmBtn').innerText = "Confirm Cancellation";
+        }
+
+        // Item #14: shown once, immediately after signing up for a paid event -
+        // explains the 15-minute hold, then hands off to the event modal itself
+        // (which shows the live countdown + Make Payment / Cancel Reservation).
+        function openPaymentRequiredModal(eventId) {
+            document.getElementById('paymentRequiredEventId').value = eventId;
+            openModal('paymentRequiredModal');
+        }
+
+        function closePaymentRequiredModal() {
+            closeModal('paymentRequiredModal');
+            const eventId = document.getElementById('paymentRequiredEventId').value;
+            if (eventId) openCalendarEventModal(eventId);
         }
 
         function openPaymentModal(eventId, title, amount) {
@@ -7031,6 +7209,7 @@
         function openEventSignupsModal(eventId, title) {
             const signups = globalData.signups.filter(s => s[0] === eventId);
             const confirmed = signups.filter(s => s[5] === "Confirmed");
+            const pending = signups.filter(s => s[5] === "Pending Payment"); // item #14
             const reserves = signups.filter(s => s[5] === "Reserve");
             const isAdminViewer = !!(currentUser && currentUser.role === 'Admin');
             const withdrawals = isAdminViewer ? (globalData.withdrawals || []).filter(w => w[0] === eventId) : [];
@@ -7062,6 +7241,25 @@
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                                         </button>` : ''}
                                         <span class="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-black">#${i + 1}</span>
+                                        <button onclick="confirmAdminRemoveSignup('${eventId}', '${s[1].replace(/'/g, "\\'")}')" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Remove from event">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    ${pending.length > 0 ? `
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">⏳ Pending Payment (${pending.length}) <span class="normal-case font-bold text-gray-300">— 15-min hold, not yet confirmed</span></p>
+                        <div class="space-y-2 mb-6">
+                            ${pending.map(s => `
+                                <div class="flex justify-between items-center py-2 border-b border-gray-50">
+                                    <div>
+                                        <p class="font-black text-sm uppercase">${s[1]}</p>
+                                        <p class="text-[10px] text-gray-400 font-bold">Reserved ${formatSignupTimestamp(s[2])} &bull; Expires ${formatSignupTimestamp(s[7])}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[9px] px-2 py-1 rounded font-black" style="background-color: #fff7ed !important; color: #c2410c !important;">⏳ Holding Spot</span>
                                         <button onclick="confirmAdminRemoveSignup('${eventId}', '${s[1].replace(/'/g, "\\'")}')" class="p-1.5 text-gray-300 hover:text-rose-600 transition" title="Remove from event">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                         </button>
@@ -8431,6 +8629,26 @@
         </div>
     </div>
     <!-- PAYMENT MODAL -->
+    <!-- PAYMENT REQUIRED MODAL (item #14 - shown once right after signing up for a paid event) -->
+    <div id="paymentRequiredModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 100px; padding-bottom: 24px; z-index: 2050 !important;">
+        <input type="hidden" id="paymentRequiredEventId">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full border-t-8 border-black">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-black uppercase italic mb-3">Payment Required</h3>
+                <p class="text-gray-600 text-sm font-bold mb-3">Your place has been reserved for 15 minutes to allow you time to complete payment.</p>
+                <p class="text-gray-600 text-sm font-bold mb-3">Please make your bank transfer now and then return to this page to click <strong>Paid</strong>.</p>
+                <div class="bg-rose-50 rounded-xl p-4 mb-6">
+                    <p class="text-rose-600 text-xs font-bold">If payment is not confirmed within 15 minutes, your reservation will automatically expire, and your place may be offered to another player.</p>
+                </div>
+                <button onclick="closePaymentRequiredModal()" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Got It</button>
+            </div>
+        </div>
+    </div>
     <div id="paymentModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 100px; padding-bottom: 24px; z-index: 2000 !important;">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full border-t-8 border-rose-600">
             <div class="p-8 text-center max-h-full overflow-y-auto">
