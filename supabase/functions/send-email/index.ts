@@ -248,6 +248,21 @@ serve(async (req) => {
         break;
       }
 
+      // EMAIL 7b: Account Removed by Admin (item #1 - inactivity cleanup)
+      case "account_removed": {
+        const body = `
+          <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.firstName},</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">We're writing to let you know that your Pontypool Pickle Club account has been removed due to inactivity.</p>
+          <div style="background-color:#f9fafb;border-left:4px solid #e11d48;border-radius:0 8px 8px 0;padding:16px 20px;margin:0 0 24px;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#374151;line-height:1.6;">If you'd like to discuss this decision, you can contact us at <a href="mailto:pontypoolpickle@gmail.com" style="color:#e11d48;font-weight:900;">pontypoolpickle@gmail.com</a>.</p>
+          </div>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:13px;color:#374151;">Alternatively, you're welcome to register for a new account at <a href="https://www.pontypoolpickle.com" style="color:#e11d48;font-weight:900;">www.pontypoolpickle.com</a> at any time.</p>
+          <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">Thanks,<br><strong>Pontypool Pickle Club</strong></p>
+        `;
+        await sendEmail(data.email, `Your Pontypool Pickle Club Account Has Been Removed`, buildEmailHtml("Account Removed", body));
+        break;
+      }
+
       // EMAIL 8: Password Reset
       case "password_reset": {
         const body = `
