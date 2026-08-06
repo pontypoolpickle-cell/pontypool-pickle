@@ -1432,8 +1432,17 @@
 			}
 		}
 
+        // Every "who is this player's account" lookup in the app (membership
+        // number badge, active-member gold badge, membership end date, etc.) is a
+        // client-side string match between the leaderboard `players.name` and the
+        // account's `first_name + ' ' + surname`, since the two tables aren't
+        // linked by an id. Collapsing repeated/odd whitespace (not just trimming
+        // the ends) makes that match resilient to things like a stray double-space
+        // or a copy-pasted name - a mismatch here is exactly the kind of thing that
+        // silently hides one specific member's badge while everyone else's data,
+        // which happens to already be single-spaced, keeps matching fine.
         function normalizeName(name) {
-            return String(name || '').trim().toLowerCase();
+            return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
         }
 
         // Item #14: a temporary 'Pending Payment' hold occupies a real seat (that's
