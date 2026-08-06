@@ -3034,6 +3034,52 @@
             sessionStorage.setItem('pickleUser', JSON.stringify(currentUser));
             updateUIForLogin();
             renderMembershipPage();
+
+            // globalData.members/standings are only (re)fetched on initial page load
+            // or after an action the current user themselves triggers - a long-lived
+            // tab won't otherwise notice e.g. an admin backfilling a membership
+            // number elsewhere, so a member could open their own profile and not see
+            // a badge an admin (on a fresher session) can see for that same account.
+            // Patch just this user's own entries in place here so their profile
+            // popup picks up the change within this 2-minute tick, without doing a
+            // disruptive full-page refreshAllData()/render() for every open tab.
+            patchOwnMembershipInGlobalData(username, userRow);
+        }
+
+        function patchOwnMembershipInGlobalData(username, userRow) {
+            if (!globalData) return;
+            const members = globalData.members;
+            if (Array.isArray(members)) {
+                const idx = members.findIndex(m => m.username === username);
+                if (idx !== -1) {
+                    members[idx] = Object.assign({}, members[idx], {
+                        role: userRow.role || 'Non-Member',
+                        email: userRow.email || '',
+                        membershipNumber: userRow.membership_number || null,
+                        membershipNumberFormatted: formatMembershipNumber(userRow.membership_number),
+                        status: userRow.membership_status || 'None',
+                        durationWeeks: userRow.membership_duration_weeks || null,
+                        requestedDurationWeeks: userRow.membership_requested_duration_weeks || null,
+                        startDate: userRow.membership_start_date || null,
+                        endDate: userRow.membership_end_date || null,
+                        lastReminderSent: userRow.membership_last_reminder_sent || null,
+                        paymentRef: userRow.membership_payment_ref || '',
+                        isActive: isMembershipActive(userRow)
+                    });
+                }
+            }
+
+            const standings = globalData.standings;
+            if (Array.isArray(standings)) {
+                const fullName = normalizeName(`${userRow.first_name || ''} ${userRow.surname || ''}`);
+                const standingIdx = standings.findIndex(s => normalizeName(s.name) === fullName);
+                if (standingIdx !== -1) {
+                    standings[standingIdx] = Object.assign({}, standings[standingIdx], {
+                        isActiveMember: isMembershipActive(userRow),
+                        membershipEndDate: userRow.membership_end_date || null
+                    });
+                }
+            }
         }
 
         const RESERVATION_WINDOW_MINUTES = 15;
