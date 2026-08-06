@@ -1432,8 +1432,17 @@
 			}
 		}
 
+        // Every "who is this player's account" lookup in the app (membership
+        // number badge, active-member gold badge, membership end date, etc.) is a
+        // client-side string match between the leaderboard `players.name` and the
+        // account's `first_name + ' ' + surname`, since the two tables aren't
+        // linked by an id. Collapsing repeated/odd whitespace (not just trimming
+        // the ends) makes that match resilient to things like a stray double-space
+        // or a copy-pasted name - a mismatch here is exactly the kind of thing that
+        // silently hides one specific member's badge while everyone else's data,
+        // which happens to already be single-spaced, keeps matching fine.
         function normalizeName(name) {
-            return String(name || '').trim().toLowerCase();
+            return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
         }
 
         // Item #14: a temporary 'Pending Payment' hold occupies a real seat (that's
@@ -5558,23 +5567,29 @@
             document.getElementById('evtSpecialEventFields').classList.toggle('hidden', !checked);
         }
 
+        // Junior (under-18) sign-ups are temporarily switched off until the club
+        // is ready to launch its junior section. Ticking the box now just shows a
+        // "coming soon" message and locks the submit button, instead of opening
+        // the junior consent form flow.
         function toggleUnder18Fields() {
             const isUnder18 = document.getElementById('regUnder18').checked;
             const fields = document.getElementById('under18Fields');
             const submitBtn = document.getElementById('signupSubmitBtn');
             const under18Msg = document.getElementById('under18ComingSoonMsg');
 
+            fields.classList.add('hidden');
+            resetJuniorConsentSignupStatus();
+
             if (isUnder18) {
-				fields.classList.remove('hidden');
-				submitBtn.disabled = false;
-				submitBtn.style.opacity = '1';
-				if (under18Msg) under18Msg.classList.add('hidden');
-			} else {
-				fields.classList.add('hidden');
+                if (under18Msg) under18Msg.classList.remove('hidden');
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.4';
+                submitBtn.style.cursor = 'not-allowed';
+            } else {
+                if (under18Msg) under18Msg.classList.add('hidden');
                 submitBtn.disabled = false;
                 submitBtn.style.opacity = '1';
-                if (under18Msg) under18Msg.classList.add('hidden');
-                resetJuniorConsentSignupStatus();
+                submitBtn.style.cursor = '';
             }
         }
 
@@ -7154,10 +7169,13 @@
 
         function processSignup() {
             const isUnder18 = document.getElementById('regUnder18').checked;
-            const consentAck = document.getElementById('regConsentAck').value === 'true';
 
-            if (isUnder18 && !consentAck) {
-                return triggerError("Please complete and submit the Junior Consent Form below before continuing.");
+            // Junior sign-ups are temporarily switched off (see toggleUnder18Fields).
+            // The submit button is disabled while the box is ticked, but this guard
+            // keeps the block in place even if the button is re-enabled some other way.
+            // When junior sign-ups are re-enabled, restore the consentAck check here.
+            if (isUnder18) {
+                return triggerError("Sorry, we can't currently accept sign-ups for juniors - this is coming soon!");
             }
 
             const data = {
@@ -8836,7 +8854,7 @@
 
             <div id="under18ComingSoonMsg" class="hidden bg-gray-50 border-2 border-gray-200 rounded-xl p-4 text-center space-y-2">
                 <p class="text-2xl">🏓</p>
-                <p class="text-xs font-black uppercase text-gray-700 tracking-wide">Sorry, we can't currently offer events for juniors but this is coming in the near future!</p>
+                <p class="text-xs font-black uppercase text-gray-700 tracking-wide">Coming Soon! We're not yet able to accept junior sign-ups, but this is coming in the near future. Please check back later.</p>
             </div>
 
             <div id="under18Fields" class="hidden space-y-3 bg-rose-50 border border-rose-200 rounded-xl p-4">
