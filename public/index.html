@@ -1129,6 +1129,14 @@
           losses integer default 0,
           total_games integer default 0,
           gender text,
+          -- NOTE: despite the name, this is a running lifetime total (it never
+          -- auto-resets weekly, and a full Elo recalculation re-sums a
+          -- player's *entire* match history into it, not just the last 7
+          -- days) - so it's kept around for backward compatibility but is no
+          -- longer used to display anything "this week". The Climbers of the
+          -- Week widget and the leaderboard trend arrows instead compute a
+          -- real trailing 7-day total live from match history on every render
+          -- - see computeRecentEloChanges() in this file.
           weekly_sum integer default 0,
           last_match_date date,
           membership text default 'Non-Member',
@@ -1519,6 +1527,37 @@
 
         function serverNow() {
             return new Date(Date.now() + serverTimeOffsetMs);
+        }
+
+        // Computes each player's real net Elo change over the trailing N days
+        // (default 7), by summing the per-match change_w1/w2/l1/l2 figures from
+        // `history` for matches actually dated within that window. This is
+        // deliberately NOT based on the persisted `players.weekly_sum` column:
+        // that counter only gets reset when an admin runs a full Elo
+        // recalculation, and even then it's re-summed across a player's entire
+        // match history rather than just the last 7 days - so despite its name
+        // it drifts further from "this week" the longer it goes untouched,
+        // which is why the Climbers of the Week / leaderboard trend arrows
+        // could show changes going back far more than a week. Recomputing this
+        // fresh from real match dates on every render instead means it's
+        // always an accurate trailing 7-day window, however long ago the last
+        // recalculation happened.
+        function computeRecentEloChanges(history, days = 7) {
+            const cutoff = serverNow().getTime() - (days * 24 * 60 * 60 * 1000);
+            const changes = new Map();
+            const add = (name, amount) => {
+                if (!name || name === 'Singles') return;
+                changes.set(name, (changes.get(name) || 0) + Number(amount || 0));
+            };
+            (history || []).forEach(m => {
+                const matchTime = new Date(m.date).getTime();
+                if (isNaN(matchTime) || matchTime < cutoff) return;
+                add(m.w1, m.c1);
+                add(m.w2, m.c2);
+                add(m.l1, m.c3);
+                add(m.l2, m.c4);
+            });
+            return changes;
         }
 
         const CACHE_KEY = 'pickle_global_data_cache_v1';
@@ -4098,14 +4137,20 @@
                 locationSelect.value = current;
             }
 
-            // --- RE-ADD CLIMBERS OF THE WEEK LOGIC ---
+            // --- CLIMBERS OF THE WEEK ---
+            // Recomputed live from the actual last 7 days of match history
+            // (see computeRecentEloChanges) rather than the persisted
+            // weekly_sum counter, which didn't reliably reflect a real trailing
+            // 7-day window - see the comment on that function for why.
             const climbersContainer = document.getElementById('climbersContainer');
             const climbersList = document.getElementById('climbersList');
-            const sevenDaysAgo = new Date().getTime() - (7 * 24 * 60 * 60 * 1000);
+            const recentEloChanges = computeRecentEloChanges(data.history, 7);
 
             const topClimbers = [...data.standings]
-                .filter(p => p.name !== "Singles" && p.weeklySum > 0) // Change p.weeklyChange to p.weeklySum
-                .sort((a,b) => b.weeklySum - a.weeklySum)           // Sort by the sum
+                .filter(p => p.name !== "Singles")
+                .map(p => ({ ...p, recentChange: recentEloChanges.get(p.name) || 0 }))
+                .filter(p => p.recentChange > 0)
+                .sort((a, b) => b.recentChange - a.recentChange)
                 .slice(0, 3);
 
             if (topClimbers.length > 0) {
@@ -4116,7 +4161,7 @@
                             <span style="color: #e11d48 !important; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em;">
                                 ${i === 0 ? 'Climber of the Week' : 'On the Rise'}
                             </span>
-                            <span style="color: #e11d48 !important; font-size: 1.5rem; font-weight: 900;">+${p.weeklySum}</span>
+                            <span style="color: #e11d48 !important; font-size: 1.5rem; font-weight: 900;">+${p.recentChange}</span>
                         </div>
                         <h4 style="color: #ffffff !important; font-family: 'Oswald', sans-serif !important; font-size: 1.8rem; font-weight: 900; font-style: italic; text-transform: uppercase; margin-top: 1rem;">
                             ${p.name}
@@ -4184,6 +4229,10 @@
             
             const today = serverNow().getTime();
             const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+            // See computeRecentEloChanges() - a real trailing 7-day total per
+            // player, computed fresh from match history rather than the
+            // persisted (and unreliable) weekly_sum counter.
+            const recentEloChanges = computeRecentEloChanges(globalData.history, 7);
 
             const rSorted = [...filtered].sort((a,b) => b.elo - a.elo);
             const ratingBody = document.getElementById('ratingBody');
@@ -4197,19 +4246,20 @@
                         if (!isNaN(lastDate)) isInactive = (today - lastDate) > thirtyDays;
                     }
 
-                    // 2. Trend Logic (Force check both weeklySum and weeklyChange just in case)
-                    const change = p.weeklySum || 0;
+                    // 2. Trend Logic - net Elo change over the last 7 days
+                    const change = recentEloChanges.get(p.name) || 0;
                     let trendHtml = '';
-                    
+                    const trendTitle = `title="${change > 0 ? '+' : ''}${change} rating points over the last 7 days"`;
+
                     if (change > 0) {
                         // Green Up Arrow
-                        trendHtml = `<span style="color: #16a34a !important; font-size: 14px !important; font-weight: 900; margin-left: 6px;">▲</span>`;
+                        trendHtml = `<span ${trendTitle} style="color: #16a34a !important; font-size: 14px !important; font-weight: 900; margin-left: 6px;">▲</span>`;
                     } else if (change < 0) {
                         // Red Down Arrow
-                        trendHtml = `<span style="color: #e11d48 !important; font-size: 14px !important; font-weight: 900; margin-left: 6px;">▼</span>`;
+                        trendHtml = `<span ${trendTitle} style="color: #e11d48 !important; font-size: 14px !important; font-weight: 900; margin-left: 6px;">▼</span>`;
                     } else {
                         // Grey Dot for no matches this week
-                        trendHtml = `<span style="color: #ccc !important; font-size: 14px !important; margin-left: 6px;">•</span>`;
+                        trendHtml = `<span title="No rating change in the last 7 days" style="color: #ccc !important; font-size: 14px !important; margin-left: 6px;">•</span>`;
                     }
 
                     return `
