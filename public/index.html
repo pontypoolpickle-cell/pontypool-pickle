@@ -506,17 +506,46 @@
             </div>
 
             <!-- LOGGED-IN CONTENT -->
-            <div id="merchandiseMainContent" class="hidden space-y-8">
-                <div class="card p-8 space-y-4 border-t-8 border-black">
-                    <h3 class="text-2xl font-black uppercase italic">Order Policy &amp; Privacy</h3>
-                    <div class="space-y-3 text-sm font-bold text-gray-700 leading-relaxed">
-                        <p><span class="text-black font-black uppercase">Privacy:</span> All member names and personal order details are kept strictly confidential and are only visible to club administrators.</p>
+            <div id="merchandiseMainContent" class="hidden space-y-6">
+                <details class="card border-t-4 overflow-hidden" style="border-color: var(--ponty-black) !important;">
+                    <summary class="p-5 cursor-pointer font-black uppercase text-sm flex items-center justify-between gap-3" style="list-style: none;">
+                        <span>📋 Order Policy &amp; Privacy</span>
+                        <span class="text-gray-300 text-[10px] tracking-widest">Tap to expand</span>
+                    </summary>
+                    <div class="px-5 pb-5 pt-1 space-y-3 text-sm font-bold text-gray-700 leading-relaxed border-t border-gray-100">
+                        <p class="pt-4"><span class="text-black font-black uppercase">Privacy:</span> All member names and personal order details are kept strictly confidential and are only visible to club administrators.</p>
                         <p><span class="text-black font-black uppercase">Bespoke Items:</span> Because every item is custom-made to order, all orders are non-refundable. If an item does not fit, you can try reaching out to other members of the club to try swapping.</p>
-                        <p><span class="text-black font-black uppercase">Initials:</span> All items come with your initials at the bottom left/right of each garment.</p>
+                        <p><span class="text-black font-black uppercase">Initials:</span> All items come with your initials at the bottom left/right of each garment - adding them is an optional extra (see price at checkout).</p>
                     </div>
+                </details>
+
+                <div class="rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap" style="background-color: #000000 !important; border: 2px solid var(--ponty-gold) !important;">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">⏱️</span>
+                        <div>
+                            <p class="text-[9px] font-black uppercase tracking-widest" style="color: var(--ponty-gold-light) !important;">Current Expected Wait Time</p>
+                            <p id="merchandiseWaitTimeText" class="text-lg font-black leading-tight" style="color: #ffffff !important;">4-8 Weeks</p>
+                        </div>
+                    </div>
+                    <button id="merchandiseSettingsBtn" onclick="openMerchandiseSettingsModal()" class="hidden text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full flex-shrink-0" style="background: var(--ponty-gold) !important; color: #1a1400 !important;">⚙️ Settings</button>
                 </div>
 
-                <div id="merchandiseListContainer" class="space-y-8"></div>
+                <div class="flex items-center justify-between gap-3">
+                    <h3 class="text-xl font-black uppercase italic border-l-8 pl-3" style="border-color: var(--ponty-red) !important;">Shop</h3>
+                    <button id="merchandiseAdminViewToggle" onclick="toggleMerchandiseAdminView()" class="hidden text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border-2 transition"></button>
+                </div>
+
+                <div id="merchandiseListContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-5"></div>
+
+                <div id="merchandiseMyOrdersSection" class="hidden space-y-3 pt-4">
+                    <h3 class="text-xl font-black uppercase italic border-l-8 pl-3" style="border-color: var(--ponty-red) !important;">My Orders</h3>
+                    <div id="merchandiseMyOrdersContainer" class="space-y-3"></div>
+                </div>
+
+                <div id="merchandiseAdminOrdersSection" class="hidden space-y-3 pt-4">
+                    <h3 class="text-xl font-black uppercase italic border-l-8 border-black pl-3">All Orders (Admin View)</h3>
+                    <div id="merchandiseAdminOrdersContainer" class="space-y-3"></div>
+                </div>
             </div>
         </div>
 
@@ -1318,6 +1347,40 @@
         -- up above for the Rules PDF / special event PDFs (path prefix
         -- "merchandise/") - no extra bucket needs creating.
 
+        -- Merchandise orders - a member picks an item + size (and, optionally,
+        -- pays a small extra to have 2 initials embroidered), places the order,
+        -- then self-reports their bank transfer exactly like the Membership and
+        -- Event payment flows elsewhere in this file (see confirmPaymentMade()/
+        -- markSignupPaid() for that same pattern). Item/size names and prices
+        -- are snapshotted onto the order at the time it's placed so editing or
+        -- deleting a catalog item later never changes historical order records.
+        create table merchandise_orders (
+          id uuid primary key default gen_random_uuid(),
+          item_id uuid references merchandise_items(id) on delete set null,
+          item_name text not null,
+          size_id uuid references merchandise_sizes(id) on delete set null,
+          size_label text not null,
+          base_price numeric(10,2) not null default 0,
+          add_initials boolean not null default false,
+          initials text,
+          initials_price numeric(10,2) not null default 0,
+          total_price numeric(10,2) not null default 0,
+          username text not null,
+          player_name text not null,
+          payment_status text not null default 'Unpaid',
+          order_status text not null default 'Pending',
+          created_at timestamptz default now()
+        );
+
+        -- Merchandise settings (admin-configurable) are stored as ordinary rows
+        -- in the existing `site_settings` key/value table above - no extra
+        -- table needed: "merchandise_initials_price" is the optional extra
+        -- charged for adding 2 initials to a garment, and "merchandise_wait_time"
+        -- is the free-text note shown to members (e.g. "4-8 Weeks"). Both are
+        -- editable from the Merchandise page's Admin View - see
+        -- saveMerchandiseSettings() in this file. If these keys don't exist yet
+        -- the app falls back to £3.00 / "4-8 Weeks" respectively.
+
         -- Membership fields (added for the Membership feature) --
         alter table users add column if not exists membership_status text default 'None';
         alter table users add column if not exists membership_duration_weeks numeric;
@@ -1782,7 +1845,28 @@
                             }))
                             .sort((a, b) => a.sortOrder - b.sortOrder)
                     }))
-                    .sort((a, b) => a.sortOrder - b.sortOrder)
+                    .sort((a, b) => a.sortOrder - b.sortOrder),
+                // Member-placed merchandise orders (item + size + optional
+                // initials, self-reported payment) - newest first.
+                merchandiseOrders: (payload.merchandiseOrders || [])
+                    .map(o => ({
+                        id: o.id,
+                        itemId: o.item_id,
+                        itemName: o.item_name,
+                        sizeId: o.size_id,
+                        sizeLabel: o.size_label,
+                        basePrice: Number(o.base_price || 0),
+                        addInitials: !!o.add_initials,
+                        initials: o.initials || '',
+                        initialsPrice: Number(o.initials_price || 0),
+                        totalPrice: Number(o.total_price || 0),
+                        username: o.username,
+                        playerName: o.player_name,
+                        paymentStatus: o.payment_status || 'Unpaid',
+                        orderStatus: o.order_status || 'Pending',
+                        createdAt: o.created_at
+                    }))
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             };
         }
 		
@@ -2014,7 +2098,8 @@
                 siteSettingsRes,
                 faqsRes,
                 merchandiseItemsRes,
-                merchandiseSizesRes
+                merchandiseSizesRes,
+                merchandiseOrdersRes
             ] = await Promise.all([
                 supabaseClient.from('players').select('*').order('name', { ascending: true }),
                 supabaseClient.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -2035,7 +2120,8 @@
                 supabaseClient.from('site_settings').select('*'),
                 supabaseClient.from('faqs').select('*').order('sort_order', { ascending: true }),
                 supabaseClient.from('merchandise_items').select('*').order('sort_order', { ascending: true }),
-                supabaseClient.from('merchandise_sizes').select('*').order('sort_order', { ascending: true })
+                supabaseClient.from('merchandise_sizes').select('*').order('sort_order', { ascending: true }),
+                supabaseClient.from('merchandise_orders').select('*').order('created_at', { ascending: false })
             ]);
 
             // Item #7: first-run auto-seed - if the faqs table exists but is empty
@@ -2100,7 +2186,8 @@
 				siteSettings: siteSettingsRes.data || [],
 				faqs: faqRows,
 				merchandiseItems: merchandiseItemRows,
-				merchandiseSizes: merchandiseSizeRows
+				merchandiseSizes: merchandiseSizeRows,
+				merchandiseOrders: merchandiseOrdersRes.data || []
 			});
         }
 
@@ -6326,15 +6413,75 @@
         // the "event-documents" bucket (see uploadMerchandiseImage below).
         // ------------------------------------------------------------------
 
+        // Admins see exactly the same shop view as everyone else by default;
+        // toggleMerchandiseAdminView() flips this on to reveal the catalog
+        // edit/delete controls and the "All Orders" admin panel. Not persisted
+        // across page loads on purpose - admins land back in the normal
+        // member view every time, same as any other visitor.
+        let merchandiseAdminViewOn = false;
+        // Which items currently have their size guide expanded (per-item, so
+        // one card being open doesn't affect the others). Survives re-renders
+        // since renderMerchandise() re-runs on every data refresh.
+        const merchandiseSizeGuideOpenIds = new Set();
+
+        function getMerchandiseInitialsPrice() {
+            const raw = (globalData.siteSettings || {}).merchandise_initials_price;
+            const n = Number(raw);
+            return (raw !== undefined && raw !== null && raw !== '' && !isNaN(n)) ? n : 3;
+        }
+
+        function getMerchandiseWaitTime() {
+            const settings = globalData.siteSettings || {};
+            return settings.merchandise_wait_time || '4-8 Weeks';
+        }
+
+        function merchandisePriceDisplay(item) {
+            if (!item.sizes.length) return '—';
+            const prices = item.sizes.map(s => s.price);
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            return min === max ? `£${min.toFixed(2)}` : `From £${min.toFixed(2)}`;
+        }
+
+        function toggleMerchandiseAdminView() {
+            if (!currentUser || currentUser.role !== 'Admin') return;
+            merchandiseAdminViewOn = !merchandiseAdminViewOn;
+            renderMerchandise();
+        }
+
+        function toggleMerchandiseSizeGuide(itemId) {
+            if (merchandiseSizeGuideOpenIds.has(itemId)) merchandiseSizeGuideOpenIds.delete(itemId);
+            else merchandiseSizeGuideOpenIds.add(itemId);
+            renderMerchandise();
+        }
+
         function renderMerchandise() {
             const container = document.getElementById('merchandiseListContainer');
             if (!container) return;
             const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            const adminViewOn = isAdmin && merchandiseAdminViewOn;
             const items = [...(globalData.merchandise || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+
+            const waitTimeEl = document.getElementById('merchandiseWaitTimeText');
+            if (waitTimeEl) waitTimeEl.innerText = getMerchandiseWaitTime();
+
+            const settingsBtn = document.getElementById('merchandiseSettingsBtn');
+            if (settingsBtn) settingsBtn.classList.toggle('hidden', !adminViewOn);
+
+            const toggleBtn = document.getElementById('merchandiseAdminViewToggle');
+            if (toggleBtn) {
+                toggleBtn.classList.toggle('hidden', !isAdmin);
+                if (isAdmin) {
+                    toggleBtn.innerText = merchandiseAdminViewOn ? '👁️ Switch to Member View' : '🛠️ Switch to Admin View';
+                    toggleBtn.style.background = merchandiseAdminViewOn ? 'var(--ponty-red)' : 'transparent';
+                    toggleBtn.style.color = merchandiseAdminViewOn ? '#ffffff' : 'var(--ponty-black)';
+                    toggleBtn.style.borderColor = merchandiseAdminViewOn ? 'var(--ponty-red)' : 'var(--ponty-black)';
+                }
+            }
 
             if (items.length === 0) {
                 container.innerHTML = `
-                    <div class="card p-16 text-center space-y-4 border-t-8 border-black">
+                    <div class="card p-16 text-center space-y-4 border-t-8 border-black sm:col-span-2">
                         <p class="text-6xl">🛍️</p>
                         <h3 class="text-3xl font-black uppercase italic">Merchandise Coming Soon</h3>
                         <p class="text-gray-500 max-w-md mx-auto font-bold uppercase text-xs leading-relaxed">
@@ -6347,76 +6494,280 @@
                     const showChestFull = item.sizes.some(s => s.chestFull);
                     const showLength = item.sizes.some(s => s.lengthValue);
                     const lengthColumnLabel = (item.sizes.find(s => s.lengthValue && s.lengthLabel) || {}).lengthLabel || 'Length';
+                    const guideOpen = merchandiseSizeGuideOpenIds.has(item.id);
 
                     const rowsHtml = [...item.sizes].sort((a, b) => a.sortOrder - b.sortOrder).map(s => `
                         <tr class="border-b border-gray-100 last:border-0">
-                            <td class="py-2 pr-4 font-black uppercase text-xs whitespace-nowrap">${s.sizeLabel}</td>
-                            ${showChestHalf ? `<td class="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">${s.chestHalf ? s.chestHalf + '"' : '—'}</td>` : ''}
-                            ${showChestFull ? `<td class="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">${s.chestFull ? s.chestFull + '"' : '—'}</td>` : ''}
-                            ${showLength ? `<td class="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">${s.lengthValue ? s.lengthValue + '"' : '—'}</td>` : ''}
-                            <td class="py-2 pr-4 text-xs font-black whitespace-nowrap">£${s.price.toFixed(2)}</td>
-                            ${isAdmin ? `
+                            <td class="py-2 pr-3 font-black uppercase text-xs whitespace-nowrap">${s.sizeLabel}</td>
+                            ${showChestHalf ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.chestHalf ? s.chestHalf + '"' : '—'}</td>` : ''}
+                            ${showChestFull ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.chestFull ? s.chestFull + '"' : '—'}</td>` : ''}
+                            ${showLength ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.lengthValue ? s.lengthValue + '"' : '—'}</td>` : ''}
+                            <td class="py-2 pr-3 text-xs font-black whitespace-nowrap">£${s.price.toFixed(2)}</td>
+                            ${adminViewOn ? `
                                 <td class="py-2 text-right whitespace-nowrap">
-                                    <button onclick="openEditMerchandiseSizeModal('${item.id}', '${s.id}')" class="text-gray-400 hover:text-rose-600 transition mr-2" title="Edit size">
-                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                                    </button>
-                                    <button onclick="deleteMerchandiseSize('${s.id}', '${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Delete size">
-                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                    </button>
+                                    <button onclick="openEditMerchandiseSizeModal('${item.id}', '${s.id}')" class="text-gray-400 hover:text-rose-600 transition mr-2" title="Edit size">✏️</button>
+                                    <button onclick="deleteMerchandiseSize('${s.id}', '${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Delete size">🗑️</button>
                                 </td>` : ''}
                         </tr>
                     `).join('');
 
                     return `
-                    <div class="card overflow-hidden border-t-8 border-black">
-                        <div class="md:flex">
-                            <div class="md:w-64 flex-shrink-0 bg-gray-100">
-                                ${item.imageUrl
-                                    ? `<img src="${item.imageUrl}" alt="${item.name}" class="w-full h-56 md:h-full object-cover">`
-                                    : `<div class="w-full h-56 md:h-full flex items-center justify-center text-5xl text-gray-300">🛍️</div>`}
+                    <div class="card overflow-hidden border-t-4 flex flex-col" style="border-color: var(--ponty-black) !important;">
+                        <div class="h-48 bg-gray-100 relative flex-shrink-0">
+                            ${item.imageUrl
+                                ? `<img src="${item.imageUrl}" alt="${item.name}" class="w-full h-full object-cover">`
+                                : `<div class="w-full h-full flex items-center justify-center text-5xl text-gray-300">🛍️</div>`}
+                            ${adminViewOn ? `
+                                <div class="absolute top-2 right-2 flex items-center gap-2">
+                                    <button onclick="openEditMerchandiseItemModal('${item.id}')" class="w-8 h-8 rounded-full bg-white shadow flex items-center justify-center hover:bg-gray-100 transition" title="Edit item">✏️</button>
+                                    <button onclick="deleteMerchandiseItem('${item.id}')" class="w-8 h-8 rounded-full bg-white shadow flex items-center justify-center hover:bg-gray-100 transition" title="Delete item">🗑️</button>
+                                </div>` : ''}
+                        </div>
+                        <div class="p-5 flex-1 flex flex-col gap-3">
+                            <div>
+                                <h4 class="font-black uppercase italic text-lg leading-tight">${item.name}</h4>
+                                ${item.description ? `<p class="text-xs text-gray-500 font-bold mt-1 leading-relaxed">${item.description}</p>` : ''}
                             </div>
-                            <div class="p-6 flex-1 space-y-4 min-w-0">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div>
-                                        <h3 class="text-2xl font-black uppercase italic">${item.name}</h3>
-                                        ${item.description ? `<p class="text-sm text-gray-500 font-bold mt-1">${item.description}</p>` : ''}
-                                    </div>
-                                    ${isAdmin ? `
-                                        <div class="flex items-center gap-3 flex-shrink-0">
-                                            <button onclick="openEditMerchandiseItemModal('${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Edit item">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                                            </button>
-                                            <button onclick="deleteMerchandiseItem('${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Delete item">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                            </button>
-                                        </div>` : ''}
-                                </div>
-                                ${item.sizes.length > 0 ? `
-                                <div class="overflow-x-auto -mx-2 px-2">
-                                    <table class="text-left">
+                            <p class="text-2xl font-black" style="color: var(--ponty-red) !important;">${merchandisePriceDisplay(item)}</p>
+                            <div class="mt-auto space-y-2">
+                                <button onclick="toggleMerchandiseSizeGuide('${item.id}')" class="w-full text-[10px] font-black uppercase tracking-widest border-2 border-gray-200 rounded-full py-2 hover:border-black transition">📏 ${guideOpen ? 'Hide' : 'View'} Size Guide</button>
+                                <div class="${guideOpen ? '' : 'hidden'} overflow-x-auto">
+                                    ${item.sizes.length > 0 ? `
+                                    <table class="text-left w-full">
                                         <thead>
-                                            <tr class="border-b-2 border-gray-200 text-[10px] font-black uppercase text-gray-400 tracking-widest">
-                                                <th class="py-2 pr-4">Size</th>
-                                                ${showChestHalf ? `<th class="py-2 pr-4">Chest (Half)</th>` : ''}
-                                                ${showChestFull ? `<th class="py-2 pr-4">Chest (Full)</th>` : ''}
-                                                ${showLength ? `<th class="py-2 pr-4">${lengthColumnLabel}</th>` : ''}
-                                                <th class="py-2 pr-4">Price</th>
-                                                ${isAdmin ? `<th></th>` : ''}
+                                            <tr class="border-b-2 border-gray-200 text-[9px] font-black uppercase text-gray-400 tracking-widest">
+                                                <th class="py-2 pr-3">Size</th>
+                                                ${showChestHalf ? `<th class="py-2 pr-3">Chest (Half)</th>` : ''}
+                                                ${showChestFull ? `<th class="py-2 pr-3">Chest (Full)</th>` : ''}
+                                                ${showLength ? `<th class="py-2 pr-3">${lengthColumnLabel}</th>` : ''}
+                                                <th class="py-2 pr-3">Price</th>
+                                                ${adminViewOn ? `<th></th>` : ''}
                                             </tr>
                                         </thead>
                                         <tbody>${rowsHtml}</tbody>
-                                    </table>
-                                </div>` : `<p class="text-xs text-gray-400 italic">No sizes added yet.</p>`}
-                                ${isAdmin ? `<button onclick="openAddMerchandiseSizeModal('${item.id}')" class="w-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-2 font-black uppercase text-[10px] tracking-widest transition">+ Add Size</button>` : ''}
+                                    </table>` : `<p class="text-xs text-gray-400 italic py-2">No sizes added yet.</p>`}
+                                    ${adminViewOn ? `<button onclick="openAddMerchandiseSizeModal('${item.id}')" class="w-full mt-2 border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-2 font-black uppercase text-[10px] tracking-widest transition">+ Add Size</button>` : ''}
+                                </div>
+                                <button onclick="openMerchandiseOrderModal('${item.id}')" ${item.sizes.length === 0 ? 'disabled' : ''} class="w-full btn-red rounded-full py-3 font-black uppercase text-xs tracking-widest shadow-lg${item.sizes.length === 0 ? ' opacity-40 cursor-not-allowed' : ''}">🛒 Order Now</button>
                             </div>
                         </div>
                     </div>`;
                 }).join('');
             }
 
-            if (isAdmin) {
-                container.innerHTML += `<button onclick="openAddMerchandiseItemModal()" class="w-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-4 font-black uppercase text-xs tracking-widest transition">+ Add New Merchandise Item</button>`;
+            if (adminViewOn) {
+                container.innerHTML += `<button onclick="openAddMerchandiseItemModal()" class="w-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-4 font-black uppercase text-xs tracking-widest transition sm:col-span-2">+ Add New Merchandise Item</button>`;
             }
+
+            renderMerchandiseMyOrders();
+            renderMerchandiseAdminOrders(adminViewOn);
+        }
+
+        function renderMerchandiseMyOrders() {
+            const section = document.getElementById('merchandiseMyOrdersSection');
+            const container = document.getElementById('merchandiseMyOrdersContainer');
+            if (!section || !container) return;
+            if (!currentUser) { section.classList.add('hidden'); container.innerHTML = ''; return; }
+
+            const myOrders = (globalData.merchandiseOrders || []).filter(o => o.username === currentUser.username);
+            if (myOrders.length === 0) { section.classList.add('hidden'); container.innerHTML = ''; return; }
+
+            section.classList.remove('hidden');
+            container.innerHTML = myOrders.map(o => `
+                <div class="card p-4 flex items-center justify-between gap-3 flex-wrap border-l-4" style="border-color: ${o.paymentStatus === 'Paid' ? 'var(--ponty-gold)' : 'var(--ponty-red)'} !important;">
+                    <div>
+                        <p class="font-black uppercase text-sm">${o.itemName} — ${o.sizeLabel}</p>
+                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mt-1">${o.addInitials ? `Initials: ${o.initials} · ` : ''}${new Date(o.createdAt).toLocaleDateString('en-GB')} · ${o.orderStatus}</p>
+                    </div>
+                    <div class="flex items-center gap-3 flex-shrink-0">
+                        <p class="font-black text-lg">£${o.totalPrice.toFixed(2)}</p>
+                        ${o.paymentStatus === 'Paid'
+                            ? `<span class="text-[10px] font-black uppercase tracking-widest bg-black text-white px-4 py-2 rounded-full">💳 Paid</span>`
+                            : `<button onclick="openMerchandiseOrderPaymentModal('${o.id}', '${o.itemName.replace(/'/g, "\\'")}', '${o.sizeLabel.replace(/'/g, "\\'")}', ${o.totalPrice})" style="background-color: #e11d48 !important; color: #ffffff !important;" class="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full">💳 Pay Now</button>`}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderMerchandiseAdminOrders(adminViewOn) {
+            const section = document.getElementById('merchandiseAdminOrdersSection');
+            const container = document.getElementById('merchandiseAdminOrdersContainer');
+            if (!section || !container) return;
+            if (!adminViewOn) { section.classList.add('hidden'); return; }
+
+            section.classList.remove('hidden');
+            const orders = globalData.merchandiseOrders || [];
+            if (orders.length === 0) {
+                container.innerHTML = `<p class="text-xs text-gray-400 italic">No orders placed yet.</p>`;
+                return;
+            }
+            container.innerHTML = orders.map(o => `
+                <div class="card p-4 space-y-3 border-l-4 border-black">
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                            <p class="font-black uppercase text-sm">${o.playerName} — ${o.itemName} (${o.sizeLabel})</p>
+                            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wide mt-1">${o.addInitials ? `Initials: ${o.initials} · ` : 'No initials · '}${new Date(o.createdAt).toLocaleDateString('en-GB')}</p>
+                        </div>
+                        <p class="font-black text-lg">£${o.totalPrice.toFixed(2)}</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${o.paymentStatus === 'Paid' ? 'bg-black text-white' : 'bg-rose-100 text-rose-600'}">${o.paymentStatus === 'Paid' ? '💳 Paid' : '💳 Unpaid'}</span>
+                        <span class="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-gray-100 text-gray-600">${o.orderStatus}</span>
+                        ${o.paymentStatus !== 'Paid' ? `<button onclick="adminMarkMerchandiseOrderPaid('${o.id}')" class="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border-2 border-black hover:bg-black hover:text-white transition">Mark Paid</button>` : ''}
+                        ${o.orderStatus !== 'Fulfilled' ? `<button onclick="adminUpdateMerchandiseOrderStatus('${o.id}', 'Fulfilled')" class="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border-2 border-black hover:bg-black hover:text-white transition">Mark Fulfilled</button>` : ''}
+                        ${o.orderStatus !== 'Cancelled' ? `<button onclick="adminUpdateMerchandiseOrderStatus('${o.id}', 'Cancelled')" class="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border-2 border-rose-600 text-rose-600 hover:bg-rose-600 hover:text-white transition">Cancel</button>` : ''}
+                        <button onclick="adminDeleteMerchandiseOrder('${o.id}')" class="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full text-gray-400 hover:text-rose-600 transition">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openMerchandiseSettingsModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            document.getElementById('merchandiseSettingsInitialsPrice').value = getMerchandiseInitialsPrice().toFixed(2);
+            document.getElementById('merchandiseSettingsWaitTime').value = getMerchandiseWaitTime();
+            openModal('merchandiseSettingsModal');
+        }
+
+        function saveMerchandiseSettings() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const initialsPriceRaw = document.getElementById('merchandiseSettingsInitialsPrice').value;
+            const waitTime = document.getElementById('merchandiseSettingsWaitTime').value.trim();
+            if (initialsPriceRaw === '' || isNaN(Number(initialsPriceRaw))) return triggerError("Please enter a valid initials price.");
+            if (!waitTime) return triggerError("Please enter an expected wait time.");
+
+            const btn = document.getElementById('merchandiseSettingsSaveBtn');
+            btn.disabled = true; btn.innerText = 'Saving...';
+
+            Promise.all([
+                saveSiteSetting('merchandise_initials_price', Number(initialsPriceRaw).toFixed(2)),
+                saveSiteSetting('merchandise_wait_time', waitTime)
+            ]).then(() => refreshAllData())
+              .then(r => {
+                  render(r);
+                  triggerToast("Merchandise settings updated.");
+                  closeModal('merchandiseSettingsModal');
+              })
+              .catch(err => triggerError(err.message))
+              .finally(() => { btn.disabled = false; btn.innerText = 'Save'; });
+        }
+
+        let merchandiseOrderItemId = null;
+
+        function openMerchandiseOrderModal(itemId) {
+            if (!currentUser) { closeModal('merchandiseOrderModal'); return openAuthModal(); }
+            const item = (globalData.merchandise || []).find(m => m.id === itemId);
+            if (!item || item.sizes.length === 0) return triggerError("This item has no sizes available yet.");
+            merchandiseOrderItemId = itemId;
+
+            document.getElementById('merchandiseOrderModalTitle').innerText = `Order: ${item.name}`;
+            const imgEl = document.getElementById('merchandiseOrderItemImage');
+            if (item.imageUrl) { imgEl.src = item.imageUrl; imgEl.classList.remove('hidden'); } else { imgEl.classList.add('hidden'); imgEl.src = ''; }
+
+            const sizeSelect = document.getElementById('merchandiseOrderSize');
+            sizeSelect.innerHTML = [...item.sizes].sort((a, b) => a.sortOrder - b.sortOrder)
+                .map(s => `<option value="${s.id}">${s.sizeLabel} — £${s.price.toFixed(2)}</option>`).join('');
+
+            document.getElementById('merchandiseOrderInitialsPriceText').innerText = `+£${getMerchandiseInitialsPrice().toFixed(2)}`;
+            document.getElementById('merchandiseOrderAddInitials').checked = false;
+            document.getElementById('merchandiseOrderInitials').value = '';
+            document.getElementById('merchandiseOrderInitialsField').classList.add('hidden');
+
+            updateMerchandiseOrderTotal();
+            openModal('merchandiseOrderModal');
+        }
+
+        function toggleMerchandiseOrderInitialsField() {
+            const checked = document.getElementById('merchandiseOrderAddInitials').checked;
+            document.getElementById('merchandiseOrderInitialsField').classList.toggle('hidden', !checked);
+            updateMerchandiseOrderTotal();
+        }
+
+        function updateMerchandiseOrderTotal() {
+            const item = (globalData.merchandise || []).find(m => m.id === merchandiseOrderItemId);
+            if (!item) return;
+            const sizeId = document.getElementById('merchandiseOrderSize').value;
+            const size = item.sizes.find(s => s.id === sizeId);
+            const basePrice = size ? size.price : 0;
+            const addInitials = document.getElementById('merchandiseOrderAddInitials').checked;
+            const initialsPrice = addInitials ? getMerchandiseInitialsPrice() : 0;
+            document.getElementById('merchandiseOrderTotalText').innerText = `£${(basePrice + initialsPrice).toFixed(2)}`;
+        }
+
+        function placeMerchandiseOrder() {
+            if (!currentUser) return triggerError("Please log in first.");
+            const item = (globalData.merchandise || []).find(m => m.id === merchandiseOrderItemId);
+            if (!item) return triggerError("Item not found.");
+            const sizeId = document.getElementById('merchandiseOrderSize').value;
+            const size = item.sizes.find(s => s.id === sizeId);
+            if (!size) return triggerError("Please select a size.");
+
+            const addInitials = document.getElementById('merchandiseOrderAddInitials').checked;
+            let initials = document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
+            if (addInitials) {
+                if (!/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials.");
+            } else {
+                initials = '';
+            }
+            const initialsPrice = addInitials ? getMerchandiseInitialsPrice() : 0;
+            const totalPrice = size.price + initialsPrice;
+            const fullName = `${currentUser.firstName} ${currentUser.surname}`;
+
+            const btn = document.getElementById('merchandiseOrderPlaceBtn');
+            btn.disabled = true; btn.innerText = 'Placing Order...';
+
+            addMerchandiseOrderRow({
+                itemId: item.id,
+                itemName: item.name,
+                sizeId: size.id,
+                sizeLabel: size.sizeLabel,
+                basePrice: size.price,
+                addInitials,
+                initials,
+                initialsPrice,
+                totalPrice,
+                username: currentUser.username,
+                playerName: fullName
+            }).then(result => {
+                render(result.data);
+                closeModal('merchandiseOrderModal');
+                triggerToast("Order placed! Please complete payment below.");
+                openMerchandiseOrderPaymentModal(result.orderId, item.name, size.sizeLabel, totalPrice);
+            }).catch(err => triggerError(err.message))
+              .finally(() => { btn.disabled = false; btn.innerText = 'Place Order'; });
+        }
+
+        let merchandiseOrderPaymentTargetId = null;
+
+        function openMerchandiseOrderPaymentModal(orderId, itemName, sizeLabel, amount) {
+            merchandiseOrderPaymentTargetId = orderId;
+            document.getElementById('merchandiseOrderPaymentAmountText').innerText = `£${Number(amount).toFixed(2)}`;
+            const fullName = currentUser ? `${currentUser.firstName} ${currentUser.surname}` : '';
+            document.getElementById('merchandiseOrderPaymentRefText').innerText = `${fullName} - ${itemName} (${sizeLabel})`;
+            document.getElementById('merchandiseOrderPaymentConfirmCheck').checked = false;
+            openModal('merchandiseOrderPaymentModal');
+        }
+
+        function closeMerchandiseOrderPaymentModal() {
+            closeModal('merchandiseOrderPaymentModal');
+        }
+
+        function confirmMerchandiseOrderPaymentMade() {
+            if (!document.getElementById('merchandiseOrderPaymentConfirmCheck').checked) {
+                return triggerError("Please tick the box to confirm you've made the transfer.");
+            }
+            const orderId = merchandiseOrderPaymentTargetId;
+            const btn = document.getElementById('merchandiseOrderPaymentConfirmBtn');
+            btn.disabled = true; btn.innerText = 'Saving...';
+
+            markMerchandiseOrderPaidRow(orderId)
+                .then(r => {
+                    render(r);
+                    triggerToast("Payment Confirmed — Thank You!");
+                    closeMerchandiseOrderPaymentModal();
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = 'Confirm Payment'; });
         }
 
         const MERCHANDISE_IMAGE_BUCKET = 'event-documents';
@@ -6494,6 +6845,65 @@
             const { error } = await supabaseClient.from('merchandise_sizes').delete().eq('id', id);
             if (error) throw new Error(error.message);
             return refreshAllData();
+        }
+
+        async function addMerchandiseOrderRow(data) {
+            const { data: row, error } = await supabaseClient.from('merchandise_orders').insert({
+                item_id: data.itemId,
+                item_name: data.itemName,
+                size_id: data.sizeId,
+                size_label: data.sizeLabel,
+                base_price: data.basePrice,
+                add_initials: !!data.addInitials,
+                initials: data.initials || null,
+                initials_price: data.initialsPrice,
+                total_price: data.totalPrice,
+                username: data.username,
+                player_name: data.playerName
+            }).select().single();
+            if (error) throw new Error(error.message);
+            const refreshed = await refreshAllData();
+            return { data: refreshed, orderId: row.id };
+        }
+
+        async function markMerchandiseOrderPaidRow(orderId) {
+            const { error } = await supabaseClient.from('merchandise_orders').update({ payment_status: 'Paid' }).eq('id', orderId);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        function adminMarkMerchandiseOrderPaid(orderId) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            markMerchandiseOrderPaidRow(orderId)
+                .then(r => { render(r); triggerToast("Order marked as paid."); })
+                .catch(err => triggerError(err.message));
+        }
+
+        async function updateMerchandiseOrderStatusRow(orderId, status) {
+            const { error } = await supabaseClient.from('merchandise_orders').update({ order_status: status }).eq('id', orderId);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        function adminUpdateMerchandiseOrderStatus(orderId, status) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            updateMerchandiseOrderStatusRow(orderId, status)
+                .then(r => { render(r); triggerToast(`Order marked as ${status}.`); })
+                .catch(err => triggerError(err.message));
+        }
+
+        async function deleteMerchandiseOrderRow(orderId) {
+            const { error } = await supabaseClient.from('merchandise_orders').delete().eq('id', orderId);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        function adminDeleteMerchandiseOrder(orderId) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!confirm("Delete this order? This cannot be undone.")) return;
+            deleteMerchandiseOrderRow(orderId)
+                .then(r => { render(r); triggerToast("Order deleted."); })
+                .catch(err => triggerError(err.message));
         }
 
         let merchandiseItemEditTarget = null;
@@ -8948,6 +9358,108 @@
                     <input type="number" step="0.01" min="0" id="merchandiseSizePrice" placeholder="e.g. 27.50" class="input-field border-2 w-full">
                 </div>
                 <button onclick="saveMerchandiseSize()" id="merchandiseSizeSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
+            </div>
+        </div>
+    </div>
+    <!-- MERCHANDISE SETTINGS MODAL (admin-manageable initials fee + wait time) -->
+    <div id="merchandiseSettingsModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800">
+            <div class="p-6 pb-4 flex justify-between items-start">
+                <h3 class="text-2xl font-black uppercase italic">Merchandise Settings</h3>
+                <button onclick="closeModal('merchandiseSettingsModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-6 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Initials Fee (£)</label>
+                    <input type="number" step="0.01" min="0" id="merchandiseSettingsInitialsPrice" placeholder="e.g. 3.00" class="input-field border-2 w-full">
+                    <p class="text-[10px] text-gray-400 font-bold mt-1">Extra charge shown to members who choose to add their initials to an order.</p>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Current Expected Wait Time</label>
+                    <input type="text" id="merchandiseSettingsWaitTime" placeholder="e.g. 4-8 Weeks" class="input-field border-2 w-full">
+                </div>
+                <button onclick="saveMerchandiseSettings()" id="merchandiseSettingsSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
+            </div>
+        </div>
+    </div>
+    <!-- MERCHANDISE ORDER MODAL (member-facing: pick size, optional initials) -->
+    <div id="merchandiseOrderModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8" style="border-color: var(--ponty-red) !important; max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <h3 id="merchandiseOrderModalTitle" class="text-2xl font-black uppercase italic">Order</h3>
+                <button onclick="closeModal('merchandiseOrderModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-6 space-y-4 overflow-y-auto">
+                <img id="merchandiseOrderItemImage" class="w-full h-40 object-cover rounded-xl hidden" alt="">
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Size</label>
+                    <select id="merchandiseOrderSize" onchange="updateMerchandiseOrderTotal()" class="input-field border-2 w-full"></select>
+                </div>
+                <label class="flex items-center justify-between gap-3 bg-gray-50 p-4 rounded-xl cursor-pointer border-2 border-gray-100">
+                    <span class="flex items-center gap-3">
+                        <input type="checkbox" id="merchandiseOrderAddInitials" onchange="toggleMerchandiseOrderInitialsField()" class="w-5 h-5 accent-rose-600">
+                        <span class="text-xs font-black uppercase">✏️ Add My Initials</span>
+                    </span>
+                    <span id="merchandiseOrderInitialsPriceText" class="text-xs font-black text-rose-600"></span>
+                </label>
+                <div id="merchandiseOrderInitialsField" class="hidden">
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Your Initials (2 letters)</label>
+                    <input type="text" id="merchandiseOrderInitials" maxlength="2" placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase(); updateMerchandiseOrderTotal();" class="input-field border-2 w-full uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
+                </div>
+                <div class="bg-black rounded-xl p-4 flex items-center justify-between">
+                    <span class="text-[10px] font-black uppercase tracking-widest" style="color: var(--ponty-gold-light) !important;">Total</span>
+                    <span id="merchandiseOrderTotalText" class="text-2xl font-black" style="color: #ffffff !important;">£0.00</span>
+                </div>
+                <p class="text-[10px] text-gray-400 font-bold uppercase leading-relaxed">Remember: all items are bespoke and non-refundable - please double-check your size before ordering.</p>
+                <button onclick="placeMerchandiseOrder()" id="merchandiseOrderPlaceBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Place Order</button>
+            </div>
+        </div>
+    </div>
+    <!-- MERCHANDISE ORDER PAYMENT MODAL (bank transfer + self-reported "I've Paid", same pattern as event/membership payments) -->
+    <div id="merchandiseOrderPaymentModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 100px; padding-bottom: 24px; z-index: 2000 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full border-t-8 border-rose-600">
+            <div class="p-8 text-center max-h-full overflow-y-auto">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-black uppercase italic mb-2">Pay For Your Order</h3>
+                <p id="merchandiseOrderPaymentAmountText" class="text-3xl font-black text-rose-600 mb-4"></p>
+
+                <div class="bg-gray-50 rounded-xl p-4 text-left space-y-2 mb-6 border border-gray-100">
+                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Bank Transfer Details</p>
+                    <div class="flex justify-between text-sm">
+                        <span class="font-bold text-gray-500">Name:</span>
+                        <span class="font-black">Pontypool Pickleball</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="font-bold text-gray-500">Sort Code:</span>
+                        <span class="font-black">51-61-02</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="font-bold text-gray-500">Account No:</span>
+                        <span class="font-black">76584135</span>
+                    </div>
+                    <div class="flex justify-between text-sm pt-2 border-t border-gray-200">
+                        <span class="font-bold text-gray-500">Reference:</span>
+                        <span id="merchandiseOrderPaymentRefText" class="font-black text-rose-600"></span>
+                    </div>
+                </div>
+
+                <label class="flex items-center gap-3 bg-rose-50 p-4 rounded-xl mb-6 cursor-pointer">
+                    <input type="checkbox" id="merchandiseOrderPaymentConfirmCheck" class="w-5 h-5 accent-rose-600">
+                    <span class="text-xs font-bold text-left uppercase">I confirm I have transferred this payment</span>
+                </label>
+
+                <div class="flex flex-col gap-3">
+                    <button onclick="confirmMerchandiseOrderPaymentMade()" id="merchandiseOrderPaymentConfirmBtn"
+                            style="background-color: #e11d48 !important; color: #ffffff !important;"
+                            class="w-full py-4 rounded font-black uppercase tracking-widest shadow-lg transition">
+                        Confirm Payment
+                    </button>
+                    <button onclick="closeMerchandiseOrderPaymentModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">I'll Pay Later</button>
+                </div>
             </div>
         </div>
     </div>
