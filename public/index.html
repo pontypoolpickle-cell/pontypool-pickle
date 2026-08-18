@@ -506,14 +506,17 @@
             </div>
 
             <!-- LOGGED-IN CONTENT -->
-            <div id="merchandiseMainContent" class="hidden">
-                <div class="card p-16 text-center space-y-4 border-t-8 border-black">
-                    <p class="text-6xl">🛍️</p>
-                    <h3 class="text-3xl font-black uppercase italic">Merchandise Coming Soon</h3>
-                    <p class="text-gray-500 max-w-md mx-auto font-bold uppercase text-xs leading-relaxed">
-                        We're working on club apparel and gear - check back soon!
-                    </p>
+            <div id="merchandiseMainContent" class="hidden space-y-8">
+                <div class="card p-8 space-y-4 border-t-8 border-black">
+                    <h3 class="text-2xl font-black uppercase italic">Order Policy &amp; Privacy</h3>
+                    <div class="space-y-3 text-sm font-bold text-gray-700 leading-relaxed">
+                        <p><span class="text-black font-black uppercase">Privacy:</span> All member names and personal order details are kept strictly confidential and are only visible to club administrators.</p>
+                        <p><span class="text-black font-black uppercase">Bespoke Items:</span> Because every item is custom-made to order, all orders are non-refundable. If an item does not fit, you can try reaching out to other members of the club to try swapping.</p>
+                        <p><span class="text-black font-black uppercase">Initials:</span> All items come with your initials at the bottom left/right of each garment.</p>
+                    </div>
                 </div>
+
+                <div id="merchandiseListContainer" class="space-y-8"></div>
             </div>
         </div>
 
@@ -1276,6 +1279,45 @@
           created_at timestamptz default now()
         );
 
+        -- Merchandise (club shop) - fully admin-manageable so new products,
+        -- sizes and prices can be added/edited/removed from the Admin panel
+        -- without any code changes. Each item (e.g. "Vest", "T-Shirt", "Hoody")
+        -- has its own name/description/image and its own list of sizes; every
+        -- size row carries its own price plus optional size-guide measurements
+        -- (chest half/full, and a length figure with a customisable label since
+        -- some garments call it "Back Length" and others "Body Length"), since
+        -- both pricing and measurements vary per size/garment. The first time
+        -- this table is empty, the app auto-seeds it with the club's current
+        -- vest/t-shirt/hoody range (see DEFAULT_MERCHANDISE in this file) - no
+        -- manual SQL copy/paste needed, and everything it seeds can be edited
+        -- or deleted afterwards from the Merchandise page as Admin.
+        create table merchandise_items (
+          id uuid primary key default gen_random_uuid(),
+          name text not null,
+          description text,
+          image_url text,
+          sort_order integer not null default 0,
+          created_at timestamptz default now()
+        );
+
+        create table merchandise_sizes (
+          id uuid primary key default gen_random_uuid(),
+          item_id uuid not null references merchandise_items(id) on delete cascade,
+          size_label text not null,
+          chest_full text,
+          chest_half text,
+          length_label text default 'Back Length',
+          length_value text,
+          price numeric(10,2) not null default 0,
+          sort_order integer not null default 0,
+          created_at timestamptz default now()
+        );
+
+        -- Merchandise images are uploaded straight from the Admin panel and
+        -- reuse the same "event-documents" public Storage bucket already set
+        -- up above for the Rules PDF / special event PDFs (path prefix
+        -- "merchandise/") - no extra bucket needs creating.
+
         -- Membership fields (added for the Membership feature) --
         alter table users add column if not exists membership_status text default 'None';
         alter table users add column if not exists membership_duration_weeks numeric;
@@ -1712,6 +1754,34 @@
                 // Item #7: admin-editable FAQ list, sorted for display.
                 faqs: (payload.faqs || [])
                     .map(f => ({ id: f.id, question: f.question, answer: f.answer, sortOrder: Number(f.sort_order || 0) }))
+                    .sort((a, b) => a.sortOrder - b.sortOrder),
+                // Merchandise: admin-editable list of club shop items, each with
+                // its own nested, admin-editable list of sizes/prices/measurements
+                // (joined here client-side rather than via a Supabase nested
+                // select, matching how ladder courts/games are joined onto their
+                // session above).
+                merchandise: (payload.merchandiseItems || [])
+                    .map(item => ({
+                        id: item.id,
+                        name: item.name,
+                        description: item.description || '',
+                        imageUrl: item.image_url || '',
+                        sortOrder: Number(item.sort_order || 0),
+                        sizes: (payload.merchandiseSizes || [])
+                            .filter(s => s.item_id === item.id)
+                            .map(s => ({
+                                id: s.id,
+                                itemId: s.item_id,
+                                sizeLabel: s.size_label,
+                                chestFull: s.chest_full || '',
+                                chestHalf: s.chest_half || '',
+                                lengthLabel: s.length_label || 'Length',
+                                lengthValue: s.length_value || '',
+                                price: Number(s.price || 0),
+                                sortOrder: Number(s.sort_order || 0)
+                            }))
+                            .sort((a, b) => a.sortOrder - b.sortOrder)
+                    }))
                     .sort((a, b) => a.sortOrder - b.sortOrder)
             };
         }
@@ -1766,6 +1836,115 @@
                 DEFAULT_FAQS.map((f, i) => ({ question: f.question, answer: f.answer, sort_order: i }))
             );
             if (error) throw new Error(error.message);
+        }
+
+        // Merchandise: the club's current apparel range, used to auto-seed the
+        // `merchandise_items`/`merchandise_sizes` tables the first time they're
+        // empty (see fetchAllDataFromSupabase). Every field here can afterwards
+        // be edited, and new items/sizes added or removed, entirely from the
+        // Merchandise page as Admin - nothing here ever needs to be redeployed.
+        // NOTE ON PRICING: the supplier's size chart lists a single price for
+        // some garments (Vest) but only 2-3 price *tiers* spanning many sizes
+        // for others (T-Shirt: £26 / £29, Hoody: £47.50 / £51 / £55) without
+        // stating exactly which sizes fall in which tier. A reasonable split
+        // has been assumed below (T-Shirt: XS-2XL at £26, 3XL-8XL at £29;
+        // Hoody: XS-M at £47.50, L-2XL at £51, 3XL-5XL at £55) - double-check
+        // these against the supplier and adjust any size's price from the
+        // Merchandise page (Admin) if needed, no code changes required.
+        const DEFAULT_MERCHANDISE = [
+            {
+                name: "Vest - Adult Unisex",
+                description: "Lightweight unisex club vest, finished with your initials.",
+                sizes: [
+                    { sizeLabel: 'XS', chestFull: '34/36', chestHalf: '18½', lengthLabel: 'Back Length', lengthValue: '25', price: 27.50 },
+                    { sizeLabel: 'S', chestFull: '36/38', chestHalf: '19½', lengthLabel: 'Back Length', lengthValue: '26', price: 27.50 },
+                    { sizeLabel: 'M', chestFull: '38/40', chestHalf: '20½', lengthLabel: 'Back Length', lengthValue: '27', price: 27.50 },
+                    { sizeLabel: 'L', chestFull: '42/44', chestHalf: '22½', lengthLabel: 'Back Length', lengthValue: '27', price: 27.50 },
+                    { sizeLabel: 'XL', chestFull: '46/48', chestHalf: '24½', lengthLabel: 'Back Length', lengthValue: '28', price: 27.50 },
+                    { sizeLabel: '2XL', chestFull: '50/52', chestHalf: '26½', lengthLabel: 'Back Length', lengthValue: '29', price: 27.50 },
+                    { sizeLabel: '3XL', chestFull: '52/54', chestHalf: '27½', lengthLabel: 'Back Length', lengthValue: '30', price: 27.50 },
+                    { sizeLabel: '4XL', chestFull: '54/56', chestHalf: '28½', lengthLabel: 'Back Length', lengthValue: '30', price: 27.50 },
+                    { sizeLabel: '5XL', chestFull: '56/58', chestHalf: '29½', lengthLabel: 'Back Length', lengthValue: '30', price: 27.50 },
+                    { sizeLabel: '6XL', chestFull: '58/60', chestHalf: '30½', lengthLabel: 'Back Length', lengthValue: '31', price: 27.50 }
+                ]
+            },
+            {
+                name: "Vest - Adult Women's",
+                description: "Women's fit club vest, finished with your initials.",
+                sizes: [
+                    { sizeLabel: '3XS (4-6)', chestHalf: '13¼', lengthLabel: 'Back Length', lengthValue: '19½', price: 27.50 },
+                    { sizeLabel: '2XS (6-8)', chestHalf: '14¼', lengthLabel: 'Back Length', lengthValue: '21', price: 27.50 },
+                    { sizeLabel: 'XS (8-10)', chestHalf: '15¼', lengthLabel: 'Back Length', lengthValue: '22½', price: 27.50 },
+                    { sizeLabel: 'S (10-12)', chestHalf: '16¼', lengthLabel: 'Back Length', lengthValue: '24', price: 27.50 },
+                    { sizeLabel: 'M (12-14)', chestHalf: '17¼', lengthLabel: 'Back Length', lengthValue: '25', price: 27.50 },
+                    { sizeLabel: 'L (14-16)', chestHalf: '18¼', lengthLabel: 'Back Length', lengthValue: '25', price: 27.50 },
+                    { sizeLabel: 'XL (16-18)', chestHalf: '20', lengthLabel: 'Back Length', lengthValue: '26', price: 27.50 },
+                    { sizeLabel: '2XL (18-20)', chestHalf: '21¼', lengthLabel: 'Back Length', lengthValue: '26', price: 27.50 },
+                    { sizeLabel: '3XL (20-22)', chestHalf: '23¾', lengthLabel: 'Back Length', lengthValue: '27', price: 27.50 },
+                    { sizeLabel: '4XL (22-24)', chestHalf: '24¾', lengthLabel: 'Back Length', lengthValue: '27', price: 27.50 },
+                    { sizeLabel: '5XL (24-26)', chestHalf: '25¾', lengthLabel: 'Back Length', lengthValue: '27', price: 27.50 },
+                    { sizeLabel: '6XL (26-28)', chestHalf: '26¾', lengthLabel: 'Back Length', lengthValue: '27', price: 27.50 }
+                ]
+            },
+            {
+                name: "T-Shirt - Adult Unisex",
+                description: "Classic unisex club t-shirt, finished with your initials.",
+                sizes: [
+                    { sizeLabel: 'XS', chestFull: '38', chestHalf: '20', lengthLabel: 'Back Length', lengthValue: '28', price: 26 },
+                    { sizeLabel: 'S', chestFull: '40', chestHalf: '21', lengthLabel: 'Back Length', lengthValue: '29', price: 26 },
+                    { sizeLabel: 'M', chestFull: '42', chestHalf: '22', lengthLabel: 'Back Length', lengthValue: '30', price: 26 },
+                    { sizeLabel: 'L', chestFull: '44', chestHalf: '23', lengthLabel: 'Back Length', lengthValue: '30', price: 26 },
+                    { sizeLabel: 'XL', chestFull: '46', chestHalf: '24', lengthLabel: 'Back Length', lengthValue: '30', price: 26 },
+                    { sizeLabel: '2XL', chestFull: '48', chestHalf: '25', lengthLabel: 'Back Length', lengthValue: '31', price: 26 },
+                    { sizeLabel: '3XL', chestFull: '50', chestHalf: '26', lengthLabel: 'Back Length', lengthValue: '31', price: 29 },
+                    { sizeLabel: '4XL', chestFull: '52', chestHalf: '27', lengthLabel: 'Back Length', lengthValue: '31', price: 29 },
+                    { sizeLabel: '5XL', chestFull: '54', chestHalf: '28', lengthLabel: 'Back Length', lengthValue: '31', price: 29 },
+                    { sizeLabel: '6XL', chestFull: '56', chestHalf: '29', lengthLabel: 'Back Length', lengthValue: '31', price: 29 },
+                    { sizeLabel: '7XL', chestFull: '58', chestHalf: '30', lengthLabel: 'Back Length', lengthValue: '32', price: 29 },
+                    { sizeLabel: '8XL', chestFull: '60', chestHalf: '31', lengthLabel: 'Back Length', lengthValue: '32', price: 29 }
+                ]
+            },
+            {
+                name: "Hoody - Adult Unisex",
+                description: "Warm unisex club hoody, finished with your initials.",
+                sizes: [
+                    { sizeLabel: 'XS', chestFull: '38', chestHalf: '20', lengthLabel: 'Body Length (With Trim)', lengthValue: '25', price: 47.50 },
+                    { sizeLabel: 'S', chestFull: '40', chestHalf: '21', lengthLabel: 'Body Length (With Trim)', lengthValue: '26', price: 47.50 },
+                    { sizeLabel: 'M', chestFull: '42', chestHalf: '22', lengthLabel: 'Body Length (With Trim)', lengthValue: '26', price: 47.50 },
+                    { sizeLabel: 'L', chestFull: '44', chestHalf: '23', lengthLabel: 'Body Length (With Trim)', lengthValue: '27', price: 51 },
+                    { sizeLabel: 'XL', chestFull: '46', chestHalf: '24', lengthLabel: 'Body Length (With Trim)', lengthValue: '28', price: 51 },
+                    { sizeLabel: '2XL', chestFull: '48', chestHalf: '25', lengthLabel: 'Body Length (With Trim)', lengthValue: '28', price: 51 },
+                    { sizeLabel: '3XL', chestFull: '50', chestHalf: '26', lengthLabel: 'Body Length (With Trim)', lengthValue: '29', price: 55 },
+                    { sizeLabel: '4XL', chestFull: '52', chestHalf: '27', lengthLabel: 'Body Length (With Trim)', lengthValue: '29', price: 55 },
+                    { sizeLabel: '5XL', chestFull: '54', chestHalf: '28', lengthLabel: 'Body Length (With Trim)', lengthValue: '30', price: 55 }
+                ]
+            }
+        ];
+
+        async function seedDefaultMerchandise() {
+            for (let i = 0; i < DEFAULT_MERCHANDISE.length; i++) {
+                const item = DEFAULT_MERCHANDISE[i];
+                const { data: itemRow, error: itemError } = await supabaseClient
+                    .from('merchandise_items')
+                    .insert({ name: item.name, description: item.description, sort_order: i })
+                    .select()
+                    .single();
+                if (itemError) throw new Error(itemError.message);
+
+                const { error: sizesError } = await supabaseClient.from('merchandise_sizes').insert(
+                    item.sizes.map((s, j) => ({
+                        item_id: itemRow.id,
+                        size_label: s.sizeLabel,
+                        chest_full: s.chestFull || null,
+                        chest_half: s.chestHalf || null,
+                        length_label: s.lengthLabel || null,
+                        length_value: s.lengthValue || null,
+                        price: s.price,
+                        sort_order: j
+                    }))
+                );
+                if (sizesError) throw new Error(sizesError.message);
+            }
         }
 
         // Item #14: expire any 'Pending Payment' holds whose 15-minute window has
@@ -1833,7 +2012,9 @@
                 memberExtrasRes,
                 membershipPlansRes,
                 siteSettingsRes,
-                faqsRes
+                faqsRes,
+                merchandiseItemsRes,
+                merchandiseSizesRes
             ] = await Promise.all([
                 supabaseClient.from('players').select('*').order('name', { ascending: true }),
                 supabaseClient.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -1852,7 +2033,9 @@
                 supabaseClient.from('users').select('username, created_at, membership_number').eq('status', 'Approved'),
                 supabaseClient.from('membership_plans').select('*').order('duration_weeks', { ascending: true }),
                 supabaseClient.from('site_settings').select('*'),
-                supabaseClient.from('faqs').select('*').order('sort_order', { ascending: true })
+                supabaseClient.from('faqs').select('*').order('sort_order', { ascending: true }),
+                supabaseClient.from('merchandise_items').select('*').order('sort_order', { ascending: true }),
+                supabaseClient.from('merchandise_sizes').select('*').order('sort_order', { ascending: true })
             ]);
 
             // Item #7: first-run auto-seed - if the faqs table exists but is empty
@@ -1868,6 +2051,27 @@
                     const reseeded = await supabaseClient.from('faqs').select('*').order('sort_order', { ascending: true });
                     faqRows = reseeded.data || [];
                 } catch (e) { console.warn('FAQ auto-seed skipped:', e.message); }
+            }
+
+            // Merchandise: same first-run auto-seed pattern as FAQs above - if
+            // the table exists but is empty, populate it with the club's
+            // current apparel range (see DEFAULT_MERCHANDISE) so the page shows
+            // real products immediately instead of an empty list. If the table
+            // doesn't exist yet at all, merchandiseItemsRes.error is set and
+            // this is skipped entirely until the migration comment near the
+            // top of this file has been run.
+            let merchandiseItemRows = merchandiseItemsRes.data || [];
+            let merchandiseSizeRows = merchandiseSizesRes.data || [];
+            if (!merchandiseItemsRes.error && merchandiseItemRows.length === 0) {
+                try {
+                    await seedDefaultMerchandise();
+                    const [reseededItems, reseededSizes] = await Promise.all([
+                        supabaseClient.from('merchandise_items').select('*').order('sort_order', { ascending: true }),
+                        supabaseClient.from('merchandise_sizes').select('*').order('sort_order', { ascending: true })
+                    ]);
+                    merchandiseItemRows = reseededItems.data || [];
+                    merchandiseSizeRows = reseededSizes.data || [];
+                } catch (e) { console.warn('Merchandise auto-seed skipped:', e.message); }
             }
 
             const activeSessions = ladderSessionRes.data || [];
@@ -1894,7 +2098,9 @@
 				memberExtras: memberExtrasRes.data || [],
 				membershipPlans: membershipPlansRes.data || [],
 				siteSettings: siteSettingsRes.data || [],
-				faqs: faqRows
+				faqs: faqRows,
+				merchandiseItems: merchandiseItemRows,
+				merchandiseSizes: merchandiseSizeRows
 			});
         }
 
@@ -3773,6 +3979,7 @@
             renderSpecialEventBanner();
             renderFaqList();
             renderRulesPdfCard();
+            renderMerchandise();
 
             // Populate location dropdown
             const locationSelect = document.getElementById('evtLocation');
@@ -6111,6 +6318,322 @@
               .finally(() => { btn.disabled = false; btn.innerText = 'Save'; });
         }
 
+        // ------------------------------------------------------------------
+        // MERCHANDISE (club shop) - fully admin-manageable catalog. Follows
+        // the same render/modal/CRUD pattern as FAQs above, but with a nested
+        // list of sizes per item since price and size-guide measurements vary
+        // per size. Images are uploaded straight to Supabase Storage, reusing
+        // the "event-documents" bucket (see uploadMerchandiseImage below).
+        // ------------------------------------------------------------------
+
+        function renderMerchandise() {
+            const container = document.getElementById('merchandiseListContainer');
+            if (!container) return;
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            const items = [...(globalData.merchandise || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+
+            if (items.length === 0) {
+                container.innerHTML = `
+                    <div class="card p-16 text-center space-y-4 border-t-8 border-black">
+                        <p class="text-6xl">🛍️</p>
+                        <h3 class="text-3xl font-black uppercase italic">Merchandise Coming Soon</h3>
+                        <p class="text-gray-500 max-w-md mx-auto font-bold uppercase text-xs leading-relaxed">
+                            We're working on club apparel and gear - check back soon!
+                        </p>
+                    </div>`;
+            } else {
+                container.innerHTML = items.map(item => {
+                    const showChestHalf = item.sizes.some(s => s.chestHalf);
+                    const showChestFull = item.sizes.some(s => s.chestFull);
+                    const showLength = item.sizes.some(s => s.lengthValue);
+                    const lengthColumnLabel = (item.sizes.find(s => s.lengthValue && s.lengthLabel) || {}).lengthLabel || 'Length';
+
+                    const rowsHtml = [...item.sizes].sort((a, b) => a.sortOrder - b.sortOrder).map(s => `
+                        <tr class="border-b border-gray-100 last:border-0">
+                            <td class="py-2 pr-4 font-black uppercase text-xs whitespace-nowrap">${s.sizeLabel}</td>
+                            ${showChestHalf ? `<td class="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">${s.chestHalf ? s.chestHalf + '"' : '—'}</td>` : ''}
+                            ${showChestFull ? `<td class="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">${s.chestFull ? s.chestFull + '"' : '—'}</td>` : ''}
+                            ${showLength ? `<td class="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">${s.lengthValue ? s.lengthValue + '"' : '—'}</td>` : ''}
+                            <td class="py-2 pr-4 text-xs font-black whitespace-nowrap">£${s.price.toFixed(2)}</td>
+                            ${isAdmin ? `
+                                <td class="py-2 text-right whitespace-nowrap">
+                                    <button onclick="openEditMerchandiseSizeModal('${item.id}', '${s.id}')" class="text-gray-400 hover:text-rose-600 transition mr-2" title="Edit size">
+                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                    </button>
+                                    <button onclick="deleteMerchandiseSize('${s.id}', '${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Delete size">
+                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                </td>` : ''}
+                        </tr>
+                    `).join('');
+
+                    return `
+                    <div class="card overflow-hidden border-t-8 border-black">
+                        <div class="md:flex">
+                            <div class="md:w-64 flex-shrink-0 bg-gray-100">
+                                ${item.imageUrl
+                                    ? `<img src="${item.imageUrl}" alt="${item.name}" class="w-full h-56 md:h-full object-cover">`
+                                    : `<div class="w-full h-56 md:h-full flex items-center justify-center text-5xl text-gray-300">🛍️</div>`}
+                            </div>
+                            <div class="p-6 flex-1 space-y-4 min-w-0">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h3 class="text-2xl font-black uppercase italic">${item.name}</h3>
+                                        ${item.description ? `<p class="text-sm text-gray-500 font-bold mt-1">${item.description}</p>` : ''}
+                                    </div>
+                                    ${isAdmin ? `
+                                        <div class="flex items-center gap-3 flex-shrink-0">
+                                            <button onclick="openEditMerchandiseItemModal('${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Edit item">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                            </button>
+                                            <button onclick="deleteMerchandiseItem('${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Delete item">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                            </button>
+                                        </div>` : ''}
+                                </div>
+                                ${item.sizes.length > 0 ? `
+                                <div class="overflow-x-auto -mx-2 px-2">
+                                    <table class="text-left">
+                                        <thead>
+                                            <tr class="border-b-2 border-gray-200 text-[10px] font-black uppercase text-gray-400 tracking-widest">
+                                                <th class="py-2 pr-4">Size</th>
+                                                ${showChestHalf ? `<th class="py-2 pr-4">Chest (Half)</th>` : ''}
+                                                ${showChestFull ? `<th class="py-2 pr-4">Chest (Full)</th>` : ''}
+                                                ${showLength ? `<th class="py-2 pr-4">${lengthColumnLabel}</th>` : ''}
+                                                <th class="py-2 pr-4">Price</th>
+                                                ${isAdmin ? `<th></th>` : ''}
+                                            </tr>
+                                        </thead>
+                                        <tbody>${rowsHtml}</tbody>
+                                    </table>
+                                </div>` : `<p class="text-xs text-gray-400 italic">No sizes added yet.</p>`}
+                                ${isAdmin ? `<button onclick="openAddMerchandiseSizeModal('${item.id}')" class="w-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-2 font-black uppercase text-[10px] tracking-widest transition">+ Add Size</button>` : ''}
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+
+            if (isAdmin) {
+                container.innerHTML += `<button onclick="openAddMerchandiseItemModal()" class="w-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-4 font-black uppercase text-xs tracking-widest transition">+ Add New Merchandise Item</button>`;
+            }
+        }
+
+        const MERCHANDISE_IMAGE_BUCKET = 'event-documents';
+
+        async function uploadMerchandiseImage(file) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `merchandise/${Date.now()}-${safeName}`;
+            const { error } = await supabaseClient.storage.from(MERCHANDISE_IMAGE_BUCKET).upload(path, file, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: file.type || 'image/jpeg'
+            });
+            if (error) throw new Error(`Could not upload image (${error.message}). Make sure the "${MERCHANDISE_IMAGE_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
+            const { data: publicUrlData } = supabaseClient.storage.from(MERCHANDISE_IMAGE_BUCKET).getPublicUrl(path);
+            return publicUrlData.publicUrl;
+        }
+
+        async function addMerchandiseItem(data) {
+            const { error } = await supabaseClient.from('merchandise_items').insert({
+                name: data.name,
+                description: data.description || null,
+                image_url: data.imageUrl || null,
+                sort_order: (globalData.merchandise || []).length
+            });
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function updateMerchandiseItem(id, data) {
+            const { error } = await supabaseClient.from('merchandise_items').update({
+                name: data.name,
+                description: data.description || null,
+                image_url: data.imageUrl || null
+            }).eq('id', id);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function deleteMerchandiseItemRow(id) {
+            const { error } = await supabaseClient.from('merchandise_items').delete().eq('id', id);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function addMerchandiseSize(itemId, data) {
+            const item = (globalData.merchandise || []).find(m => m.id === itemId);
+            const { error } = await supabaseClient.from('merchandise_sizes').insert({
+                item_id: itemId,
+                size_label: data.sizeLabel,
+                chest_full: data.chestFull || null,
+                chest_half: data.chestHalf || null,
+                length_label: data.lengthLabel || null,
+                length_value: data.lengthValue || null,
+                price: Number(data.price || 0),
+                sort_order: item ? item.sizes.length : 0
+            });
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function updateMerchandiseSize(id, data) {
+            const { error } = await supabaseClient.from('merchandise_sizes').update({
+                size_label: data.sizeLabel,
+                chest_full: data.chestFull || null,
+                chest_half: data.chestHalf || null,
+                length_label: data.lengthLabel || null,
+                length_value: data.lengthValue || null,
+                price: Number(data.price || 0)
+            }).eq('id', id);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function deleteMerchandiseSizeRow(id) {
+            const { error } = await supabaseClient.from('merchandise_sizes').delete().eq('id', id);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        let merchandiseItemEditTarget = null;
+
+        function openAddMerchandiseItemModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            merchandiseItemEditTarget = null;
+            document.getElementById('merchandiseItemModalTitle').innerText = 'Add New Merchandise Item';
+            document.getElementById('merchandiseItemName').value = '';
+            document.getElementById('merchandiseItemDescription').value = '';
+            document.getElementById('merchandiseItemImageUrl').value = '';
+            document.getElementById('merchandiseItemImageFile').value = '';
+            document.getElementById('merchandiseItemCurrentImage').innerHTML = '';
+            openModal('merchandiseItemEditModal');
+        }
+
+        function openEditMerchandiseItemModal(id) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const item = (globalData.merchandise || []).find(m => m.id === id);
+            if (!item) return triggerError("Merchandise item not found.");
+            merchandiseItemEditTarget = item;
+            document.getElementById('merchandiseItemModalTitle').innerText = 'Edit Merchandise Item';
+            document.getElementById('merchandiseItemName').value = item.name;
+            document.getElementById('merchandiseItemDescription').value = item.description || '';
+            document.getElementById('merchandiseItemImageUrl').value = item.imageUrl || '';
+            document.getElementById('merchandiseItemImageFile').value = '';
+            document.getElementById('merchandiseItemCurrentImage').innerHTML = item.imageUrl
+                ? `<img src="${item.imageUrl}" class="h-20 rounded-lg border mt-2 object-cover">` : '';
+            openModal('merchandiseItemEditModal');
+        }
+
+        function saveMerchandiseItem() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const name = document.getElementById('merchandiseItemName').value.trim();
+            if (!name) return triggerError("Please enter a name for this item.");
+            const description = document.getElementById('merchandiseItemDescription').value.trim();
+            const pastedImageUrl = document.getElementById('merchandiseItemImageUrl').value.trim();
+            const fileInput = document.getElementById('merchandiseItemImageFile');
+            const file = fileInput.files && fileInput.files[0];
+
+            const btn = document.getElementById('merchandiseItemSaveBtn');
+            btn.disabled = true; btn.innerText = 'Saving...';
+
+            (file ? uploadMerchandiseImage(file) : Promise.resolve(pastedImageUrl))
+                .then(finalImageUrl => {
+                    const data = { name, description, imageUrl: finalImageUrl };
+                    return merchandiseItemEditTarget
+                        ? updateMerchandiseItem(merchandiseItemEditTarget.id, data)
+                        : addMerchandiseItem(data);
+                })
+                .then(r => {
+                    render(r);
+                    triggerToast(merchandiseItemEditTarget ? "Merchandise item updated." : "Merchandise item added.");
+                    closeModal('merchandiseItemEditModal');
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = 'Save'; });
+        }
+
+        function deleteMerchandiseItem(id) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!confirm("Delete this merchandise item and all of its sizes? This cannot be undone.")) return;
+            deleteMerchandiseItemRow(id)
+                .then(r => { render(r); triggerToast("Merchandise item deleted."); })
+                .catch(err => triggerError(err.message));
+        }
+
+        let merchandiseSizeEditTarget = null;
+        let merchandiseSizeEditItemId = null;
+
+        function openAddMerchandiseSizeModal(itemId) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            merchandiseSizeEditTarget = null;
+            merchandiseSizeEditItemId = itemId;
+            document.getElementById('merchandiseSizeModalTitle').innerText = 'Add Size';
+            document.getElementById('merchandiseSizeLabel').value = '';
+            document.getElementById('merchandiseSizeChestHalf').value = '';
+            document.getElementById('merchandiseSizeChestFull').value = '';
+            document.getElementById('merchandiseSizeLengthLabel').value = 'Back Length';
+            document.getElementById('merchandiseSizeLengthValue').value = '';
+            document.getElementById('merchandiseSizePrice').value = '';
+            openModal('merchandiseSizeEditModal');
+        }
+
+        function openEditMerchandiseSizeModal(itemId, sizeId) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const item = (globalData.merchandise || []).find(m => m.id === itemId);
+            const size = item && item.sizes.find(s => s.id === sizeId);
+            if (!size) return triggerError("Size not found.");
+            merchandiseSizeEditTarget = size;
+            merchandiseSizeEditItemId = itemId;
+            document.getElementById('merchandiseSizeModalTitle').innerText = 'Edit Size';
+            document.getElementById('merchandiseSizeLabel').value = size.sizeLabel;
+            document.getElementById('merchandiseSizeChestHalf').value = size.chestHalf || '';
+            document.getElementById('merchandiseSizeChestFull').value = size.chestFull || '';
+            document.getElementById('merchandiseSizeLengthLabel').value = size.lengthLabel || 'Back Length';
+            document.getElementById('merchandiseSizeLengthValue').value = size.lengthValue || '';
+            document.getElementById('merchandiseSizePrice').value = size.price;
+            openModal('merchandiseSizeEditModal');
+        }
+
+        function saveMerchandiseSize() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const sizeLabel = document.getElementById('merchandiseSizeLabel').value.trim();
+            const priceRaw = document.getElementById('merchandiseSizePrice').value;
+            if (!sizeLabel) return triggerError("Please enter a size label (e.g. M, XL).");
+            if (priceRaw === '' || isNaN(Number(priceRaw))) return triggerError("Please enter a valid price.");
+
+            const data = {
+                sizeLabel,
+                chestHalf: document.getElementById('merchandiseSizeChestHalf').value.trim(),
+                chestFull: document.getElementById('merchandiseSizeChestFull').value.trim(),
+                lengthLabel: document.getElementById('merchandiseSizeLengthLabel').value.trim(),
+                lengthValue: document.getElementById('merchandiseSizeLengthValue').value.trim(),
+                price: Number(priceRaw)
+            };
+
+            const btn = document.getElementById('merchandiseSizeSaveBtn');
+            btn.disabled = true; btn.innerText = 'Saving...';
+
+            const request = merchandiseSizeEditTarget
+                ? updateMerchandiseSize(merchandiseSizeEditTarget.id, data)
+                : addMerchandiseSize(merchandiseSizeEditItemId, data);
+
+            request.then(r => {
+                render(r);
+                triggerToast(merchandiseSizeEditTarget ? "Size updated." : "Size added.");
+                closeModal('merchandiseSizeEditModal');
+            }).catch(err => triggerError(err.message))
+              .finally(() => { btn.disabled = false; btn.innerText = 'Save'; });
+        }
+
+        function deleteMerchandiseSize(sizeId, itemId) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!confirm("Delete this size?")) return;
+            deleteMerchandiseSizeRow(sizeId)
+                .then(r => { render(r); triggerToast("Size deleted."); })
+                .catch(err => triggerError(err.message));
+        }
+
         function renderMembershipPage() {
             const perksList = document.getElementById('membershipPerksList');
             if (perksList) {
@@ -8357,6 +8880,74 @@
                     <p class="text-[10px] text-gray-400 font-bold mt-1">Tip: wrap separate paragraphs in &lt;p&gt;...&lt;/p&gt; so the spacing matches the rest of the FAQs.</p>
                 </div>
                 <button onclick="saveFaq()" id="faqEditSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
+            </div>
+        </div>
+    </div>
+    <!-- MERCHANDISE ITEM EDIT MODAL -->
+    <div id="merchandiseItemEditModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800" style="max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <h3 id="merchandiseItemModalTitle" class="text-2xl font-black uppercase italic">Add New Merchandise Item</h3>
+                <button onclick="closeModal('merchandiseItemEditModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Name</label>
+                    <input type="text" id="merchandiseItemName" placeholder="e.g. Vest - Adult Unisex" class="input-field border-2 w-full">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Description (optional)</label>
+                    <textarea id="merchandiseItemDescription" rows="3" placeholder="e.g. Lightweight club vest, finished with your initials." class="input-field border-2 w-full font-normal normal-case"></textarea>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Image URL (optional)</label>
+                    <input type="url" id="merchandiseItemImageUrl" placeholder="https://... (link to an existing image)" class="input-field border-2 w-full">
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mt-3 mb-1">— or — Upload an Image</label>
+                    <input type="file" id="merchandiseItemImageFile" accept="image/*" class="input-field border-2 w-full">
+                    <p class="text-[9px] text-gray-500 normal-case mt-1">If you upload a file it's used instead of the URL above.</p>
+                    <div id="merchandiseItemCurrentImage"></div>
+                </div>
+                <button onclick="saveMerchandiseItem()" id="merchandiseItemSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
+            </div>
+        </div>
+    </div>
+    <!-- MERCHANDISE SIZE EDIT MODAL -->
+    <div id="merchandiseSizeEditModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800" style="max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <h3 id="merchandiseSizeModalTitle" class="text-2xl font-black uppercase italic">Add Size</h3>
+                <button onclick="closeModal('merchandiseSizeEditModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-6 space-y-4 overflow-y-auto">
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Size Label</label>
+                    <input type="text" id="merchandiseSizeLabel" placeholder="e.g. M or XS (8-10)" class="input-field border-2 w-full">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Chest (Half, inches)</label>
+                        <input type="text" id="merchandiseSizeChestHalf" placeholder="e.g. 20½" class="input-field border-2 w-full">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Chest (Full, inches)</label>
+                        <input type="text" id="merchandiseSizeChestFull" placeholder="e.g. 38/40" class="input-field border-2 w-full">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Length Label</label>
+                        <input type="text" id="merchandiseSizeLengthLabel" placeholder="e.g. Back Length" class="input-field border-2 w-full">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Length (inches)</label>
+                        <input type="text" id="merchandiseSizeLengthValue" placeholder="e.g. 27" class="input-field border-2 w-full">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Price (£)</label>
+                    <input type="number" step="0.01" min="0" id="merchandiseSizePrice" placeholder="e.g. 27.50" class="input-field border-2 w-full">
+                </div>
+                <button onclick="saveMerchandiseSize()" id="merchandiseSizeSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
             </div>
         </div>
     </div>
