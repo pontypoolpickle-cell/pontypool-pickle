@@ -515,7 +515,7 @@
                     <div class="px-5 pb-5 pt-1 space-y-3 text-sm font-bold text-gray-700 leading-relaxed border-t border-gray-100">
                         <p class="pt-4"><span class="text-black font-black uppercase">Privacy:</span> All member names and personal order details are kept strictly confidential and are only visible to club administrators.</p>
                         <p><span class="text-black font-black uppercase">Bespoke Items:</span> Because every item is custom-made to order, all orders are non-refundable. If an item does not fit, you can try reaching out to other members of the club to try swapping.</p>
-                        <p><span class="text-black font-black uppercase">Initials:</span> All items come with your initials at the bottom left/right of each garment - adding them is an optional extra (see price at checkout).</p>
+                        <p><span class="text-black font-black uppercase">Initials:</span> All garments come with your initials on the bottom left or right as standard, at no additional charge - just let us know which initials you'd like when you order.</p>
                     </div>
                 </details>
 
@@ -1392,12 +1392,14 @@
 
         -- Merchandise settings (admin-configurable) are stored as ordinary rows
         -- in the existing `site_settings` key/value table above - no extra
-        -- table needed: "merchandise_initials_price" is the optional extra
-        -- charged for adding 2 initials to a garment, and "merchandise_wait_time"
-        -- is the free-text note shown to members (e.g. "4-8 Weeks"). Both are
-        -- editable from the Merchandise page's Admin View - see
-        -- saveMerchandiseSettings() in this file. If these keys don't exist yet
-        -- the app falls back to £3.00 / "4-8 Weeks" respectively.
+        -- table needed: "merchandise_wait_time" is the free-text note shown to
+        -- members (e.g. "4-8 Weeks"), editable from the Merchandise page's
+        -- Admin View - see saveMerchandiseSettings() in this file. If this key
+        -- doesn't exist yet the app falls back to "4-8 Weeks". (Initials are
+        -- included as standard on every order at no extra charge - there is
+        -- no fee to configure; add_initials/initials_price still exist as
+        -- columns on merchandise_orders for record-keeping but initials_price
+        -- is always 0.)
 
         -- Membership fields (added for the Membership feature) --
         alter table users add column if not exists membership_status text default 'None';
@@ -6490,16 +6492,6 @@
         // across page loads on purpose - admins land back in the normal
         // member view every time, same as any other visitor.
         let merchandiseAdminViewOn = false;
-        // Which items currently have their size guide expanded (per-item, so
-        // one card being open doesn't affect the others). Survives re-renders
-        // since renderMerchandise() re-runs on every data refresh.
-        const merchandiseSizeGuideOpenIds = new Set();
-
-        function getMerchandiseInitialsPrice() {
-            const raw = (globalData.siteSettings || {}).merchandise_initials_price;
-            const n = Number(raw);
-            return (raw !== undefined && raw !== null && raw !== '' && !isNaN(n)) ? n : 3;
-        }
 
         function getMerchandiseWaitTime() {
             const settings = globalData.siteSettings || {};
@@ -6520,10 +6512,78 @@
             renderMerchandise();
         }
 
-        function toggleMerchandiseSizeGuide(itemId) {
-            if (merchandiseSizeGuideOpenIds.has(itemId)) merchandiseSizeGuideOpenIds.delete(itemId);
-            else merchandiseSizeGuideOpenIds.add(itemId);
-            renderMerchandise();
+        // Which item's Size Guide modal is currently open (null if none), so
+        // renderMerchandise() can keep it in sync if an admin edits a size
+        // while the modal is open.
+        let merchandiseSizeGuideModalItemId = null;
+
+        function buildMerchandiseSizeGuideTable(item, adminViewOn) {
+            const showChestHalf = item.sizes.some(s => s.chestHalf);
+            const showChestFull = item.sizes.some(s => s.chestFull);
+            const showLength = item.sizes.some(s => s.lengthValue);
+            const lengthColumnLabel = (item.sizes.find(s => s.lengthValue && s.lengthLabel) || {}).lengthLabel || 'Length';
+
+            const rowsHtml = [...item.sizes].sort((a, b) => a.sortOrder - b.sortOrder).map(s => `
+                <tr class="border-b border-gray-100 last:border-0">
+                    <td class="py-2 pr-3 font-black uppercase text-xs whitespace-nowrap">${s.sizeLabel}</td>
+                    ${showChestHalf ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.chestHalf ? s.chestHalf + '"' : '—'}</td>` : ''}
+                    ${showChestFull ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.chestFull ? s.chestFull + '"' : '—'}</td>` : ''}
+                    ${showLength ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.lengthValue ? s.lengthValue + '"' : '—'}</td>` : ''}
+                    <td class="py-2 pr-3 text-xs font-black whitespace-nowrap">£${s.price.toFixed(2)}</td>
+                    ${adminViewOn ? `
+                        <td class="py-2 text-right whitespace-nowrap">
+                            <button onclick="openEditMerchandiseSizeModal('${item.id}', '${s.id}')" class="text-gray-400 hover:text-rose-600 transition mr-2" title="Edit size">✏️</button>
+                            <button onclick="deleteMerchandiseSize('${s.id}', '${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Delete size">🗑️</button>
+                        </td>` : ''}
+                </tr>
+            `).join('');
+
+            return `
+                ${item.sizes.length > 0 ? `
+                <div class="overflow-x-auto">
+                    <table class="text-left w-full">
+                        <thead>
+                            <tr class="border-b-2 border-gray-200 text-[9px] font-black uppercase text-gray-400 tracking-widest">
+                                <th class="py-2 pr-3">Size</th>
+                                ${showChestHalf ? `<th class="py-2 pr-3">Chest (Half)</th>` : ''}
+                                ${showChestFull ? `<th class="py-2 pr-3">Chest (Full)</th>` : ''}
+                                ${showLength ? `<th class="py-2 pr-3">${lengthColumnLabel}</th>` : ''}
+                                <th class="py-2 pr-3">Price</th>
+                                ${adminViewOn ? `<th></th>` : ''}
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>` : `<p class="text-xs text-gray-400 italic py-2">No sizes added yet.</p>`}
+                ${adminViewOn ? `<button onclick="openAddMerchandiseSizeModal('${item.id}')" class="w-full mt-3 border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-2 font-black uppercase text-[10px] tracking-widest transition">+ Add Size</button>` : ''}
+            `;
+        }
+
+        function openMerchandiseSizeGuideModal(itemId) {
+            merchandiseSizeGuideModalItemId = itemId;
+            if (!renderMerchandiseSizeGuideModalContent()) return;
+            openModal('merchandiseSizeGuideModal');
+        }
+
+        function renderMerchandiseSizeGuideModalContent() {
+            const itemId = merchandiseSizeGuideModalItemId;
+            const titleEl = document.getElementById('merchandiseSizeGuideModalTitle');
+            const bodyEl = document.getElementById('merchandiseSizeGuideModalBody');
+            if (!itemId || !titleEl || !bodyEl) return false;
+
+            const item = (globalData.merchandise || []).find(m => m.id === itemId);
+            if (!item) {
+                closeModal('merchandiseSizeGuideModal');
+                merchandiseSizeGuideModalItemId = null;
+                return false;
+            }
+
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            const adminViewOn = isAdmin && merchandiseAdminViewOn;
+
+            titleEl.innerText = `${item.name} — Size Guide`;
+            bodyEl.innerHTML = buildMerchandiseSizeGuideTable(item, adminViewOn);
+            return true;
         }
 
         function renderMerchandise() {
@@ -6543,7 +6603,12 @@
             if (toggleBtn) {
                 toggleBtn.classList.toggle('hidden', !isAdmin);
                 if (isAdmin) {
-                    toggleBtn.innerText = merchandiseAdminViewOn ? '👁️ Switch to Member View' : '🛠️ Switch to Admin View';
+                    // Order count badge on the toggle itself, so admins can
+                    // tell at a glance whether there's anything to check in
+                    // "All Orders" without needing to switch views first.
+                    const orderCount = (globalData.merchandiseOrders || []).length;
+                    const orderBadge = orderCount > 0 ? ` (${orderCount} Order${orderCount === 1 ? '' : 's'})` : '';
+                    toggleBtn.innerText = merchandiseAdminViewOn ? '👁️ Switch to Member View' : `🛠️ Switch to Admin View${orderBadge}`;
                     toggleBtn.style.background = merchandiseAdminViewOn ? 'var(--ponty-red)' : 'transparent';
                     toggleBtn.style.color = merchandiseAdminViewOn ? '#ffffff' : 'var(--ponty-black)';
                     toggleBtn.style.borderColor = merchandiseAdminViewOn ? 'var(--ponty-red)' : 'var(--ponty-black)';
@@ -6561,27 +6626,6 @@
                     </div>`;
             } else {
                 container.innerHTML = items.map(item => {
-                    const showChestHalf = item.sizes.some(s => s.chestHalf);
-                    const showChestFull = item.sizes.some(s => s.chestFull);
-                    const showLength = item.sizes.some(s => s.lengthValue);
-                    const lengthColumnLabel = (item.sizes.find(s => s.lengthValue && s.lengthLabel) || {}).lengthLabel || 'Length';
-                    const guideOpen = merchandiseSizeGuideOpenIds.has(item.id);
-
-                    const rowsHtml = [...item.sizes].sort((a, b) => a.sortOrder - b.sortOrder).map(s => `
-                        <tr class="border-b border-gray-100 last:border-0">
-                            <td class="py-2 pr-3 font-black uppercase text-xs whitespace-nowrap">${s.sizeLabel}</td>
-                            ${showChestHalf ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.chestHalf ? s.chestHalf + '"' : '—'}</td>` : ''}
-                            ${showChestFull ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.chestFull ? s.chestFull + '"' : '—'}</td>` : ''}
-                            ${showLength ? `<td class="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">${s.lengthValue ? s.lengthValue + '"' : '—'}</td>` : ''}
-                            <td class="py-2 pr-3 text-xs font-black whitespace-nowrap">£${s.price.toFixed(2)}</td>
-                            ${adminViewOn ? `
-                                <td class="py-2 text-right whitespace-nowrap">
-                                    <button onclick="openEditMerchandiseSizeModal('${item.id}', '${s.id}')" class="text-gray-400 hover:text-rose-600 transition mr-2" title="Edit size">✏️</button>
-                                    <button onclick="deleteMerchandiseSize('${s.id}', '${item.id}')" class="text-gray-400 hover:text-rose-600 transition" title="Delete size">🗑️</button>
-                                </td>` : ''}
-                        </tr>
-                    `).join('');
-
                     return `
                     <div class="card overflow-hidden border-t-4 flex flex-col" style="border-color: var(--ponty-black) !important;">
                         <div class="h-48 bg-gray-100 relative flex-shrink-0">
@@ -6601,24 +6645,7 @@
                             </div>
                             <p class="text-2xl font-black" style="color: var(--ponty-red) !important;">${merchandisePriceDisplay(item)}</p>
                             <div class="mt-auto space-y-2">
-                                <button onclick="toggleMerchandiseSizeGuide('${item.id}')" class="w-full text-[10px] font-black uppercase tracking-widest border-2 border-gray-200 rounded-full py-2 hover:border-black transition">📏 ${guideOpen ? 'Hide' : 'View'} Size Guide</button>
-                                <div class="${guideOpen ? '' : 'hidden'} overflow-x-auto">
-                                    ${item.sizes.length > 0 ? `
-                                    <table class="text-left w-full">
-                                        <thead>
-                                            <tr class="border-b-2 border-gray-200 text-[9px] font-black uppercase text-gray-400 tracking-widest">
-                                                <th class="py-2 pr-3">Size</th>
-                                                ${showChestHalf ? `<th class="py-2 pr-3">Chest (Half)</th>` : ''}
-                                                ${showChestFull ? `<th class="py-2 pr-3">Chest (Full)</th>` : ''}
-                                                ${showLength ? `<th class="py-2 pr-3">${lengthColumnLabel}</th>` : ''}
-                                                <th class="py-2 pr-3">Price</th>
-                                                ${adminViewOn ? `<th></th>` : ''}
-                                            </tr>
-                                        </thead>
-                                        <tbody>${rowsHtml}</tbody>
-                                    </table>` : `<p class="text-xs text-gray-400 italic py-2">No sizes added yet.</p>`}
-                                    ${adminViewOn ? `<button onclick="openAddMerchandiseSizeModal('${item.id}')" class="w-full mt-2 border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-2 font-black uppercase text-[10px] tracking-widest transition">+ Add Size</button>` : ''}
-                                </div>
+                                <button onclick="openMerchandiseSizeGuideModal('${item.id}')" class="w-full text-[10px] font-black uppercase tracking-widest border-2 border-gray-200 rounded-full py-2 hover:border-black transition">📏 View Size Guide</button>
                                 <button onclick="openMerchandiseOrderModal('${item.id}')" ${item.sizes.length === 0 ? 'disabled' : ''} class="w-full btn-red rounded-full py-3 font-black uppercase text-xs tracking-widest shadow-lg${item.sizes.length === 0 ? ' opacity-40 cursor-not-allowed' : ''}">🛒 Order Now</button>
                             </div>
                         </div>
@@ -6628,6 +6655,13 @@
 
             if (adminViewOn) {
                 container.innerHTML += `<button onclick="openAddMerchandiseItemModal()" class="w-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-rose-600 hover:text-rose-600 rounded-lg py-4 font-black uppercase text-xs tracking-widest transition sm:col-span-2">+ Add New Merchandise Item</button>`;
+            }
+
+            // Keep the Size Guide modal in sync if it's open while an admin
+            // adds/edits/deletes a size (e.g. from within the modal itself).
+            const sizeGuideModal = document.getElementById('merchandiseSizeGuideModal');
+            if (merchandiseSizeGuideModalItemId && sizeGuideModal && !sizeGuideModal.classList.contains('hidden')) {
+                renderMerchandiseSizeGuideModalContent();
             }
 
             renderMerchandiseMyOrders();
@@ -6695,25 +6729,20 @@
 
         function openMerchandiseSettingsModal() {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
-            document.getElementById('merchandiseSettingsInitialsPrice').value = getMerchandiseInitialsPrice().toFixed(2);
             document.getElementById('merchandiseSettingsWaitTime').value = getMerchandiseWaitTime();
             openModal('merchandiseSettingsModal');
         }
 
         function saveMerchandiseSettings() {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
-            const initialsPriceRaw = document.getElementById('merchandiseSettingsInitialsPrice').value;
             const waitTime = document.getElementById('merchandiseSettingsWaitTime').value.trim();
-            if (initialsPriceRaw === '' || isNaN(Number(initialsPriceRaw))) return triggerError("Please enter a valid initials price.");
             if (!waitTime) return triggerError("Please enter an expected wait time.");
 
             const btn = document.getElementById('merchandiseSettingsSaveBtn');
             btn.disabled = true; btn.innerText = 'Saving...';
 
-            Promise.all([
-                saveSiteSetting('merchandise_initials_price', Number(initialsPriceRaw).toFixed(2)),
-                saveSiteSetting('merchandise_wait_time', waitTime)
-            ]).then(() => refreshAllData())
+            saveSiteSetting('merchandise_wait_time', waitTime)
+              .then(() => refreshAllData())
               .then(r => {
                   render(r);
                   triggerToast("Merchandise settings updated.");
@@ -6739,19 +6768,10 @@
             sizeSelect.innerHTML = [...item.sizes].sort((a, b) => a.sortOrder - b.sortOrder)
                 .map(s => `<option value="${s.id}">${s.sizeLabel} — £${s.price.toFixed(2)}</option>`).join('');
 
-            document.getElementById('merchandiseOrderInitialsPriceText').innerText = `+£${getMerchandiseInitialsPrice().toFixed(2)}`;
-            document.getElementById('merchandiseOrderAddInitials').checked = false;
             document.getElementById('merchandiseOrderInitials').value = '';
-            document.getElementById('merchandiseOrderInitialsField').classList.add('hidden');
 
             updateMerchandiseOrderTotal();
             openModal('merchandiseOrderModal');
-        }
-
-        function toggleMerchandiseOrderInitialsField() {
-            const checked = document.getElementById('merchandiseOrderAddInitials').checked;
-            document.getElementById('merchandiseOrderInitialsField').classList.toggle('hidden', !checked);
-            updateMerchandiseOrderTotal();
         }
 
         function updateMerchandiseOrderTotal() {
@@ -6760,9 +6780,7 @@
             const sizeId = document.getElementById('merchandiseOrderSize').value;
             const size = item.sizes.find(s => s.id === sizeId);
             const basePrice = size ? size.price : 0;
-            const addInitials = document.getElementById('merchandiseOrderAddInitials').checked;
-            const initialsPrice = addInitials ? getMerchandiseInitialsPrice() : 0;
-            document.getElementById('merchandiseOrderTotalText').innerText = `£${(basePrice + initialsPrice).toFixed(2)}`;
+            document.getElementById('merchandiseOrderTotalText').innerText = `£${basePrice.toFixed(2)}`;
         }
 
         function placeMerchandiseOrder() {
@@ -6773,15 +6791,14 @@
             const size = item.sizes.find(s => s.id === sizeId);
             if (!size) return triggerError("Please select a size.");
 
-            const addInitials = document.getElementById('merchandiseOrderAddInitials').checked;
-            let initials = document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
-            if (addInitials) {
-                if (!/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials.");
-            } else {
-                initials = '';
-            }
-            const initialsPrice = addInitials ? getMerchandiseInitialsPrice() : 0;
-            const totalPrice = size.price + initialsPrice;
+            // Initials are included as standard at no extra cost - the field
+            // is optional (some orders may not need any, e.g. a spare/shared
+            // item), but if something's typed it must be exactly 2 letters.
+            const initials = document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
+            if (initials && !/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials, or leave this blank.");
+            const addInitials = initials.length > 0;
+            const initialsPrice = 0;
+            const totalPrice = size.price;
             const fullName = `${currentUser.firstName} ${currentUser.surname}`;
 
             const btn = document.getElementById('merchandiseOrderPlaceBtn');
@@ -9432,7 +9449,17 @@
             </div>
         </div>
     </div>
-    <!-- MERCHANDISE SETTINGS MODAL (admin-manageable initials fee + wait time) -->
+    <!-- MERCHANDISE SIZE GUIDE MODAL -->
+    <div id="merchandiseSizeGuideModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-black" style="max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <h3 id="merchandiseSizeGuideModalTitle" class="text-2xl font-black uppercase italic">Size Guide</h3>
+                <button onclick="closeModal('merchandiseSizeGuideModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div id="merchandiseSizeGuideModalBody" class="px-6 pb-6 overflow-y-auto"></div>
+        </div>
+    </div>
+    <!-- MERCHANDISE SETTINGS MODAL (admin-manageable wait time) -->
     <div id="merchandiseSettingsModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800">
             <div class="p-6 pb-4 flex justify-between items-start">
@@ -9440,11 +9467,6 @@
                 <button onclick="closeModal('merchandiseSettingsModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
             </div>
             <div class="px-6 pb-6 space-y-4">
-                <div>
-                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Initials Fee (£)</label>
-                    <input type="number" step="0.01" min="0" id="merchandiseSettingsInitialsPrice" placeholder="e.g. 3.00" class="input-field border-2 w-full">
-                    <p class="text-[10px] text-gray-400 font-bold mt-1">Extra charge shown to members who choose to add their initials to an order.</p>
-                </div>
                 <div>
                     <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Current Expected Wait Time</label>
                     <input type="text" id="merchandiseSettingsWaitTime" placeholder="e.g. 4-8 Weeks" class="input-field border-2 w-full">
@@ -9466,16 +9488,10 @@
                     <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Size</label>
                     <select id="merchandiseOrderSize" onchange="updateMerchandiseOrderTotal()" class="input-field border-2 w-full"></select>
                 </div>
-                <label class="flex items-center justify-between gap-3 bg-gray-50 p-4 rounded-xl cursor-pointer border-2 border-gray-100">
-                    <span class="flex items-center gap-3">
-                        <input type="checkbox" id="merchandiseOrderAddInitials" onchange="toggleMerchandiseOrderInitialsField()" class="w-5 h-5 accent-rose-600">
-                        <span class="text-xs font-black uppercase">✏️ Add My Initials</span>
-                    </span>
-                    <span id="merchandiseOrderInitialsPriceText" class="text-xs font-black text-rose-600"></span>
-                </label>
-                <div id="merchandiseOrderInitialsField" class="hidden">
-                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Your Initials (2 letters)</label>
-                    <input type="text" id="merchandiseOrderInitials" maxlength="2" placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase(); updateMerchandiseOrderTotal();" class="input-field border-2 w-full uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">✏️ Your Initials (optional)</label>
+                    <input type="text" id="merchandiseOrderInitials" maxlength="2" placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase();" class="input-field border-2 uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
+                    <p class="text-[10px] text-gray-400 font-bold mt-1">Included as standard at no extra cost - stitched on the bottom left or right of your garment.</p>
                 </div>
                 <div class="bg-black rounded-xl p-4 flex items-center justify-between">
                     <span class="text-[10px] font-black uppercase tracking-widest" style="color: var(--ponty-gold-light) !important;">Total</span>
