@@ -6791,12 +6791,11 @@
             const size = item.sizes.find(s => s.id === sizeId);
             if (!size) return triggerError("Please select a size.");
 
-            // Initials are included as standard at no extra cost - the field
-            // is optional (some orders may not need any, e.g. a spare/shared
-            // item), but if something's typed it must be exactly 2 letters.
+            // Initials are included as standard on every garment at no extra
+            // cost - not an opt-in choice - so they're required here.
             const initials = document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
-            if (initials && !/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials, or leave this blank.");
-            const addInitials = initials.length > 0;
+            if (!/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials.");
+            const addInitials = true;
             const initialsPrice = 0;
             const totalPrice = size.price;
             const fullName = `${currentUser.firstName} ${currentUser.surname}`;
@@ -9475,7 +9474,7 @@
             </div>
         </div>
     </div>
-    <!-- MERCHANDISE ORDER MODAL (member-facing: pick size, optional initials) -->
+    <!-- MERCHANDISE ORDER MODAL (member-facing: pick size, enter initials) -->
     <div id="merchandiseOrderModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 100px; z-index: 750 !important;">
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8" style="border-color: var(--ponty-red) !important; max-height: calc(100dvh - 140px); display: flex; flex-direction: column;">
             <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
@@ -9489,8 +9488,8 @@
                     <select id="merchandiseOrderSize" onchange="updateMerchandiseOrderTotal()" class="input-field border-2 w-full"></select>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">✏️ Your Initials (optional)</label>
-                    <input type="text" id="merchandiseOrderInitials" maxlength="2" placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase();" class="input-field border-2 uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">✏️ Your Initials</label>
+                    <input type="text" id="merchandiseOrderInitials" maxlength="2" required placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase();" class="input-field border-2 uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
                     <p class="text-[10px] text-gray-400 font-bold mt-1">Included as standard at no extra cost - stitched on the bottom left or right of your garment.</p>
                 </div>
                 <div class="bg-black rounded-xl p-4 flex items-center justify-between">
