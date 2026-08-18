@@ -1347,6 +1347,16 @@
         -- up above for the Rules PDF / special event PDFs (path prefix
         -- "merchandise/") - no extra bucket needs creating.
 
+        -- Required for seedDefaultMerchandise()'s upsert-ignoring-duplicates
+        -- calls below to work: without these, two tabs/admins loading an empty
+        -- catalog at the same moment could each auto-seed a full duplicate set
+        -- of items/sizes. If you already have duplicate rows from before this
+        -- fix, delete the extra copies in the Supabase Table Editor first
+        -- (deleting a duplicate merchandise_items row cascades to its sizes
+        -- automatically) - these constraints will then stop it recurring.
+        alter table merchandise_items add constraint merchandise_items_name_unique unique (name);
+        alter table merchandise_sizes add constraint merchandise_sizes_item_size_unique unique (item_id, size_label);
+
         -- Merchandise orders - a member picks an item + size (and, optionally,
         -- pays a small extra to have 2 initials embroidered), places the order,
         -- then self-reports their bank transfer exactly like the Membership and
@@ -2006,16 +2016,26 @@
         ];
 
         async function seedDefaultMerchandise() {
+            // Upsert-ignoring-duplicates (matched on name / item+size, see the
+            // unique constraints in the schema comment above) rather than a
+            // plain insert, so this stays safe even if two tabs/admins happen
+            // to load the empty catalog at the exact same moment and both try
+            // to seed it - only one copy of each item/size ever survives.
             for (let i = 0; i < DEFAULT_MERCHANDISE.length; i++) {
                 const item = DEFAULT_MERCHANDISE[i];
-                const { data: itemRow, error: itemError } = await supabaseClient
+                const { error: itemError } = await supabaseClient
                     .from('merchandise_items')
-                    .insert({ name: item.name, description: item.description, sort_order: i })
-                    .select()
-                    .single();
+                    .upsert({ name: item.name, description: item.description, sort_order: i }, { onConflict: 'name', ignoreDuplicates: true });
                 if (itemError) throw new Error(itemError.message);
 
-                const { error: sizesError } = await supabaseClient.from('merchandise_sizes').insert(
+                const { data: itemRow, error: itemFetchError } = await supabaseClient
+                    .from('merchandise_items')
+                    .select('id')
+                    .eq('name', item.name)
+                    .single();
+                if (itemFetchError) throw new Error(itemFetchError.message);
+
+                const { error: sizesError } = await supabaseClient.from('merchandise_sizes').upsert(
                     item.sizes.map((s, j) => ({
                         item_id: itemRow.id,
                         size_label: s.sizeLabel,
@@ -2025,7 +2045,8 @@
                         length_value: s.lengthValue || null,
                         price: s.price,
                         sort_order: j
-                    }))
+                    })),
+                    { onConflict: 'item_id,size_label', ignoreDuplicates: true }
                 );
                 if (sizesError) throw new Error(sizesError.message);
             }
