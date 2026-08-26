@@ -35,6 +35,11 @@
         .filter-icon-btn svg { width: 22px; height: 22px; fill: currentColor; }
         .filter-icon-btn:hover:not(.active) { background: #eee; color: var(--ponty-black); }
 
+        /* Mixed / Women's Rankings toggle (item #1) */
+        .ranking-view-btn { background: transparent; color: #999; padding: 10px 18px; border-radius: 9999px; font-weight: 900; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; transition: 0.2s; cursor: pointer; white-space: nowrap; }
+        .ranking-view-btn.active { background: var(--ponty-red); color: #fff; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3); }
+        .ranking-view-btn:hover:not(.active) { background: #eee; color: var(--ponty-black); }
+
         .welcome-hero { background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://i.postimg.cc/XJ5jKPVG/welcome-hero.jpg'); background-size: cover; background-position: center; border-radius: 1rem; }
 
         details { border-bottom: 1px solid #e5e7eb; padding: 1rem 0; }
@@ -217,6 +222,17 @@
             <div class="welcome-hero py-20 px-8 text-center text-white shadow-2xl">
                 <h2 class="text-6xl font-black mb-4 italic tracking-tighter">Welcome to the Club</h2>
                 <p class="text-xl text-gray-300 max-w-3xl mx-auto uppercase font-bold tracking-widest">Representing Pontypool.</p>
+            </div>
+            <!-- HOMEPAGE PHOTO GALLERY (item #4) - admin-managed slideshow, only
+                 rendered when at least one photo is marked active. See
+                 renderHomepageGallery()/openManageGalleryModal(). -->
+            <div id="homepageGallery" class="hidden px-4">
+                <div class="relative max-w-4xl mx-auto rounded-2xl shadow-2xl overflow-hidden bg-black" style="aspect-ratio: 16 / 9;">
+                    <div id="homepageGallerySlides" class="w-full h-full"></div>
+                    <button onclick="advanceHomepageGallery(-1)" class="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black bg-opacity-50 hover:bg-opacity-80 text-white flex items-center justify-center transition text-xl font-black">‹</button>
+                    <button onclick="advanceHomepageGallery(1)" class="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black bg-opacity-50 hover:bg-opacity-80 text-white flex items-center justify-center transition text-xl font-black">›</button>
+                    <div id="homepageGalleryDots" class="absolute bottom-3 left-0 right-0 flex justify-center gap-2"></div>
+                </div>
             </div>
             <!-- TOP CLIMBERS FEED -->
             <div id="climbersContainer" class="hidden mb-12">
@@ -459,11 +475,11 @@
                 <div class="card p-8 border-t-8 border-black shadow-2xl bg-white space-y-6">
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Event Payments</h4>
-                        <p class="text-gray-700 leading-relaxed">All event fees must be paid at least 24 hours before the event starts. Unpaid spots will be removed by administration and reassigned to the next reserve player, with club members receiving automatic priority.</p>
+                        <p class="text-gray-700 leading-relaxed">All event fees must be paid within <strong>15 minutes</strong> of booking your spot. Your place is only held for that 15-minute window - if payment isn't received in time, the spot is automatically released and reassigned to the next reserve player, with club members receiving automatic priority.</p>
                     </div>
                     <div>
-                        <h4 class="font-black text-lg uppercase italic text-black mb-2">Late Cancellations</h4>
-                        <p class="text-gray-700 leading-relaxed">If you cancel within 24 hours of the event, a refund will only be issued if a reserve player is found to take your spot.</p>
+                        <h4 class="font-black text-lg uppercase italic text-black mb-2">Cancellations & Refunds</h4>
+                        <p class="text-gray-700 leading-relaxed">We operate a <strong>24-hour refund notice period</strong>: cancellations made 24 hours or more before the event starts are eligible for a refund. Cancellations made within 24 hours of the event starting are <strong>not eligible for a refund</strong>, regardless of whether a reserve player is found to take your spot.</p>
                     </div>
                     <div class="bg-rose-50 rounded-xl p-6 border-l-4 border-rose-600">
                         <h4 class="font-black text-lg uppercase italic text-rose-600 mb-2">Become a Member</h4>
@@ -692,6 +708,14 @@
 					<label class="text-[10px] font-bold uppercase text-gray-400">Session Name</label>
 					<input type="text" id="ladderSessionName" placeholder="e.g. Mixed Ladder / Female Only Ladder" class="input-field border-2 mb-4">
 
+					<!-- Women's Rankings (item #1): flags this ladder session so its match
+					     results are routed into the separate Women's Rankings instead of the
+					     normal mixed rating - see startLadderSessionData()/endLadderRound(). -->
+					<label class="flex items-center gap-2 cursor-pointer bg-purple-50 border-2 border-purple-200 rounded-xl px-3 py-2 mb-4">
+						<input type="checkbox" id="ladderFemaleOnly" class="w-5 h-5 accent-purple-600" onchange="onLadderFemaleOnlyToggle()">
+						<span class="text-xs font-bold uppercase text-purple-700">♀️ Female Only Ladder (affects Women's Rankings, not Mixed)</span>
+					</label>
+
 					<div id="ladderPlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -726,19 +750,14 @@
         <!-- RATING PAGE -->
         <div id="rating-page" class="tab-content hidden space-y-6">
 			<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-				<h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">Skill Ratings</h2>
+				<h2 id="ratingsPageTitle" class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">Skill Ratings</h2>
 				<input type="text" id="ratingsSearch" oninput="renderStandings()" placeholder="Search player..." class="input-field border-2 max-w-sm">
-				<div class="flex items-center space-x-2 bg-white p-2 rounded-full shadow-sm border border-gray-200">
-				  <span class="text-[10px] font-black uppercase text-gray-400 pl-3 tracking-widest">Filter</span>
-				  <button onclick="setGenderFilter('Everyone')" class="filter-icon-btn gender-Everyone active" title="Everyone">
-					  <img src="https://img.icons8.com/?size=100&id=yHtsKRVMNfox&format=png&color=000000">
-				  </button>
-				  <button onclick="setGenderFilter('Male')" class="filter-icon-btn gender-Male" title="Male">
-					  <img src="https://img.icons8.com/?size=100&id=YtnFdkYn0RsE&format=png&color=000000">
-				  </button>
-				  <button onclick="setGenderFilter('Female')" class="filter-icon-btn gender-Female" title="Female">
-					  <img src="https://img.icons8.com/?size=100&id=8vsjJt13MQHk&format=png&color=000000">
-				  </button>
+				<!-- Item #1: toggles between the normal mixed rankings and the
+				     standalone Women's Rankings, which is only ever affected by
+				     female_only ladder sessions/matches. -->
+				<div class="flex items-center bg-white p-1 rounded-full shadow-sm border border-gray-200">
+				  <button onclick="setRankingView('mixed')" class="ranking-view-btn ranking-view-mixed active" title="Mixed Rankings">🏓 Mixed Rankings</button>
+				  <button onclick="setRankingView('women')" class="ranking-view-btn ranking-view-women" title="Women's Rankings">♀️ Women's Rankings</button>
 				</div>
 			</div>
 
@@ -773,7 +792,7 @@
 							<span class="md:hidden">GP</span>
 							<span class="hidden md:inline">Played</span>
 						</th>
-						<th class="px-2 py-4 md:p-6 text-center text-white bg-black">Rating</th>
+						<th id="ratingsColumnHeader" class="px-2 py-4 md:p-6 text-center text-white bg-black">Rating</th>
 					</tr>
 				</thead>
 				<tbody id="ratingBody" class="divide-y"></tbody>
@@ -909,6 +928,15 @@
                                        style="border: 2px solid #ea580c !important; height: 42px;" 
                                        class="rounded w-full font-black text-center bg-white" title="Team 2 Score">
                             </div>
+
+                            <!-- Women's Rankings (item #1): flag a one-off manual entry as a
+                                 female-only match so it affects the Women's Rankings instead of
+                                 the normal mixed rating. Matches created from a Female Only ladder
+                                 session are flagged automatically and don't need this. -->
+                            <label class="flex items-center gap-2 cursor-pointer bg-purple-50 border-2 border-purple-200 rounded-xl px-3 py-2 mt-2">
+                                <input type="checkbox" id="matchFemaleOnly" class="w-5 h-5 accent-purple-600">
+                                <span class="text-xs font-bold uppercase text-purple-700">♀️ Female Only Match (affects Women's Rankings, not Mixed)</span>
+                            </label>
                             </div>
                             </div>
                         </div>
@@ -932,6 +960,10 @@
                     <div class="grid grid-cols-2 gap-4 mb-4">
                         <button onclick="openCancellationsReportModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">🚫 Cancellations Report</button>
                         <button onclick="openFinanceModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">💰 Finance</button>
+                    </div>
+                    <!-- Row 1d: Homepage Photo Gallery (item #4) -->
+                    <div class="grid grid-cols-1 gap-4 mb-4">
+                        <button onclick="openManageGalleryModal()" class="w-full bg-white text-black border-2 border-gray-300 py-4 rounded-xl font-black uppercase hover:bg-gray-100 transition shadow-lg">🖼️ Manage Homepage Gallery</button>
                     </div>
 
                     <!-- Row 2: Centered Underneath -->
@@ -1108,10 +1140,10 @@
 		document.getElementById('hamburgerIcon').classList.remove('hidden');
 		document.getElementById('hamburgerClose').classList.add('hidden');
 	}
-      let globalData = { history: [], standings: [], names: [], siteSettings: {}, faqs: [] };
+      let globalData = { history: [], standings: [], names: [], siteSettings: {}, faqs: [], galleryPhotos: [] };
         const MEMBER_PRICE_PER_HOUR = 2.50;
         const NON_MEMBER_PRICE_PER_HOUR = 4.00;
-        let currentGender = 'Everyone';
+        let currentRankingView = 'mixed'; // 'mixed' or 'women' - see setRankingView()/renderStandings()
         let adminMatchesVisible = 10;
         let adminTimeout;
         let currentUser = null;
@@ -1316,6 +1348,22 @@
           created_at timestamptz default now()
         );
 
+        -- Homepage Gallery - admin-uploaded photos shown on the homepage (see
+        -- renderHomepageGallery() in this file). Only photos with is_active =
+        -- true are shown publicly; admins can upload/remove/reorder photos and
+        -- toggle which ones are live from the "Manage Gallery" admin panel.
+        -- Images are uploaded to the same public "event-documents" Storage
+        -- bucket already used for Rules PDFs / merchandise photos above (path
+        -- prefix "gallery/") - no extra bucket needs creating.
+        create table gallery_photos (
+          id uuid primary key default gen_random_uuid(),
+          image_url text not null,
+          caption text,
+          sort_order integer not null default 0,
+          is_active boolean not null default true,
+          created_at timestamptz default now()
+        );
+
         -- Merchandise (club shop) - fully admin-manageable so new products,
         -- sizes and prices can be added/edited/removed from the Admin panel
         -- without any code changes. Each item (e.g. "Vest", "T-Shirt", "Hoody")
@@ -1453,6 +1501,39 @@
           created_at timestamptz default now()
         );
 
+        -- Women's Rankings (new feature) - a "Female Only" ladder session is
+        -- flagged with this column when it's started (see the checkbox on the
+        -- Ladders page's "Start Ladder Session" step). Matches generated from a
+        -- female_only session are themselves flagged (matches.is_female_only
+        -- below) so their Elo impact is routed into each player's separate
+        -- female_* rating columns on `players` (also below) instead of their
+        -- normal mixed elo/wins/losses/total_games - keeping the two ladders
+        -- completely independent. Women can still play in ordinary mixed
+        -- sessions; those continue to affect only the normal mixed rating.
+        alter table ladder_session add column if not exists female_only boolean default false;
+
+        -- Which pool of Elo columns a recorded match affects - false (default)
+        -- means the ordinary mixed rating columns on `players`; true means the
+        -- female_* columns instead. Set automatically for matches generated
+        -- from a female_only ladder_session round, and also selectable on the
+        -- admin "Record Match Result" form for one-off manual entries.
+        alter table matches add column if not exists is_female_only boolean default false;
+
+        -- Women's Rankings columns on `players` - a completely separate rating
+        -- pool from the mixed elo/wins/losses/total_games/last_match_date
+        -- columns above. Every player starts at a flat 1200 (no self-selected
+        -- starting rating here, unlike the mixed ladder) and only ever moves
+        -- when they play in a female_only ladder session/match - see
+        -- applyMatchResultAndPersist()/recalculateAllEloFromScratch() in this
+        -- file. Purely cosmetic/no-op for players who never play a female-only
+        -- session (they simply stay at the 1200 default and never appear on
+        -- the Women's Rankings board - see isBoardVisible()).
+        alter table players add column if not exists female_elo integer default 1200;
+        alter table players add column if not exists female_wins integer default 0;
+        alter table players add column if not exists female_losses integer default 0;
+        alter table players add column if not exists female_total_games integer default 0;
+        alter table players add column if not exists female_last_match_date date;
+
         -- Ladder courts table
         create table ladder_courts (
           id uuid primary key default gen_random_uuid(),
@@ -1565,6 +1646,10 @@
         const CACHE_KEY = 'pickle_global_data_cache_v1';
         const CACHE_TTL_MS = 5 * 60 * 1000;
         const DEFAULT_ELO = 1200;
+        // Women's Rankings always start everyone at a flat 1200, regardless of
+        // the self-selected `starting_elo` they picked for the mixed ladder at
+        // signup - see the schema comment above `female_elo` for why.
+        const FEMALE_STARTING_ELO = 1200;
         let liveScrambleIdMap = {};
         let ladderGameIdMap = {};
 		
@@ -1655,19 +1740,38 @@
             return !!(u && u.membership_status === 'Active' && u.membership_end_date && u.membership_end_date >= todayStr());
         }
 
-        // Item #3: a brand-new registration that hasn't played a single game within
-        // 7 days of creating their account is hidden from the public leaderboard
-        // (the account itself stays active - this only affects ranking visibility).
-        // They reappear the instant they play their first recorded match, since this
-        // is computed live from total_games rather than a stored flag that would
-        // need separately un-setting.
+        // Leaderboard visibility (replaces the old "decay" + 100-day auto-hide
+        // system entirely - there is no more gradual point loss for inactivity
+        // anywhere in this file). The rule is now simple and the same for both
+        // the mixed leaderboard and the Women's Rankings board:
+        //   - A brand new registration that hasn't played a single game within
+        //     7 days of creating their account is hidden (unchanged from before -
+        //     keeps the boards free of untested accounts that never actually
+        //     played). They appear instantly the moment their first match is
+        //     recorded.
+        //   - Once someone has played at least one game, they stay visible for
+        //     a rolling 28 days after their most recent match on that board,
+        //     then are hidden again until they next play - at which point the
+        //     28-day window simply restarts from the new match date. Ratings
+        //     are never reduced for inactivity; this only affects whether a
+        //     player currently shows up on the board.
+        // Applied per-board: the mixed board uses total_games/last_match_date,
+        // the Women's Rankings board uses female_total_games/female_last_match_date
+        // (see toPlayerView() below) - a player can be visible on one board and
+        // hidden on the other depending on which sessions they actually play.
         const NEW_PLAYER_GRACE_DAYS = 7;
+        const LEADERBOARD_ACTIVE_WINDOW_DAYS = 28;
 
-        function isNewUnprovenRegistration(row, registeredAt) {
-            if (Number(row.total_games || 0) > 0) return false;
-            if (!registeredAt) return false;
-            const daysSinceRegistration = (Date.now() - new Date(registeredAt).getTime()) / 86400000;
-            return daysSinceRegistration > NEW_PLAYER_GRACE_DAYS;
+        function isBoardVisible(totalGames, lastMatchDate, registeredAt) {
+            const games = Number(totalGames || 0);
+            if (games === 0) {
+                if (!registeredAt) return true;
+                const daysSinceRegistration = (serverNow().getTime() - new Date(registeredAt).getTime()) / 86400000;
+                return daysSinceRegistration <= NEW_PLAYER_GRACE_DAYS;
+            }
+            if (!lastMatchDate) return true;
+            const daysSinceLastMatch = (serverNow().getTime() - new Date(lastMatchDate).getTime()) / 86400000;
+            return daysSinceLastMatch <= LEADERBOARD_ACTIVE_WINDOW_DAYS;
         }
 
         function toPlayerView(row, memberMap, memberCreatedAtByName) {
@@ -1684,7 +1788,19 @@
                 lastMatchDate: row.last_match_date || '',
                 membership: row.membership || 'Non-Member',
                 registeredAt: registeredAt || null,
-                isHidden: !!row.is_hidden || isNewUnprovenRegistration(row, registeredAt),
+                isHidden: !!row.is_hidden || !isBoardVisible(row.total_games, row.last_match_date, registeredAt),
+                // Women's Rankings - completely separate pool (see the schema
+                // comment near `alter table players add column ... female_elo`
+                // above). isFemaleBoardHidden intentionally ignores gender - the
+                // board itself is filtered to gender === 'Female' at render time -
+                // this only decides whether an otherwise-eligible player is
+                // currently active enough on the women's ladder to show up.
+                femaleElo: Number(row.female_elo != null ? row.female_elo : FEMALE_STARTING_ELO),
+                femaleWins: Number(row.female_wins || 0),
+                femaleLosses: Number(row.female_losses || 0),
+                femaleTotalGames: Number(row.female_total_games || 0),
+                femaleLastMatchDate: row.female_last_match_date || '',
+                femaleIsHidden: !!row.is_hidden || !isBoardVisible(row.female_total_games, row.female_last_match_date, registeredAt),
                 isUnder18: !!row.is_under18,
                 isActiveMember: isMembershipActive(membershipUser),
                 membershipEndDate: membershipUser ? membershipUser.membership_end_date : null
@@ -1789,7 +1905,8 @@
                         c1: Number(m.change_w1 || 0),
                         c2: Number(m.change_w2 || 0),
                         c3: Number(m.change_l1 || 0),
-                        c4: Number(m.change_l2 || 0)
+                        c4: Number(m.change_l2 || 0),
+                        isFemaleOnly: !!m.is_female_only
                     }))
                     .sort((a, b) => new Date(b.date) - new Date(a.date)),
                 events: events.map(e => [
@@ -1917,7 +2034,18 @@
                         orderStatus: o.order_status || 'Pending',
                         createdAt: o.created_at
                     }))
-                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+                // Item #4: admin-managed homepage photo gallery, sorted for
+                // display - see renderHomepageGallery()/openManageGalleryModal().
+                galleryPhotos: (payload.galleryPhotos || [])
+                    .map(g => ({
+                        id: g.id,
+                        imageUrl: g.image_url,
+                        caption: g.caption || '',
+                        sortOrder: Number(g.sort_order || 0),
+                        isActive: !!g.is_active
+                    }))
+                    .sort((a, b) => a.sortOrder - b.sortOrder)
             };
         }
 		
@@ -1939,7 +2067,8 @@
 					status: session.status,
 					totalRounds: Number(session.total_rounds || 0),
 					currentRound: Number(session.current_round || 1),
-					players: session.players || []
+					players: session.players || [],
+					femaleOnly: !!session.female_only
 				},
 				courts: (courts || []).map(c => ({
 					court: Number(c.court || 0),
@@ -1961,8 +2090,9 @@
             { question: "Can I play against whoever I want?", answer: `<p>During our dedicated Ladder Sessions, unfortunately not. To keep things fair and competitive, the ladder system automatically pairs you with players of a similar or slightly higher skill level. This structure encourages consistent challenges on the court, helping you test your limits and steadily improve your game. It also ensures that everyone gets high-quality matches and that our court time is utilized as effectively as possible for the whole club.</p><p>However, we love social, relaxed play just as much as competitive matches! While our current focus is on the ladder league, we hope to host Open Sessions in the future where you can mix, match, and play against whoever you like just for fun, without the scores affecting your online club rating.</p>` },
             { question: "What if I'm simply not good enough to play?", answer: `<p>There is no such thing as "not good enough" at Pontypool Pickle—we've completely got you covered!</p><p>To help build your confidence, we use a ladder system. This ensures you are always paired with and playing against people of a similar skill level. Here is how it works:</p><p><strong>A Welcoming Start:</strong> If you are new to the club, you will automatically start with a base score of 1200.</p><p><strong>No Pressure:</strong> This starting score places you comfortably in our introductory rankings so you won't ever feel overwhelmed on court.</p><p><strong>Find Your Groove:</strong> The more games you play, the more accurate your rating becomes. As you win games and your confidence grows, you will "climb the ladder" to play on higher courts!</p>` },
             { question: "How does the rating system work?", answer: `<p>We use a dynamic rating system based on the traditional Elo method (similar to how global DUPR ratings operate) to ensure you are always playing against people of a similar skill level.</p><p><strong>Your Starting Block:</strong> When you create your account, you'll self-select your starting level based on your background or existing 4DR/DUPR rating (ranging from 1000 for beginners up to 1800 for Elite players). This ensures you land on the right court from day one.</p><p><strong>The Provisional Period:</strong> Your first 10 matches are "provisional." During this time, the system applies a boosted multiplier to your points so it can quickly find your natural level on the ladder.</p><p><strong>Every Point Counts:</strong> Once settled, your rating shifts after every match. Winning by a wide margin earns you more points than scraping a close 11-9 win. The same applies to losses.</p><p><strong>The Underdog Advantage:</strong> Beating a higher-rated player gives your ranking a massive boost! Flip side? If you lose to a heavily favoured, higher-ranked player, your score barely takes a hit.</p>` },
-            { question: `Why does it say "Decaying" below certain players' ratings and what does it mean?`, answer: `<p>If you see "Decay" next to a player's name on the leaderboard, it just means they've been away from the courts for a little while! Our leaderboard is dynamic and designed to reflect current, active skill. To stop inactive players from permanently holding top spots without playing, we use a "decay" system.</p><p>If someone takes an extended break from the club, their ranking points will gradually drop until they return and play a match. Everyone gets a <strong>30-day grace period</strong> of inactivity. A player's points will only start to drop—and the "Decay" tag will only appear—if they haven't played a match at the club for more than 30 consecutive days.</p><div class="bg-gray-50 p-4 rounded-lg border-l-4 border-rose-600"><p class="font-black uppercase text-xs mb-2">The Inactivity Scale:</p><ul class="space-y-1 font-bold text-xs italic"><li>• Week 1 of decay: -5 points</li><li>• Week 2 of decay: -10 points</li><li>• Week 3 of decay: -15 points</li><li>• Week 4 of decay: -20 points</li></ul></div><p>There are two safety nets in place to protect everyone's hard-earned scores:</p><p>1. <strong>The Absence Cap:</strong> The maximum total loss for any single period of absence is capped at 50 points. Once a player has lost 50 points, their score freezes.<br>2. <strong>The Floor Limit:</strong> Decay will never drop a rating below 1200 points. If a player's score is already at or near 1200 when they go inactive, the decay stops automatically.</p><p>Playing just a <strong>single match</strong> instantly removes the "Decay" tag, stops the point drops, and resets the clock! However, any points lost during the absence are gone—they will need to win matches to climb back up. If they return and then go inactive again in the future, the 30-day clock restarts from zero.</p><p>If a player is inactive for <strong>100 consecutive days</strong>, their profile will be automatically hidden from the active leaderboard to keep the standings fresh and clean for our regulars. Their points remain safely frozen, and their name will instantly reappear on the ladder as soon as they come back and play their first match.</p>` },
+            { question: "Why has my name disappeared from the leaderboard?", answer: `<p>Our leaderboard is designed to stay fresh and only show genuinely active players - so unlike some rating systems, we don't gradually "decay" or reduce anyone's points for taking a break.</p><p>Instead, once you've played your first match, you stay visible on the leaderboard for <strong>28 days</strong> after your most recent game. If you haven't played again within that window, your name is simply hidden (not deleted!) until you next play - at which point you'll reappear instantly with your rating exactly as it was, and the 28-day clock restarts from your new match date.</p><p>This keeps the standings clean and current for our regulars without ever penalising anyone's hard-earned rating just for taking time off.</p>` },
             { question: "I just registered - why can't I see myself on the leaderboard?", answer: `<p>New accounts stay visible on the leaderboard for the first <strong>7 days</strong> after registering. If you haven't played a game at the club within those 7 days, your name is automatically hidden from the public rankings so the leaderboard stays accurate and uncluttered for active players.</p><p>Your account isn't affected in any other way, and your name will <strong>instantly reappear</strong> the moment your first match is recorded - there's nothing you need to do to fix it, just get out on the courts!</p>` },
+            { question: "How do the Women's Rankings work?", answer: `<p>Alongside our normal mixed rating, we run a completely separate <strong>Women's Rankings</strong> board for our female-only ladder sessions. Because playing against men tends to skew ratings downward for women (and vice versa), we wanted a fairer, standalone way to track progress against other female players specifically.</p><p>Every female player starts on the Women's Rankings at the same base score of <strong>1200</strong>, and it only ever changes when you play in a session flagged as Female Only - your rating from mixed sessions is completely unaffected, and playing mixed sessions never changes your Women's Ranking either. You can switch between the two boards using the toggle at the top of the Ratings page, and if you're a female player, your profile shows both ratings side by side.</p>` },
             { question: "Do you have a downloadable app?", answer: `<p>Not quite yet! The club is still in its foundation stages, but launching a dedicated mobile app is definitely an exciting milestone we are striving toward for the future.</p><p>In the meantime, our website is fully optimized for mobile devices. You can easily view our schedule, check player rankings, and secure your spot on the courts directly from your phone's web browser!</p>` }
         ];
 
@@ -2161,7 +2291,8 @@
                 faqsRes,
                 merchandiseItemsRes,
                 merchandiseSizesRes,
-                merchandiseOrdersRes
+                merchandiseOrdersRes,
+                galleryPhotosRes
             ] = await Promise.all([
                 supabaseClient.from('players').select('*').order('name', { ascending: true }),
                 supabaseClient.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -2183,7 +2314,11 @@
                 supabaseClient.from('faqs').select('*').order('sort_order', { ascending: true }),
                 supabaseClient.from('merchandise_items').select('*').order('sort_order', { ascending: true }),
                 supabaseClient.from('merchandise_sizes').select('*').order('sort_order', { ascending: true }),
-                supabaseClient.from('merchandise_orders').select('*').order('created_at', { ascending: false })
+                supabaseClient.from('merchandise_orders').select('*').order('created_at', { ascending: false }),
+                // Item #4: homepage photo gallery - degrades gracefully (empty
+                // gallery, no error thrown) until the `gallery_photos` migration
+                // comment near the top of this file has been run.
+                supabaseClient.from('gallery_photos').select('*').order('sort_order', { ascending: true })
             ]);
 
             // Item #7: first-run auto-seed - if the faqs table exists but is empty
@@ -2249,7 +2384,8 @@
 				faqs: faqRows,
 				merchandiseItems: merchandiseItemRows,
 				merchandiseSizes: merchandiseSizeRows,
-				merchandiseOrders: merchandiseOrdersRes.data || []
+				merchandiseOrders: merchandiseOrdersRes.data || [],
+				galleryPhotos: galleryPhotosRes.data || []
 			});
         }
 
@@ -2289,21 +2425,44 @@
         }
 
         async function updatePlayerRecord(player) {
+            const update = {
+                elo: Math.round(player.elo),
+                wins: player.wins,
+                losses: player.losses,
+                total_games: player.totalGames,
+                weekly_sum: Math.round(player.weeklySum),
+                last_match_date: player.lastMatchDate || null
+            };
+            // Women's Rankings columns - only included when the caller supplies
+            // them (recalculateAllEloFromScratch always does, since it recomputes
+            // both pools together per player; applyMatchResultAndPersist instead
+            // uses the leaner persistPlayerFields() below for single matches, so
+            // it never touches the pool a given match didn't affect).
+            if (player.femaleElo !== undefined) {
+                update.female_elo = Math.round(player.femaleElo);
+                update.female_wins = player.femaleWins;
+                update.female_losses = player.femaleLosses;
+                update.female_total_games = player.femaleTotalGames;
+                update.female_last_match_date = player.femaleLastMatchDate || null;
+            }
             const { error } = await supabaseClient
                 .from('players')
-                .update({
-                    elo: Math.round(player.elo),
-                    wins: player.wins,
-                    losses: player.losses,
-                    total_games: player.totalGames,
-                    weekly_sum: Math.round(player.weeklySum),
-                    last_match_date: player.lastMatchDate || null
-                })
+                .update(update)
                 .eq('name', player.name);
             if (error) throw new Error(error.message);
         }
 
+        // Writes only the given raw DB columns for one player - used by
+        // applyMatchResultAndPersist so a single match only ever updates the
+        // Elo pool it actually belongs to (mixed or female_*), leaving every
+        // other column on that player's row completely untouched.
+        async function persistPlayerFields(name, fields) {
+            const { error } = await supabaseClient.from('players').update(fields).eq('name', name);
+            if (error) throw new Error(error.message);
+        }
+
         async function applyMatchResultAndPersist(matchRow) {
+            const isFemaleOnly = !!matchRow.is_female_only;
             const playerMap = await getPlayersMap();
             const winners = [matchRow.w1, matchRow.w2].filter(n => n && n !== 'Singles');
             const losers = [matchRow.l1, matchRow.l2].filter(n => n && n !== 'Singles');
@@ -2311,35 +2470,44 @@
             const loserPlayers = losers.map(n => playerMap.get(normalizeName(n))).filter(Boolean);
             if (!winnerPlayers.length || !loserPlayers.length) throw new Error('Match players not found in players table.');
 
-            const winnerAvg = winnerPlayers.reduce((sum, p) => sum + Number(p.elo || DEFAULT_ELO), 0) / winnerPlayers.length;
-            const loserAvg = loserPlayers.reduce((sum, p) => sum + Number(p.elo || DEFAULT_ELO), 0) / loserPlayers.length;
-            const isProvisional = [...winnerPlayers, ...loserPlayers].some(p => Number(p.total_games || 0) < 10);
+            // Women's Rankings (item #1): a female_only match reads/writes the
+            // separate female_* columns instead of the normal mixed ones, so it
+            // never affects a player's mixed rating (and vice versa) - see the
+            // schema comment above `alter table players ... add female_elo`.
+            const eloCol = isFemaleOnly ? 'female_elo' : 'elo';
+            const gamesCol = isFemaleOnly ? 'female_total_games' : 'total_games';
+            const defaultElo = isFemaleOnly ? FEMALE_STARTING_ELO : DEFAULT_ELO;
+
+            const winnerAvg = winnerPlayers.reduce((sum, p) => sum + Number(p[eloCol] != null ? p[eloCol] : defaultElo), 0) / winnerPlayers.length;
+            const loserAvg = loserPlayers.reduce((sum, p) => sum + Number(p[eloCol] != null ? p[eloCol] : defaultElo), 0) / loserPlayers.length;
+            const isProvisional = [...winnerPlayers, ...loserPlayers].some(p => Number(p[gamesCol] || 0) < 10);
             const eloChange = calculateElo(winnerAvg, loserAvg, matchRow.score_w, matchRow.score_l, isProvisional);
 
-            for (const p of winnerPlayers) {
-                p.elo = Number(p.elo || DEFAULT_ELO) + eloChange.winnerChange;
-                p.wins = Number(p.wins || 0) + 1;
-                p.total_games = Number(p.total_games || 0) + 1;
-                p.weekly_sum = Number(p.weekly_sum || 0) + eloChange.winnerChange;
-                p.last_match_date = matchRow.match_date;
-            }
-            for (const p of loserPlayers) {
-                p.elo = Number(p.elo || DEFAULT_ELO) + eloChange.loserChange;
-                p.losses = Number(p.losses || 0) + 1;
-                p.total_games = Number(p.total_games || 0) + 1;
-                p.weekly_sum = Number(p.weekly_sum || 0) + eloChange.loserChange;
-                p.last_match_date = matchRow.match_date;
-            }
+            const buildFields = (p, change, wonMatch) => {
+                const newElo = Number(p[eloCol] != null ? p[eloCol] : defaultElo) + change;
+                if (isFemaleOnly) {
+                    return {
+                        female_elo: Math.round(newElo),
+                        female_wins: Number(p.female_wins || 0) + (wonMatch ? 1 : 0),
+                        female_losses: Number(p.female_losses || 0) + (wonMatch ? 0 : 1),
+                        female_total_games: Number(p.female_total_games || 0) + 1,
+                        female_last_match_date: matchRow.match_date
+                    };
+                }
+                return {
+                    elo: Math.round(newElo),
+                    wins: Number(p.wins || 0) + (wonMatch ? 1 : 0),
+                    losses: Number(p.losses || 0) + (wonMatch ? 0 : 1),
+                    total_games: Number(p.total_games || 0) + 1,
+                    weekly_sum: Math.round(Number(p.weekly_sum || 0) + change),
+                    last_match_date: matchRow.match_date
+                };
+            };
 
-            await Promise.all([...winnerPlayers, ...loserPlayers].map(p => updatePlayerRecord({
-                name: p.name,
-                elo: p.elo,
-                wins: Number(p.wins || 0),
-                losses: Number(p.losses || 0),
-                totalGames: Number(p.total_games || 0),
-                weeklySum: Number(p.weekly_sum || 0),
-                lastMatchDate: p.last_match_date
-            })));
+            await Promise.all([
+                ...winnerPlayers.map(p => persistPlayerFields(p.name, buildFields(p, eloChange.winnerChange, true))),
+                ...loserPlayers.map(p => persistPlayerFields(p.name, buildFields(p, eloChange.loserChange, false)))
+            ]);
 
             return {
                 change_w1: winners[0] ? eloChange.winnerChange : 0,
@@ -2367,6 +2535,7 @@
 			});
 
 			const stats = new Map();
+			const femaleStats = new Map();
 			(players || []).forEach(p => {
 				const startElo = startingEloMap.get(normalizeName(p.name)) || DEFAULT_ELO;
 				stats.set(normalizeName(p.name), {
@@ -2376,6 +2545,16 @@
 					losses: 0,
 					totalGames: 0,
 					weeklySum: 0,
+					lastMatchDate: null
+				});
+				// Women's Rankings always recalculate from a flat 1200 start,
+				// independent of the mixed ladder's self-selected starting_elo.
+				femaleStats.set(normalizeName(p.name), {
+					name: p.name,
+					elo: FEMALE_STARTING_ELO,
+					wins: 0,
+					losses: 0,
+					totalGames: 0,
 					lastMatchDate: null
 				});
 			});
@@ -2399,8 +2578,12 @@
                     [scoreW, scoreL] = [scoreL, scoreW];
                 }
 
-                const winners = [w1, w2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
-                const losers = [l1, l2].filter(n => n && n !== 'Singles').map(n => stats.get(normalizeName(n))).filter(Boolean);
+                // Women's Rankings (item #1): route this match's Elo impact into
+                // the separate female stats pool when it was flagged as a
+                // female-only session/match, leaving the mixed pool untouched.
+                const targetStats = m.is_female_only ? femaleStats : stats;
+                const winners = [w1, w2].filter(n => n && n !== 'Singles').map(n => targetStats.get(normalizeName(n))).filter(Boolean);
+                const losers = [l1, l2].filter(n => n && n !== 'Singles').map(n => targetStats.get(normalizeName(n))).filter(Boolean);
                 if (!winners.length || !losers.length) continue;
                 const winnerAvg = winners.reduce((s, p) => s + p.elo, 0) / winners.length;
                 const loserAvg = losers.reduce((s, p) => s + p.elo, 0) / losers.length;
@@ -2411,14 +2594,14 @@
                     p.elo += changes.winnerChange;
                     p.wins += 1;
                     p.totalGames += 1;
-                    p.weeklySum += changes.winnerChange;
+                    if (p.weeklySum !== undefined) p.weeklySum += changes.winnerChange;
                     p.lastMatchDate = m.match_date;
                 });
                 losers.forEach(p => {
                     p.elo += changes.loserChange;
                     p.losses += 1;
                     p.totalGames += 1;
-                    p.weeklySum += changes.loserChange;
+                    if (p.weeklySum !== undefined) p.weeklySum += changes.loserChange;
                     p.lastMatchDate = m.match_date;
                 });
 
@@ -2439,7 +2622,23 @@
                 await supabaseClient.from('matches').update(matchUpdate).eq('id', m.id);
             }
 
-            await Promise.all(Array.from(stats.values()).map(updatePlayerRecord));
+            await Promise.all(Array.from(stats.values()).map(s => {
+                const fs = femaleStats.get(normalizeName(s.name)) || { elo: FEMALE_STARTING_ELO, wins: 0, losses: 0, totalGames: 0, lastMatchDate: null };
+                return updatePlayerRecord({
+                    name: s.name,
+                    elo: s.elo,
+                    wins: s.wins,
+                    losses: s.losses,
+                    totalGames: s.totalGames,
+                    weeklySum: s.weeklySum,
+                    lastMatchDate: s.lastMatchDate,
+                    femaleElo: fs.elo,
+                    femaleWins: fs.wins,
+                    femaleLosses: fs.losses,
+                    femaleTotalGames: fs.totalGames,
+                    femaleLastMatchDate: fs.lastMatchDate
+                });
+            }));
         }
 
         async function processAdminAction(d) {
@@ -2452,6 +2651,7 @@
                 l2: d.l2 || 'Singles',
                 score_w: Number(d.sW || 0),
                 score_l: Number(d.sL || 0),
+                is_female_only: !!d.femaleOnly,
                 change_w1: 0,
                 change_w2: 0,
                 change_l1: 0,
@@ -2577,10 +2777,16 @@
 		}
 
 		async function startLadderSessionData(payload) {
+			const femaleOnly = !!payload.femaleOnly;
 			const playerMap = await getPlayersMap();
+			// Women's Rankings (item #1): seed/sort courts by each player's
+			// female_elo instead of their mixed elo for a Female Only session, so
+			// court placement reflects the rating that actually applies here.
+			const eloCol = femaleOnly ? 'female_elo' : 'elo';
+			const defaultElo = femaleOnly ? FEMALE_STARTING_ELO : DEFAULT_ELO;
 			const selectedPlayers = (payload.players || []).map(name => ({
 				name,
-				elo: Number((playerMap.get(normalizeName(name)) || {}).elo || DEFAULT_ELO)
+				elo: Number((playerMap.get(normalizeName(name)) || {})[eloCol] ?? defaultElo)
 			})).sort((a, b) => b.elo - a.elo);
 
 			const sizes = splitCourtSizes(selectedPlayers.length);
@@ -2593,7 +2799,7 @@
 
 			const { data: insertedSession, error: sessionError } = await supabaseClient
 				.from('ladder_session')
-				.insert({ name: payload.sessionName || 'Ladder Session', status: 'Active', total_rounds: Number(payload.totalRounds || 1), current_round: 1, players: courts.map(c => c.players) })
+				.insert({ name: payload.sessionName || 'Ladder Session', status: 'Active', total_rounds: Number(payload.totalRounds || 1), current_round: 1, players: courts.map(c => c.players), female_only: femaleOnly })
 				.select()
 				.single();
 			if (sessionError) throw new Error(sessionError.message);
@@ -2721,6 +2927,7 @@
                     l2: Number(g.score_a) > Number(g.score_b) ? (g.p4 || 'Singles') : (g.p2 || 'Singles'),
                     score_w: Math.max(Number(g.score_a), Number(g.score_b)),
                     score_l: Math.min(Number(g.score_a), Number(g.score_b)),
+                    is_female_only: !!session.female_only,
                     change_w1: 0,
                     change_w2: 0,
                     change_l1: 0,
@@ -2912,6 +3119,144 @@
                     label.innerText = originalText;
                 })
                 .finally(() => { input.value = ''; });
+        }
+
+        // --- HOMEPAGE PHOTO GALLERY (item #4) ---------------------------------
+        let homepageGalleryIndex = 0;
+        let homepageGalleryTimer = null;
+
+        function renderHomepageGallery() {
+            const container = document.getElementById('homepageGallery');
+            const slidesEl = document.getElementById('homepageGallerySlides');
+            const dotsEl = document.getElementById('homepageGalleryDots');
+            if (!container || !slidesEl || !dotsEl) return;
+
+            const photos = (globalData.galleryPhotos || []).filter(p => p.isActive);
+            if (homepageGalleryTimer) { clearInterval(homepageGalleryTimer); homepageGalleryTimer = null; }
+
+            if (photos.length === 0) {
+                container.classList.add('hidden');
+                slidesEl.innerHTML = '';
+                dotsEl.innerHTML = '';
+                return;
+            }
+
+            container.classList.remove('hidden');
+            if (homepageGalleryIndex >= photos.length) homepageGalleryIndex = 0;
+
+            const renderSlide = () => {
+                const photo = photos[homepageGalleryIndex];
+                slidesEl.innerHTML = `
+                    <img src="${photo.imageUrl}" alt="${(photo.caption || 'Club photo').replace(/"/g, '&quot;')}" class="w-full h-full object-cover">
+                    ${photo.caption ? `<div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs md:text-sm font-bold px-4 py-3">${photo.caption}</div>` : ''}
+                `;
+                dotsEl.innerHTML = photos.map((_, i) => `
+                    <span onclick="goToHomepageGallerySlide(${i})" class="w-2 h-2 rounded-full cursor-pointer transition ${i === homepageGalleryIndex ? 'bg-white' : 'bg-white bg-opacity-40'}"></span>
+                `).join('');
+            };
+            renderSlide();
+
+            // Only bother auto-advancing (and showing prev/next controls' worth
+            // of interaction) when there's more than one active photo.
+            if (photos.length > 1) {
+                homepageGalleryTimer = setInterval(() => {
+                    homepageGalleryIndex = (homepageGalleryIndex + 1) % photos.length;
+                    renderSlide();
+                }, 6000);
+            }
+        }
+
+        function advanceHomepageGallery(direction) {
+            const photos = (globalData.galleryPhotos || []).filter(p => p.isActive);
+            if (photos.length === 0) return;
+            homepageGalleryIndex = (homepageGalleryIndex + direction + photos.length) % photos.length;
+            renderHomepageGallery();
+        }
+
+        function goToHomepageGallerySlide(index) {
+            homepageGalleryIndex = index;
+            renderHomepageGallery();
+        }
+
+        function openManageGalleryModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            renderManageGalleryList();
+            openModal('manageGalleryModal');
+        }
+
+        function renderManageGalleryList() {
+            const container = document.getElementById('manageGalleryList');
+            if (!container) return;
+            const photos = [...(globalData.galleryPhotos || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+
+            if (photos.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-400 italic py-8 text-sm">No photos uploaded yet - add one below.</p>`;
+                return;
+            }
+
+            container.innerHTML = photos.map((p, i) => `
+                <div class="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <img src="${p.imageUrl}" class="w-16 h-16 object-cover rounded-lg flex-shrink-0 border border-gray-200">
+                    <div class="flex-grow min-w-0">
+                        <p class="text-xs font-bold text-gray-600 truncate">${p.caption || '<span class="italic text-gray-300">No caption</span>'}</p>
+                        <label class="flex items-center gap-2 mt-1 cursor-pointer">
+                            <input type="checkbox" ${p.isActive ? 'checked' : ''} onchange="handleToggleGalleryPhoto('${p.id}', this.checked)" class="w-4 h-4 accent-rose-600">
+                            <span class="text-[10px] font-black uppercase ${p.isActive ? 'text-green-600' : 'text-gray-400'}">${p.isActive ? 'Live on Homepage' : 'Hidden'}</span>
+                        </label>
+                    </div>
+                    <div class="flex flex-col gap-1 flex-shrink-0">
+                        <button onclick="handleReorderGalleryPhoto('${p.id}', 'up')" ${i === 0 ? 'disabled style="opacity:0.3;"' : ''} class="w-7 h-7 rounded bg-white border border-gray-200 text-xs font-black hover:bg-gray-100">▲</button>
+                        <button onclick="handleReorderGalleryPhoto('${p.id}', 'down')" ${i === photos.length - 1 ? 'disabled style="opacity:0.3;"' : ''} class="w-7 h-7 rounded bg-white border border-gray-200 text-xs font-black hover:bg-gray-100">▼</button>
+                    </div>
+                    <button onclick="handleDeleteGalleryPhoto('${p.id}')" class="p-2 text-gray-300 hover:text-rose-600 transition flex-shrink-0" title="Delete photo">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function handleGalleryPhotoUpload(input) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) return triggerError("Please choose an image file.");
+
+            const btn = document.getElementById('galleryUploadBtn');
+            const caption = document.getElementById('galleryPhotoCaption').value.trim();
+            if (btn) { btn.disabled = true; btn.innerText = 'Uploading...'; }
+
+            uploadGalleryImage(file)
+                .then(url => addGalleryPhoto(url, caption))
+                .then(r => {
+                    render(r);
+                    renderManageGalleryList();
+                    triggerToast("Photo added to gallery.");
+                    document.getElementById('galleryPhotoCaption').value = '';
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => {
+                    input.value = '';
+                    if (btn) { btn.disabled = false; btn.innerText = 'Upload Photo'; }
+                });
+        }
+
+        function handleToggleGalleryPhoto(id, isActive) {
+            toggleGalleryPhotoActive(id, isActive)
+                .then(r => { render(r); renderManageGalleryList(); })
+                .catch(err => triggerError(err.message));
+        }
+
+        function handleReorderGalleryPhoto(id, direction) {
+            reorderGalleryPhoto(id, direction)
+                .then(r => { render(r); renderManageGalleryList(); })
+                .catch(err => triggerError(err.message));
+        }
+
+        function handleDeleteGalleryPhoto(id) {
+            if (!confirm("Remove this photo from the gallery permanently?")) return;
+            deleteGalleryPhoto(id)
+                .then(r => { render(r); renderManageGalleryList(); triggerToast("Photo removed."); })
+                .catch(err => triggerError(err.message));
         }
 
         // Assigns the next sequential membership number (PPC-0001, PPC-0002, ...)
@@ -3770,7 +4115,15 @@
                         weekly_sum: 0,
                         membership: user.role === 'Member' || user.role === 'Admin' ? 'Member' : 'Non-Member',
                         is_hidden: false,
-                        is_under18: !!user.is_under18
+                        is_under18: !!user.is_under18,
+                        // Women's Rankings (item #1): everyone starts at a flat
+                        // 1200 here, regardless of their self-selected mixed
+                        // starting_elo above - see the schema comment near
+                        // `alter table players ... add female_elo`.
+                        female_elo: FEMALE_STARTING_ELO,
+                        female_wins: 0,
+                        female_losses: 0,
+                        female_total_games: 0
                     });
                 }
                 // Best-effort: never let a missing membership_number column (see the
@@ -4009,7 +4362,7 @@
 		function updateRatingsAccess() {
 			const restricted = document.getElementById('ratingsRestricted');
 			const content = document.getElementById('ratingsMainContent');
-			const filterBar = document.querySelector('.gender-Everyone')?.closest('.flex.items-center.space-x-2');
+			const filterBar = document.querySelector('.ranking-view-mixed')?.closest('.flex.items-center');
 			const isMember = currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin');
 
 			if (isMember) {
@@ -4128,6 +4481,7 @@
             renderSpecialEventBanner();
             renderFaqList();
             renderRulesPdfCard();
+            renderHomepageGallery();
             renderMerchandise();
 
             // Populate location dropdown
@@ -4146,7 +4500,10 @@
             // 7-day window - see the comment on that function for why.
             const climbersContainer = document.getElementById('climbersContainer');
             const climbersList = document.getElementById('climbersList');
-            const recentEloChanges = computeRecentEloChanges(data.history, 7);
+            // Only counts mixed-rating matches (item #1) - a female_only
+            // session's point changes belong to the separate Women's Rankings,
+            // not this homepage widget for the normal mixed rating.
+            const recentEloChanges = computeRecentEloChanges((data.history || []).filter(m => !m.isFemaleOnly), 7);
 
             const topClimbers = [...data.standings]
                 .filter(p => p.name !== "Singles")
@@ -4223,32 +4580,47 @@
             if(!document.getElementById('scrambleDate').value) setDateInputToday('scrambleDate');
         }
 
+        // Item #1: `currentRankingView` is either 'mixed' (the normal, everyone
+        // rating - unchanged in spirit from the old "Everyone" filter) or
+        // 'women' (the standalone Women's Rankings board, filtered to female
+        // players and driven entirely by female_only ladder sessions/matches -
+        // see the schema comment above `alter table players ... add female_elo`).
+        // The old three-way Male/Female/Everyone filter has been replaced by
+        // this toggle per item #1's request.
         function renderStandings() {
-            const standings = globalData.standings || [];
             const search = (document.getElementById('ratingsSearch')?.value || '').toLowerCase();
-			const filtered = (currentGender === 'Everyone' ? globalData.standings : globalData.standings.filter(p => p.gender === currentGender))
-			.filter(p => p.name !== "Singles" && !p.isHidden && !p.isUnder18 && (!search || p.name.toLowerCase().includes(search)));
-            
-            const today = serverNow().getTime();
-            const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+            const isWomen = currentRankingView === 'women';
+
+            const eloKey = isWomen ? 'femaleElo' : 'elo';
+            const winsKey = isWomen ? 'femaleWins' : 'wins';
+            const lossesKey = isWomen ? 'femaleLosses' : 'losses';
+            const gamesKey = isWomen ? 'femaleTotalGames' : 'totalGames';
+            const hiddenKey = isWomen ? 'femaleIsHidden' : 'isHidden';
+
+            const pool = isWomen ? (globalData.standings || []).filter(p => p.gender === 'Female') : (globalData.standings || []);
+            const filtered = pool.filter(p => p.name !== "Singles" && !p[hiddenKey] && !p.isUnder18 && (!search || p.name.toLowerCase().includes(search)));
+
             // See computeRecentEloChanges() - a real trailing 7-day total per
             // player, computed fresh from match history rather than the
-            // persisted (and unreliable) weekly_sum counter.
-            const recentEloChanges = computeRecentEloChanges(globalData.history, 7);
+            // persisted (and unreliable) weekly_sum counter. Only matches from
+            // the matching pool (mixed vs female_only) count towards each
+            // board's trend arrows, so a Women's Rankings result never shows up
+            // as a trend on the mixed board and vice versa.
+            const relevantHistory = (globalData.history || []).filter(m => isWomen ? m.isFemaleOnly : !m.isFemaleOnly);
+            const recentEloChanges = computeRecentEloChanges(relevantHistory, 7);
 
-            const rSorted = [...filtered].sort((a,b) => b.elo - a.elo);
+            const rSorted = [...filtered].sort((a,b) => b[eloKey] - a[eloKey]);
             const ratingBody = document.getElementById('ratingBody');
-            
-            if (ratingBody) {
-                ratingBody.innerHTML = rSorted.map((p, i) => {
-                    // 1. Inactivity Check
-                    let isInactive = false;
-                    if (p.lastMatchDate) {
-                        const lastDate = new Date(p.lastMatchDate).getTime();
-                        if (!isNaN(lastDate)) isInactive = (today - lastDate) > thirtyDays;
-                    }
+            const columnHeader = document.getElementById('ratingsColumnHeader');
+            if (columnHeader) columnHeader.innerText = isWomen ? "Women's Rating" : 'Rating';
 
-                    // 2. Trend Logic - net Elo change over the last 7 days
+            if (ratingBody) {
+                if (isWomen && rSorted.length === 0) {
+                    ratingBody.innerHTML = `<tr><td colspan="6" class="text-center text-gray-400 italic py-10 text-sm">No players on the Women's Rankings yet - they'll appear as soon as they play in a Female Only ladder session.</td></tr>`;
+                    return;
+                }
+                ratingBody.innerHTML = rSorted.map((p, i) => {
+                    // Trend Logic - net Elo change over the last 7 days
                     const change = recentEloChanges.get(p.name) || 0;
                     let trendHtml = '';
                     const trendTitle = `title="${change > 0 ? '+' : ''}${change} rating points over the last 7 days"`;
@@ -4277,14 +4649,12 @@
                                 </button>
                             </div>
                         </td>
-                        <td class="px-1 py-4 md:p-4 text-center font-bold text-green-600 text-xs">${p.wins || 0}</td>
-                        <td class="px-1 py-4 md:p-4 text-center font-bold text-red-600 text-xs">${p.losses || 0}</td>
-                        <td class="px-1 py-4 md:p-4 text-center font-bold text-gray-400 text-xs">${p.totalGames || 0}</td>
+                        <td class="px-1 py-4 md:p-4 text-center font-bold text-green-600 text-xs">${p[winsKey] || 0}</td>
+                        <td class="px-1 py-4 md:p-4 text-center font-bold text-red-600 text-xs">${p[lossesKey] || 0}</td>
+                        <td class="px-1 py-4 md:p-4 text-center font-bold text-gray-400 text-xs">${p[gamesKey] || 0}</td>
                         <td class="px-2 py-4 md:p-6 text-center">
                             <div class="flex items-center justify-center">
-                                <span class="rating-pill text-xs ${isInactive ? 'opacity-40' : ''}">
-                                    ${p.elo} ${isInactive ? ' (Decaying)' : ''}
-                                </span>
+                                <span class="rating-pill text-xs">${p[eloKey]}</span>
                                 ${trendHtml}
                             </div>
                         </td>
@@ -4318,10 +4688,12 @@
             }
         }
 
-        function setGenderFilter(g) {
-            currentGender = g;
-            document.querySelectorAll('.filter-icon-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.gender-' + g).forEach(b => b.classList.add('active'));
+        function setRankingView(view) {
+            currentRankingView = view;
+            document.querySelectorAll('.ranking-view-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.ranking-view-' + view).forEach(b => b.classList.add('active'));
+            const title = document.getElementById('ratingsPageTitle');
+            if (title) title.innerText = view === 'women' ? "Women's Rankings" : 'Skill Ratings';
             renderStandings();
         }
 
@@ -4418,6 +4790,7 @@
                 d.l2 = team1Won ? t2p2 : t1p2;
                 d.sW = team1Won ? t1Score : t2Score;
                 d.sL = team1Won ? t2Score : t1Score;
+                d.femaleOnly = !!document.getElementById('matchFemaleOnly')?.checked;
             }
             
             processAdminAction(d)
@@ -4426,7 +4799,11 @@
                     render(res); 
                     startAdminSession(); 
                     triggerToast("Saved!"); 
-                    if(type === 'match') {['t1Score', 't2Score'].forEach(id => document.getElementById(id).value = ""); } 
+                    if(type === 'match') {
+                        ['t1Score', 't2Score'].forEach(id => document.getElementById(id).value = "");
+                        const femaleOnlyCheckbox = document.getElementById('matchFemaleOnly');
+                        if (femaleOnlyCheckbox) femaleOnlyCheckbox.checked = false;
+                    } 
                 })
                 .catch(e => { 
                     btn.disabled = false; 
@@ -4827,12 +5204,27 @@
             openModal('managePlayersModal');
         }
 
+        // Item #5: "actively registered" = has a registered account AND has
+        // played at least one recorded match (mixed or female_only combined),
+        // matched against the `players` standings by name exactly like every
+        // other members<->players lookup in this file (see normalizeName()).
+        function isActivelyRegisteredMember(m) {
+            const standing = (globalData.standings || []).find(s => normalizeName(s.name) === normalizeName(m.name));
+            return !!standing && (Number(standing.totalGames || 0) + Number(standing.femaleTotalGames || 0)) > 0;
+        }
+
         function renderManagePlayersList() {
             const container = document.getElementById('managePlayersList');
             if (!container) return;
             const search = (document.getElementById('managePlayersSearch').value || '').toLowerCase().trim();
 
-            const rows = [...(globalData.members || [])]
+            const allMembers = globalData.members || [];
+            const totalCountEl = document.getElementById('managePlayersTotalCount');
+            const activeCountEl = document.getElementById('managePlayersActiveCount');
+            if (totalCountEl) totalCountEl.innerText = allMembers.length;
+            if (activeCountEl) activeCountEl.innerText = allMembers.filter(isActivelyRegisteredMember).length;
+
+            const rows = [...allMembers]
                 .filter(m => !search || m.name.toLowerCase().includes(search) || m.username.toLowerCase().includes(search))
                 .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -4841,15 +5233,19 @@
                 return;
             }
 
-            container.innerHTML = rows.map(m => `
+            container.innerHTML = rows.map(m => {
+                const registeredDate = m.createdAt ? new Date(m.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown';
+                const isActive = isActivelyRegisteredMember(m);
+                return `
                 <div onclick="openAdminPlayerProfile('${m.username.replace(/'/g, "\\'")}')" class="flex justify-between items-center bg-gray-50 hover:bg-gray-100 rounded-lg px-4 py-3 cursor-pointer transition">
                     <div class="min-w-0">
-                        <p class="font-black text-sm uppercase truncate">${m.name}${m.membershipNumberFormatted ? ` <span class="text-[9px] font-black text-gray-400">${m.membershipNumberFormatted}</span>` : ''}</p>
-                        <p class="text-[10px] text-gray-400 font-bold">@${m.username} &bull; ${m.role}</p>
+                        <p class="font-black text-sm uppercase truncate">${m.name}${m.membershipNumberFormatted ? ` <span class="text-[9px] font-black text-gray-400">${m.membershipNumberFormatted}</span>` : ''} ${isActive ? '<span class="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-black uppercase ml-1">Active</span>' : ''}</p>
+                        <p class="text-[10px] text-gray-400 font-bold">@${m.username} &bull; ${m.role} &bull; Registered ${registeredDate}</p>
                     </div>
                     <svg class="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         let currentAdminPlayerProfile = null;
@@ -5096,70 +5492,90 @@
 				return;
 			}
 
-            // 1. Calculate Rating Rank
+            // 1. Calculate Rating Rank (mixed board)
             const ratingSorted = [...globalData.standings].sort((a,b) => b.elo - a.elo);
             const skillRank = ratingSorted.findIndex(x => x.name === playerName) + 1;
 
-            // 2. Calculate Advanced Stats from History
-            let partners = {}, nemeses = {}, victims = {};
-            let recentForm = [];
-            let currentStreak = 0;
-            let streakBroken = false;
-            
+            // 2. Calculate Advanced Stats from History. Item #1: mixed and
+            // female_only matches are kept completely separate here too, so a
+            // female player's "main" profile (recent form, streak, partners,
+            // last-5 points) reflects only her mixed-session history - her
+            // female-only history gets its own dedicated section below.
+            const mixedHistory = globalData.history.filter(m => !m.isFemaleOnly);
+            const femaleHistory = globalData.history.filter(m => m.isFemaleOnly);
+
             // For reliable matching, we compare everything in lowercase with no spaces
             const pKey = p.name.toLowerCase().replace(/\s+/g, '');
 
-            // Process history (Matches are already reversed: Newest first)
-            globalData.history.forEach(m => {
-                const mw1 = m.w1.toLowerCase().replace(/\s+/g, '');
-                const mw2 = m.w2.toLowerCase().replace(/\s+/g, '');
-                const ml1 = m.l1.toLowerCase().replace(/\s+/g, '');
-                const ml2 = m.l2.toLowerCase().replace(/\s+/g, '');
+            // Item #6: "Further info" for a member's profile - alongside the W/L
+            // Recent Form, also total up the actual rating points gained/lost
+            // across those same last 5 games, so a member can see at a glance
+            // whether they're trending up or down in points, not just wins.
+            function computeProfileStats(historyList) {
+                let partners = {}, nemeses = {}, victims = {};
+                let recentForm = [];
+                let recentPointTotal = 0;
+                let currentStreak = 0;
+                let streakBroken = false;
 
-                const isWinner = (mw1 === pKey || mw2 === pKey);
-                const isLoser = (ml1 === pKey || ml2 === pKey);
-                
-                if (isWinner || isLoser) {
-                    // Build Recent Form (Last 5)
-                    if(recentForm.length < 5) recentForm.push(isWinner ? 'W' : 'L');
+                // Matches are already reversed: newest first.
+                historyList.forEach(m => {
+                    const mw1 = m.w1.toLowerCase().replace(/\s+/g, '');
+                    const mw2 = m.w2.toLowerCase().replace(/\s+/g, '');
+                    const ml1 = m.l1.toLowerCase().replace(/\s+/g, '');
+                    const ml2 = m.l2.toLowerCase().replace(/\s+/g, '');
 
-                    // Calculate Current Unbeaten Streak
-                    if (!streakBroken) {
-                        if (isWinner) currentStreak++;
-                        else streakBroken = true;
+                    const isWinner = (mw1 === pKey || mw2 === pKey);
+                    const isLoser = (ml1 === pKey || ml2 === pKey);
+
+                    if (isWinner || isLoser) {
+                        // Build Recent Form (Last 5) plus the matching points total
+                        if (recentForm.length < 5) {
+                            recentForm.push(isWinner ? 'W' : 'L');
+                            let pointChange = 0;
+                            if (mw1 === pKey) pointChange = m.c1;
+                            else if (mw2 === pKey) pointChange = m.c2;
+                            else if (ml1 === pKey) pointChange = m.c3;
+                            else if (ml2 === pKey) pointChange = m.c4;
+                            recentPointTotal += Number(pointChange || 0);
+                        }
+
+                        // Calculate Current Unbeaten Streak
+                        if (!streakBroken) {
+                            if (isWinner) currentStreak++;
+                            else streakBroken = true;
+                        }
+
+                        // Partner and Opponent Insights
+                        if (isWinner) {
+                            const partner = mw1 === pKey ? m.w2 : m.w1;
+                            if (partner !== "Singles") partners[partner] = (partners[partner] || 0) + 1;
+
+                            [m.l1, m.l2].forEach(opp => { if (opp !== "Singles") victims[opp] = (victims[opp] || 0) + 1; });
+                        } else {
+                            [m.w1, m.w2].forEach(opp => { if (opp !== "Singles") nemeses[opp] = (nemeses[opp] || 0) + 1; });
+                        }
                     }
-                    
-                    // Partner and Opponent Insights
-                    if (isWinner) {
-                        const partner = mw1 === pKey ? m.w2 : m.w1;
-                        if(partner !== "Singles") partners[partner] = (partners[partner] || 0) + 1;
-                        
-                        [m.l1, m.l2].forEach(opp => { if(opp !== "Singles") victims[opp] = (victims[opp] || 0) + 1; });
-                    } else {
-                        [m.w1, m.w2].forEach(opp => { if(opp !== "Singles") nemeses[opp] = (nemeses[opp] || 0) + 1; });
-                    }
-                }
-            });
+                });
 
-            const getTop = (obj) => Object.keys(obj).length ? Object.keys(obj).reduce((a, b) => obj[a] > obj[b] ? a : b) : "N/A";
-            const dreamPartner = getTop(partners);
-            const nemesis = getTop(nemeses);
-            const favoriteOpponent = getTop(victims);
-
-            // 3. Inactivity Decay Logic
-            let decayText = "Status: Active";
-            let decayColor = "text-green-600";
-            if (p.lastMatchDate) {
-                const daysInactive = Math.floor((serverNow() - new Date(p.lastMatchDate)) / 86400000);
-                if (daysInactive > 23) { 
-                    decayText = (30 - daysInactive) + " Days until Decay";
-                    decayColor = "text-orange-500";
-                }
-                if (daysInactive > 30) {
-                    decayText = "Rating Decaying";
-                    decayColor = "text-rose-600";
-                }
+                const getTop = (obj) => Object.keys(obj).length ? Object.keys(obj).reduce((a, b) => obj[a] > obj[b] ? a : b) : "N/A";
+                return {
+                    dreamPartner: getTop(partners),
+                    nemesis: getTop(nemeses),
+                    favoriteOpponent: getTop(victims),
+                    recentForm,
+                    recentPointTotal,
+                    currentStreak
+                };
             }
+
+            const mixedStats = computeProfileStats(mixedHistory);
+            const { dreamPartner, nemesis, favoriteOpponent, recentForm, recentPointTotal, currentStreak } = mixedStats;
+
+            // 3. Leaderboard visibility status (replaces the old "decay" system -
+            // ratings never reduce for inactivity any more, see isBoardVisible()).
+            const boardStatusText = p.isHidden ? 'Hidden - Play a Match to Reappear' : 'On Leaderboard';
+            const boardStatusColor = p.isHidden ? 'text-gray-400' : 'text-green-600';
 
             // 4. Badge Logic
             let badgeClass = "badge-novice", badgeText = "Novice";
@@ -5168,7 +5584,58 @@
             else if (p.elo > 1250) { badgeClass = "badge-challenger"; badgeText = "Challenger"; }
 
             const winPct = p.totalGames > 0 ? Math.round((p.wins / p.totalGames) * 100) : 0;
-            
+
+            // Item #1: for female players, also surface the standalone Women's
+            // Rankings rating/rank/form alongside the normal mixed rating.
+            const isFemale = p.gender === 'Female';
+            let femaleSectionHtml = '';
+            if (isFemale) {
+                const femaleRankSorted = [...globalData.standings].filter(x => x.gender === 'Female').sort((a,b) => b.femaleElo - a.femaleElo);
+                const femaleRank = femaleRankSorted.findIndex(x => x.name === playerName) + 1;
+                const femaleStats = computeProfileStats(femaleHistory);
+                const femaleWinPct = p.femaleTotalGames > 0 ? Math.round((p.femaleWins / p.femaleTotalGames) * 100) : 0;
+                const femaleBoardStatusText = p.femaleIsHidden ? 'Hidden - Play a Female Only Match' : 'On Women\'s Rankings';
+                const femaleBoardStatusColor = p.femaleIsHidden ? 'text-gray-400' : 'text-green-600';
+
+                femaleSectionHtml = `
+                <div class="space-y-3">
+                    <h4 class="font-black italic uppercase border-b-2 border-purple-100 pb-1 text-xs text-purple-500">♀️ Women's Rankings</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="stat-card border-l-4 border-purple-600 p-3 text-left bg-purple-50 rounded-xl">
+                            <p class="text-[10px] font-bold text-purple-400 uppercase">Women's Rating</p>
+                            <p class="text-3xl font-black text-purple-900">${p.femaleElo}</p>
+                            <p class="text-[9px] font-bold uppercase text-purple-500">Rank #${femaleRank || '—'} &bull; <span class="${femaleBoardStatusColor}">${femaleBoardStatusText}</span></p>
+                        </div>
+                        <div class="stat-card border-l-4 border-purple-600 p-3 flex flex-col justify-center bg-purple-50 rounded-xl text-center">
+                            <p class="text-[10px] font-bold text-purple-400 uppercase">Recent Form</p>
+                            <div class="flex justify-center gap-1 mt-1">
+                                ${femaleStats.recentForm.length > 0 ? femaleStats.recentForm.map(r => {
+                                    const bgColor = r === 'W' ? '#7e22ce' : '#e11d48';
+                                    return `<span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background-color: ${bgColor} !important; color: white !important; font-size: 10px; font-weight: 900;">${r}</span>`;
+                                }).join('') : '<span class="text-gray-300 italic text-xs">No matches</span>'}
+                            </div>
+                            <p class="text-[8px] uppercase mt-1 font-bold tracking-widest ${femaleStats.recentPointTotal > 0 ? 'text-green-600' : femaleStats.recentPointTotal < 0 ? 'text-rose-600' : 'text-gray-400'}">
+                                ${femaleStats.recentForm.length > 0 ? (femaleStats.recentPointTotal > 0 ? '+' : '') + femaleStats.recentPointTotal + ' PTS (LAST ' + femaleStats.recentForm.length + ')' : 'Last 5 Games'}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="py-3 bg-purple-50 rounded-xl text-center border border-purple-100 shadow-sm">
+                            <p class="text-[9px] font-bold text-purple-400 uppercase">Win Rate</p>
+                            <p class="text-xl font-black text-purple-900">${femaleWinPct}%</p>
+                        </div>
+                        <div class="py-3 bg-purple-50 rounded-xl text-center border border-purple-100 shadow-sm">
+                            <p class="text-[9px] font-bold text-purple-400 uppercase">Games Played</p>
+                            <p class="text-xl font-black text-purple-900">${p.femaleTotalGames}</p>
+                        </div>
+                        <div class="py-3 bg-purple-50 rounded-xl text-center border border-purple-100 shadow-sm">
+                            <p class="text-[9px] font-bold text-purple-400 uppercase">W / L</p>
+                            <p class="text-xl font-black text-purple-900">${p.femaleWins} / ${p.femaleLosses}</p>
+                        </div>
+                    </div>
+                </div>`;
+            }
+
             // 5. Inject Header
             const memberRecord = (globalData.members || []).find(m => normalizeName(m.name) === normalizeName(p.name));
             const membershipNumberBadge = memberRecord && memberRecord.membershipNumberFormatted
@@ -5190,7 +5657,7 @@
                     <div class="stat-card border-l-4 border-black p-3 text-left bg-gray-50 rounded-xl">
                         <p class="text-[10px] font-bold text-gray-400 uppercase">Skill Rating</p>
                         <p class="text-3xl font-black text-black">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? p.elo : '🔒'}</p>
-						<p class="text-[9px] font-bold uppercase ${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? decayColor : 'text-gray-400'}">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? decayText : 'Members only'}</p>
+						<p class="text-[9px] font-bold uppercase ${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? boardStatusColor : 'text-gray-400'}">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? boardStatusText : 'Members only'}</p>
                     </div>
                     <div class="stat-card border-l-4 border-rose-600 p-3 flex flex-col justify-center bg-gray-50 rounded-xl text-center">
                         <p class="text-[10px] font-bold text-gray-400 uppercase">Recent Form</p>
@@ -5201,7 +5668,10 @@
                                 return `<span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background-color: ${bgColor} !important; color: white !important; font-size: 10px; font-weight: 900;">${r}</span>`;
                             }).join('') : '<span class="text-gray-300 italic text-xs">No matches</span>'}
                         </div>
-                        <p class="text-[8px] text-gray-400 uppercase mt-1 font-bold tracking-widest">Last 5 Games</p>
+                        <!-- Item #6: +/- rating points total across those same last 5 games -->
+                        <p class="text-[8px] uppercase mt-1 font-bold tracking-widest ${recentPointTotal > 0 ? 'text-green-600' : recentPointTotal < 0 ? 'text-rose-600' : 'text-gray-400'}">
+                            ${recentForm.length > 0 ? (recentPointTotal > 0 ? '+' : '') + recentPointTotal + ' PTS (LAST ' + recentForm.length + ')' : 'Last 5 Games'}
+                        </p>
                     </div>
                 </div>
 
@@ -5237,6 +5707,7 @@
                         </div>
                     </div>
                 </div>
+                ${femaleSectionHtml}
                 <div class="h-20"></div>
             `;
             
@@ -5440,6 +5911,15 @@
                 }
                 document.getElementById('ladderSessionName').value = eventRow[1];
 
+                // Women's Rankings (item #1): a Female Only event naturally maps onto
+                // a Female Only ladder session - pre-tick it (and re-render the
+                // eligible player list) before matching confirmed names against it.
+                const femaleOnlyCheckbox = document.getElementById('ladderFemaleOnly');
+                if (femaleOnlyCheckbox) {
+                    femaleOnlyCheckbox.checked = !!eventRow[15];
+                    renderLadderCheckboxes();
+                }
+
                 let matched = 0;
                 const unmatched = [];
                 confirmedNames.forEach(name => {
@@ -5458,16 +5938,35 @@
             }, 150);
         }
 
+        // Women's Rankings (item #1): when "Female Only Ladder" is ticked, only
+        // offer female players for selection - avoids accidentally starting a
+        // female-only session with the wrong roster (the Elo engine itself
+        // doesn't care about gender, it only cares about the flag, but this
+        // keeps the UI honest about who the session is meant for).
         function renderLadderCheckboxes() {
             const container = document.getElementById('ladderPlayerCheckboxes');
             if (!container || !globalData.names) return;
-            container.innerHTML = `<input type="text" id="ladderSearch" oninput="filterLadderNames()" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + globalData.names.map(n => `
+            const femaleOnly = !!document.getElementById('ladderFemaleOnly')?.checked;
+            const eligibleNames = femaleOnly
+                ? globalData.names.filter(n => {
+                    const p = (globalData.standings || []).find(s => s.name === n);
+                    return p && p.gender === 'Female';
+                })
+                : globalData.names;
+            container.innerHTML = `<input type="text" id="ladderSearch" oninput="filterLadderNames()" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + eligibleNames.map(n => `
                 <label class="flex items-center space-x-3 p-3 bg-white rounded border cursor-pointer hover:bg-rose-50 transition">
                     <input type="checkbox" value="${n}" class="ladder-check w-5 h-5 accent-rose-600" onchange="validateLadderHeadcount()">
                     <span class="font-bold text-xs uppercase">${n}</span>
                 </label>
             `).join('');
+            if (femaleOnly && eligibleNames.length === 0) {
+                container.innerHTML += `<p class="text-xs font-bold text-gray-400 italic" style="grid-column: 1 / -1;">No players are marked as Female yet - check player profiles/registration.</p>`;
+            }
             validateLadderHeadcount();
+        }
+
+        function onLadderFemaleOnlyToggle() {
+            renderLadderCheckboxes();
         }
 
         function validateLadderHeadcount() {
@@ -5506,6 +6005,7 @@
 			const selected = Array.from(document.querySelectorAll('.ladder-check:checked')).map(cb => cb.value);
 			const totalRoundsRaw = document.getElementById('ladderTotalRounds').value;
 			const totalRounds = parseInt(totalRoundsRaw);
+			const femaleOnly = !!document.getElementById('ladderFemaleOnly')?.checked;
 			const btn = document.getElementById('genLadderBtn');
 
 			if (!sessionName) {
@@ -5523,7 +6023,7 @@
 			btn.disabled = true;
 			btn.innerText = "Starting...";
 
-			startLadderSessionData({ sessionName, players: selected, totalRounds: totalRounds })
+			startLadderSessionData({ sessionName, players: selected, totalRounds: totalRounds, femaleOnly })
 				.then(res => {
 					ladderSessionsState.push(res);
 					activeLadderSessionId = res.session.id;
@@ -5552,6 +6052,8 @@
 				step2.classList.add('hidden');
 				document.getElementById('ladderStep1Heading').innerText = "1. Select Players Present Today";
 				document.getElementById('ladderSessionName').value = "";
+				const femaleOnlyCheckbox = document.getElementById('ladderFemaleOnly');
+				if (femaleOnlyCheckbox) femaleOnlyCheckbox.checked = false;
 				renderLadderCheckboxes();
 				return;
 			}
@@ -5560,7 +6062,7 @@
 			step2.classList.remove('hidden');
 
 			document.getElementById('ladderRoundDisplay').innerText =
-				`${current.session.name.toUpperCase()} — ROUND ${current.session.currentRound} OF ${current.session.totalRounds}`;
+				`${current.session.femaleOnly ? '♀️ ' : ''}${current.session.name.toUpperCase()} — ROUND ${current.session.currentRound} OF ${current.session.totalRounds}`;
 
 			const totalGames = current.games.length;
 			const scoredGames = current.games.filter(g => g.scoreA !== "" && g.scoreB !== "").length;
@@ -5582,7 +6084,7 @@
 			const tabsHtml = ladderSessionsState.map(s => `
 				<button onclick="switchLadderTab('${s.session.id}')"
 					class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition ${activeLadderSessionId === s.session.id ? 'bg-black text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
-					${s.session.name}
+					${s.session.femaleOnly ? '♀️ ' : ''}${s.session.name}
 				</button>
 			`).join('');
 
@@ -6099,6 +6601,10 @@
             document.querySelectorAll('.membership-admin-tab').forEach(b => {
                 b.classList.toggle('active', b.dataset.tab === membershipAdminTab);
             });
+            // Item #5: total paid/active memberships, regardless of plan length -
+            // distinct from the "Manage Players" total registered accounts count.
+            const totalActiveCountEl = document.getElementById('membershipTotalActiveCount');
+            if (totalActiveCountEl) totalActiveCountEl.innerText = (globalData.members || []).filter(m => m.status === 'Active').length;
             const body = document.getElementById('membershipAdminBody');
             if (!body) return;
             if (membershipAdminTab === 'requests') body.innerHTML = renderMembershipRequestsTab();
@@ -6870,6 +7376,63 @@
             if (error) throw new Error(`Could not upload image (${error.message}). Make sure the "${MERCHANDISE_IMAGE_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(MERCHANDISE_IMAGE_BUCKET).getPublicUrl(path);
             return publicUrlData.publicUrl;
+        }
+
+        // Item #4: homepage photo gallery - admin uploads/removes/reorders
+        // photos here and toggles which ones are currently live; only
+        // is_active photos are shown on the public homepage (see
+        // renderHomepageGallery()). Reuses the same public "event-documents"
+        // Storage bucket as the Rules PDF / merchandise photos above (path
+        // prefix "gallery/") - no extra bucket needs creating.
+        const GALLERY_IMAGE_BUCKET = 'event-documents';
+
+        async function uploadGalleryImage(file) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `gallery/${Date.now()}-${safeName}`;
+            const { error } = await supabaseClient.storage.from(GALLERY_IMAGE_BUCKET).upload(path, file, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: file.type || 'image/jpeg'
+            });
+            if (error) throw new Error(`Could not upload image (${error.message}). Make sure the "${GALLERY_IMAGE_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
+            const { data: publicUrlData } = supabaseClient.storage.from(GALLERY_IMAGE_BUCKET).getPublicUrl(path);
+            return publicUrlData.publicUrl;
+        }
+
+        async function addGalleryPhoto(imageUrl, caption) {
+            const { error } = await supabaseClient.from('gallery_photos').insert({
+                image_url: imageUrl,
+                caption: caption || null,
+                sort_order: (globalData.galleryPhotos || []).length,
+                is_active: true
+            });
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function toggleGalleryPhotoActive(id, isActive) {
+            const { error } = await supabaseClient.from('gallery_photos').update({ is_active: isActive }).eq('id', id);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        async function reorderGalleryPhoto(id, direction) {
+            const photos = [...(globalData.galleryPhotos || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+            const index = photos.findIndex(p => p.id === id);
+            const swapWith = direction === 'up' ? index - 1 : index + 1;
+            if (index < 0 || swapWith < 0 || swapWith >= photos.length) return;
+            const a = photos[index], b = photos[swapWith];
+            const { error: err1 } = await supabaseClient.from('gallery_photos').update({ sort_order: b.sortOrder }).eq('id', a.id);
+            const { error: err2 } = await supabaseClient.from('gallery_photos').update({ sort_order: a.sortOrder }).eq('id', b.id);
+            if (err1) throw new Error(err1.message);
+            if (err2) throw new Error(err2.message);
+            return refreshAllData();
+        }
+
+        async function deleteGalleryPhoto(id) {
+            const { error } = await supabaseClient.from('gallery_photos').delete().eq('id', id);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
         }
 
         async function addMerchandiseItem(data) {
@@ -9559,11 +10122,45 @@
                 </div>
                 <button onclick="closeModal('managePlayersModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
             </div>
+            <!-- Item #5: at-a-glance registration stats for admin oversight -->
+            <div class="px-6 pb-4 flex-shrink-0 grid grid-cols-2 gap-3">
+                <div class="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                    <p class="text-[9px] font-bold text-gray-400 uppercase">Total Registered</p>
+                    <p id="managePlayersTotalCount" class="text-xl font-black text-black">0</p>
+                </div>
+                <div class="bg-green-50 rounded-xl p-3 text-center border border-green-100">
+                    <p class="text-[9px] font-bold text-green-600 uppercase">Actively Registered</p>
+                    <p id="managePlayersActiveCount" class="text-xl font-black text-green-700">0</p>
+                </div>
+            </div>
             <div class="px-6 pb-4 flex-shrink-0">
                 <input type="text" id="managePlayersSearch" placeholder="Search by name or username..." class="input-field border-2 w-full" oninput="renderManagePlayersList()">
             </div>
             <div class="px-6 pb-6 overflow-y-auto flex-1">
                 <div id="managePlayersList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+    <!-- MANAGE HOMEPAGE GALLERY MODAL (item #4) -->
+    <div id="manageGalleryModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4" style="padding-top: 80px; z-index: 750 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-gray-800" style="max-height: calc(100dvh - 120px); display: flex; flex-direction: column;">
+            <div class="p-6 pb-4 flex justify-between items-start flex-shrink-0">
+                <div>
+                    <h3 class="text-2xl font-black uppercase italic">🖼️ Manage Homepage Gallery</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Upload photos, choose which are live, and reorder them</p>
+                </div>
+                <button onclick="closeModal('manageGalleryModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <div class="px-6 pb-4 flex-shrink-0 space-y-3 border-b border-gray-100">
+                <input type="text" id="galleryPhotoCaption" placeholder="Optional caption (e.g. Summer Social 2026)" class="input-field border-2 w-full">
+                <label class="w-full flex items-center justify-center gap-2 bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest cursor-pointer hover:bg-rose-600 transition">
+                    <span id="galleryUploadBtn">Upload Photo</span>
+                    <input type="file" accept="image/*" class="hidden" onchange="handleGalleryPhotoUpload(this)">
+                </label>
+                <p class="text-[10px] text-gray-400 font-bold text-center">Toggle "Live on Homepage" on each photo below to choose what visitors see. Multiple live photos rotate as a slideshow.</p>
+            </div>
+            <div class="px-6 py-4 pb-6 overflow-y-auto flex-1">
+                <div id="manageGalleryList" class="space-y-2"></div>
             </div>
         </div>
     </div>
@@ -9911,6 +10508,13 @@
                 <div class="flex justify-between items-center">
                     <h3 class="text-3xl font-black italic uppercase">⭐ Manage Membership</h3>
                     <button onclick="closeMembershipModal()" class="text-gray-400 hover:text-black">✕</button>
+                </div>
+
+                <!-- Item #5: at-a-glance count of paid/active memberships, distinct
+                     from total registered players - see renderMembershipAdminModal(). -->
+                <div class="bg-yellow-50 rounded-xl p-3 border border-yellow-200 flex items-center justify-between">
+                    <p class="text-[10px] font-black uppercase text-yellow-700 tracking-widest">Total Active (Paid) Members</p>
+                    <p id="membershipTotalActiveCount" class="text-2xl font-black" style="color: var(--ponty-gold) !important;">0</p>
                 </div>
 
                 <div class="flex flex-wrap gap-2 border-b pb-3" id="membershipAdminTabs">
@@ -10345,7 +10949,7 @@
                     </div>
                 </div>
 
-                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-4">⏰ Payment is due at least 24 hours before the event. Unpaid spots may be given to a reserve.</p>
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-4">⏰ Payment is due within 15 minutes of booking or your spot may be given to a reserve. Cancellations within 24 hours of the event are not eligible for a refund.</p>
 
                 <label class="flex items-center gap-3 bg-rose-50 p-4 rounded-xl mb-6 cursor-pointer">
                     <input type="checkbox" id="paymentConfirmCheck" class="w-5 h-5 accent-rose-600">
