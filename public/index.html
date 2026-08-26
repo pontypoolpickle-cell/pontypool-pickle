@@ -1525,9 +1525,11 @@
         -- starting rating here, unlike the mixed ladder) and only ever moves
         -- when they play in a female_only ladder session/match - see
         -- applyMatchResultAndPersist()/recalculateAllEloFromScratch() in this
-        -- file. Purely cosmetic/no-op for players who never play a female-only
-        -- session (they simply stay at the 1200 default and never appear on
-        -- the Women's Rankings board - see isBoardVisible()).
+        -- file. A player who never plays a female-only session simply stays
+        -- at the 1200 default here, but can still appear on the Women's
+        -- Rankings board (showing that default 1200) as long as she's active
+        -- elsewhere in the club - see the visibility comment above
+        -- isBoardVisible() in this file.
         alter table players add column if not exists female_elo integer default 1200;
         alter table players add column if not exists female_wins integer default 0;
         alter table players add column if not exists female_losses integer default 0;
@@ -1742,23 +1744,27 @@
 
         // Leaderboard visibility (replaces the old "decay" + 100-day auto-hide
         // system entirely - there is no more gradual point loss for inactivity
-        // anywhere in this file). The rule is now simple and the same for both
-        // the mixed leaderboard and the Women's Rankings board:
+        // anywhere in this file). The rule is now simple:
         //   - A brand new registration that hasn't played a single game within
         //     7 days of creating their account is hidden (unchanged from before -
         //     keeps the boards free of untested accounts that never actually
         //     played). They appear instantly the moment their first match is
         //     recorded.
         //   - Once someone has played at least one game, they stay visible for
-        //     a rolling 28 days after their most recent match on that board,
-        //     then are hidden again until they next play - at which point the
-        //     28-day window simply restarts from the new match date. Ratings
-        //     are never reduced for inactivity; this only affects whether a
-        //     player currently shows up on the board.
-        // Applied per-board: the mixed board uses total_games/last_match_date,
-        // the Women's Rankings board uses female_total_games/female_last_match_date
-        // (see toPlayerView() below) - a player can be visible on one board and
-        // hidden on the other depending on which sessions they actually play.
+        //     a rolling 28 days after their most recent match, then are hidden
+        //     again until they next play - at which point the 28-day window
+        //     simply restarts from the new match date. Ratings are never
+        //     reduced for inactivity; this only affects whether a player
+        //     currently shows up on a board.
+        // Visibility is based on OVERALL club activity, combining mixed and
+        // female_only matches together, and is the same on both the mixed
+        // board and the Women's Rankings board - someone is only ever hidden
+        // if they're genuinely inactive across the whole club, not just on one
+        // specific board. E.g. a woman who played a mixed match yesterday but
+        // has never played a female_only match still shows up on both boards
+        // (with her real mixed rating on one and the 1200 default on the
+        // other) rather than confusingly disappearing from the Women's
+        // Rankings just because that specific pool has no games yet.
         const NEW_PLAYER_GRACE_DAYS = 7;
         const LEADERBOARD_ACTIVE_WINDOW_DAYS = 28;
 
@@ -1777,6 +1783,17 @@
         function toPlayerView(row, memberMap, memberCreatedAtByName) {
             const membershipUser = memberMap ? memberMap.get(normalizeName(row.name)) : null;
             const registeredAt = memberCreatedAtByName ? memberCreatedAtByName.get(normalizeName(row.name)) : null;
+
+            // Combine mixed + female_only activity into one "are they active
+            // in the club at all" signal, used for both boards' visibility -
+            // see the comment above isBoardVisible() for why.
+            const combinedTotalGames = Number(row.total_games || 0) + Number(row.female_total_games || 0);
+            const combinedLastMatchDate = [row.last_match_date, row.female_last_match_date]
+                .filter(Boolean)
+                .sort()
+                .pop() || null;
+            const isHidden = !!row.is_hidden || !isBoardVisible(combinedTotalGames, combinedLastMatchDate, registeredAt);
+
             return {
                 name: row.name,
                 elo: Number(row.elo || DEFAULT_ELO),
@@ -1788,19 +1805,20 @@
                 lastMatchDate: row.last_match_date || '',
                 membership: row.membership || 'Non-Member',
                 registeredAt: registeredAt || null,
-                isHidden: !!row.is_hidden || !isBoardVisible(row.total_games, row.last_match_date, registeredAt),
-                // Women's Rankings - completely separate pool (see the schema
-                // comment near `alter table players add column ... female_elo`
-                // above). isFemaleBoardHidden intentionally ignores gender - the
-                // board itself is filtered to gender === 'Female' at render time -
-                // this only decides whether an otherwise-eligible player is
-                // currently active enough on the women's ladder to show up.
+                isHidden,
+                // Women's Rankings - a separate rating pool from the mixed
+                // elo/wins/losses/total_games (see the schema comment near
+                // `alter table players add column ... female_elo` above), but
+                // visibility (femaleIsHidden) intentionally mirrors isHidden -
+                // both use the same combined club-wide activity, so a player
+                // isn't hidden from one board just because her recent match
+                // happened to be on the other one.
                 femaleElo: Number(row.female_elo != null ? row.female_elo : FEMALE_STARTING_ELO),
                 femaleWins: Number(row.female_wins || 0),
                 femaleLosses: Number(row.female_losses || 0),
                 femaleTotalGames: Number(row.female_total_games || 0),
                 femaleLastMatchDate: row.female_last_match_date || '',
-                femaleIsHidden: !!row.is_hidden || !isBoardVisible(row.female_total_games, row.female_last_match_date, registeredAt),
+                femaleIsHidden: isHidden,
                 isUnder18: !!row.is_under18,
                 isActiveMember: isMembershipActive(membershipUser),
                 membershipEndDate: membershipUser ? membershipUser.membership_end_date : null
@@ -5594,7 +5612,10 @@
                 const femaleRank = femaleRankSorted.findIndex(x => x.name === playerName) + 1;
                 const femaleStats = computeProfileStats(femaleHistory);
                 const femaleWinPct = p.femaleTotalGames > 0 ? Math.round((p.femaleWins / p.femaleTotalGames) * 100) : 0;
-                const femaleBoardStatusText = p.femaleIsHidden ? 'Hidden - Play a Female Only Match' : 'On Women\'s Rankings';
+                // femaleIsHidden mirrors isHidden (see toPlayerView) - a player
+                // is only ever hidden for being inactive across the whole club,
+                // not just on this one board, so the wording matches that.
+                const femaleBoardStatusText = p.femaleIsHidden ? 'Hidden - Play a Match to Reappear' : 'On Women\'s Rankings';
                 const femaleBoardStatusColor = p.femaleIsHidden ? 'text-gray-400' : 'text-green-600';
 
                 femaleSectionHtml = `
