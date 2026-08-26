@@ -4518,37 +4518,60 @@
             // 7-day window - see the comment on that function for why.
             const climbersContainer = document.getElementById('climbersContainer');
             const climbersList = document.getElementById('climbersList');
-            // Only counts mixed-rating matches (item #1) - a female_only
-            // session's point changes belong to the separate Women's Rankings,
-            // not this homepage widget for the normal mixed rating.
-            const recentEloChanges = computeRecentEloChanges((data.history || []).filter(m => !m.isFemaleOnly), 7);
+            // Item #1: computed separately for the mixed rating and the
+            // Women's Rankings, since they're independent rating pools - a
+            // player can climb on either (or both). Each player is then
+            // represented by whichever of the two produced her/his bigger
+            // climb this week (they're never added together, since they're
+            // different rating systems), so a big Women's Rankings climb can
+            // still outrank a smaller mixed climb for a spot in the list.
+            const mixedRecentChanges = computeRecentEloChanges((data.history || []).filter(m => !m.isFemaleOnly), 7);
+            const femaleRecentChanges = computeRecentEloChanges((data.history || []).filter(m => m.isFemaleOnly), 7);
 
             const topClimbers = [...data.standings]
                 .filter(p => p.name !== "Singles")
-                .map(p => ({ ...p, recentChange: recentEloChanges.get(p.name) || 0 }))
+                .map(p => {
+                    const mixedChange = mixedRecentChanges.get(p.name) || 0;
+                    const femaleChange = femaleRecentChanges.get(p.name) || 0;
+                    const isFemaleClimb = femaleChange > mixedChange;
+                    return {
+                        ...p,
+                        recentChange: isFemaleClimb ? femaleChange : mixedChange,
+                        isFemaleClimb,
+                        displayRating: isFemaleClimb ? p.femaleElo : p.elo
+                    };
+                })
                 .filter(p => p.recentChange > 0)
                 .sort((a, b) => b.recentChange - a.recentChange)
                 .slice(0, 3);
 
             if (topClimbers.length > 0) {
                 climbersContainer.classList.remove('hidden');
-                climbersList.innerHTML = topClimbers.map((p, i) => `
-                    <div class="card p-6" style="background-color: #000000 !important; color: #ffffff !important; border-bottom: 4px solid #e11d48 !important; border-radius: 1rem !important;">
+                climbersList.innerHTML = topClimbers.map((p, i) => {
+                    // Purple for a climb driven by the Women's Rankings (to
+                    // match the purple Women's Rankings section on the profile
+                    // modal), red/rose for the normal mixed rating - same as before.
+                    const accentColor = p.isFemaleClimb ? '#9333ea' : '#e11d48';
+                    const labelPrefix = p.isFemaleClimb ? '♀️ ' : '';
+                    const ratingLabel = p.isFemaleClimb ? "Women's Rating" : 'Rating';
+                    return `
+                    <div class="card p-6" style="background-color: #000000 !important; color: #ffffff !important; border-bottom: 4px solid ${accentColor} !important; border-radius: 1rem !important;">
                         <div class="flex justify-between items-start">
-                            <span style="color: #e11d48 !important; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em;">
-                                ${i === 0 ? 'Climber of the Week' : 'On the Rise'}
+                            <span style="color: ${accentColor} !important; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em;">
+                                ${labelPrefix}${i === 0 ? 'Climber of the Week' : 'On the Rise'}
                             </span>
-                            <span style="color: #e11d48 !important; font-size: 1.5rem; font-weight: 900;">+${p.recentChange}</span>
+                            <span style="color: ${accentColor} !important; font-size: 1.5rem; font-weight: 900;">+${p.recentChange}</span>
                         </div>
                         <h4 style="color: #ffffff !important; font-family: 'Oswald', sans-serif !important; font-size: 1.8rem; font-weight: 900; font-style: italic; text-transform: uppercase; margin-top: 1rem;">
                             ${p.name}
                         </h4>
                         <div style="margin-top: 1rem; display: flex; justify-between; align-items: center;">
-                            <p style="color: #999999 !important; font-size: 10px; font-weight: 700; text-transform: uppercase; margin: 0;">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? 'Rating: ' + p.elo : '🔒 Members only'}</p>
-                            <button onclick="openProfile('${p.name}')" style="color: #e11d48 !important; font-size: 10px; font-weight: 900; text-transform: uppercase; text-decoration: underline; background: none; border: none; cursor: pointer; margin-left: auto;">View Profile</button>
+                            <p style="color: #999999 !important; font-size: 10px; font-weight: 700; text-transform: uppercase; margin: 0;">${(currentUser && (currentUser.role === 'Member' || currentUser.role === 'Admin')) ? ratingLabel + ': ' + p.displayRating : '🔒 Members only'}</p>
+                            <button onclick="openProfile('${p.name}')" style="color: ${accentColor} !important; font-size: 10px; font-weight: 900; text-transform: uppercase; text-decoration: underline; background: none; border: none; cursor: pointer; margin-left: auto;">View Profile</button>
                         </div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             } else {
                 climbersContainer.classList.add('hidden');
             }
