@@ -128,7 +128,7 @@ serve(async (req) => {
         ` : `
           <div style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;padding:16px 20px;margin:20px 0;">
             <p style="margin:0 0 12px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">Payment Due</p>
-            <p style="margin:0 0 12px;font-family:Arial,sans-serif;font-size:13px;color:#374151;">Please log in to the website to view payment details. Payment is required at least <strong>24 hours before</strong> the event.</p>
+            <p style="margin:0 0 12px;font-family:Arial,sans-serif;font-size:13px;color:#374151;">Please log in to the website to view payment details. Payment is required within <strong>15 minutes</strong> of booking. Cancellations within 24 hours of the event are not eligible for a refund.</p>
           </div>
         `;
         const body = `
