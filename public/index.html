@@ -142,6 +142,7 @@
                 <button onclick="showTab('club-info-page')" id="nav-club-info" class="nav-link py-1">Club Info & Resources</button>
                 <button onclick="showTab('merchandise-page')" id="nav-merchandise" class="nav-link py-1">Merchandise</button>
                 <button onclick="showTab('membership-page')" id="nav-membership" class="nav-link nav-link-gold py-1">⭐ Membership</button>
+                <button onclick="openWalletModal()" id="nav-wallet" class="hidden bg-black bg-opacity-30 border border-white border-opacity-20 px-3 py-1.5 rounded-full font-black" style="color: var(--ponty-gold) !important;">💰 <span id="nav-wallet-balance">£0.00</span></button>
                 <button onclick="showTab('admin')" id="nav-admin" class="btn-red px-4 py-2 rounded font-black hidden">Admin</button>
                 <button onclick="openAuthModal()" id="nav-auth" class="bg-white text-black px-4 py-2 rounded-full font-black hover:bg-rose-600 hover:text-white transition">Login / Sign Up</button>
             </div>
@@ -172,6 +173,7 @@
                 <button onclick="showTab('club-info-page'); closeMobileMenu();" id="nav-club-info-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">ℹ️ Club Info & Resources</button>
                 <button onclick="showTab('merchandise-page'); closeMobileMenu();" id="nav-merchandise-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🛍️ Merchandise</button>
                 <button onclick="showTab('membership-page'); closeMobileMenu();" id="nav-membership-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 nav-link-gold transition">⭐ Membership</button>
+                <button onclick="openWalletModal(); closeMobileMenu();" id="nav-wallet-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 transition" style="color: var(--ponty-gold) !important;">💰 Wallet: <span id="nav-wallet-balance-m">£0.00</span></button>
                 <button onclick="showTab('admin'); closeMobileMenu();" id="nav-admin-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 text-rose-400 hover:text-rose-300 transition">⚙️ Admin</button>
 				<button onclick="openAuthModal(); closeMobileMenu();" id="nav-auth-m" class="text-left px-2 py-3 text-rose-400 hover:text-rose-300 transition">Login / Sign Up</button>
             </div>
@@ -475,7 +477,7 @@
                 <div class="card p-8 border-t-8 border-black shadow-2xl bg-white space-y-6">
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Event Payments</h4>
-                        <p class="text-gray-700 leading-relaxed">All event fees must be paid within <strong>15 minutes</strong> of booking your spot. Your place is only held for that 15-minute window - if payment isn't received in time, the spot is automatically released and reassigned to the next reserve player, with club members receiving automatic priority.</p>
+                        <p class="text-gray-700 leading-relaxed">Event fees are paid instantly from your club wallet balance and must be settled within <strong>15 minutes</strong> of booking your spot. Your place is only held for that 15-minute window - if payment isn't completed in time, the spot is automatically released and reassigned to the next reserve player, with club members receiving automatic priority. Top up your wallet balance any time using the 💰 Wallet button once logged in.</p>
                     </div>
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Cancellations & Refunds</h4>
@@ -593,26 +595,8 @@
                 <div class="border-b-4 pb-2" style="border-color: var(--ponty-gold) !important;">
                     <h2 class="text-4xl font-black italic uppercase">How to Become a Member</h2>
                 </div>
-                <p class="text-gray-700 leading-relaxed">Choose a duration below, send payment via bank transfer using the details underneath, then click <strong>I've Paid</strong> and give us the payment reference so we can match it against the statement. An admin will review and activate your membership shortly after.</p>
+                <p class="text-gray-700 leading-relaxed">Choose a duration below and pay instantly from your club wallet balance. No balance? Top up with a card via the 💰 Wallet button (top of page, once logged in) — Stripe fees are much lower on a top-up than on lots of small payments, so it's worth topping up in one go rather than a little at a time.</p>
                 <div id="membershipPlansContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
-
-                <div class="card p-6 border-t-4 shadow-lg bg-white" style="border-color: var(--ponty-gold) !important;">
-                    <h4 class="font-black text-sm uppercase italic text-gray-500 mb-3">Bank Transfer Details</h4>
-                    <div class="bg-gray-50 rounded-lg p-4 space-y-2 border border-gray-100">
-                        <div class="flex justify-between text-sm">
-                            <span class="font-bold text-gray-500">Name:</span>
-                            <span class="font-black">Pontypool Pickleball</span>
-                        </div>
-                        <div class="flex justify-between text-sm">
-                            <span class="font-bold text-gray-500">Sort Code:</span>
-                            <span class="font-black">51-61-02</span>
-                        </div>
-                        <div class="flex justify-between text-sm">
-                            <span class="font-bold text-gray-500">Account No:</span>
-                            <span class="font-black">76584135</span>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- NOT FOR PROFIT NOTE -->
@@ -1578,6 +1562,18 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             global: {
                 fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' })
+            },
+            // Store the Supabase Auth session in sessionStorage rather than the
+            // default localStorage, so it has exactly the same lifetime as the
+            // app's own `pickleUser` session cache (survives a refresh, cleared
+            // when the tab/browser closes) - this app has never persisted logins
+            // across browser restarts, and login now controls real access to
+            // wallet balance, so it shouldn't start doing so silently just because
+            // Supabase Auth's default differs from this app's existing behaviour.
+            auth: {
+                storage: window.sessionStorage,
+                persistSession: true,
+                autoRefreshToken: true
             }
         });
 
@@ -3508,6 +3504,149 @@
             if (error) throw new Error(error.message);
         }
 
+        // --- WALLET (Stripe top-ups + balance spending) ---------------------------
+        // Balance itself is never written directly by this client - every change
+        // goes through an Edge Function (wallet-topup-checkout, spend-balance,
+        // cancel-event-signup, admin-actions) that verifies who's calling and does
+        // the real math server-side. See supabase/sql/wallet_stripe_auth_migration.sql
+        // and supabase/functions/README.md for the full picture.
+        const WALLET_TOPUP_PRESETS_PENCE = [1000, 2000, 5000]; // £10 / £20 / £50
+
+        function renderWalletWidget() {
+            const btn = document.getElementById('nav-wallet');
+            const btnMobile = document.getElementById('nav-wallet-m');
+            const balanceEl = document.getElementById('nav-wallet-balance');
+            const balanceElMobile = document.getElementById('nav-wallet-balance-m');
+            const formatted = '£' + Number((currentUser && currentUser.balance) || 0).toFixed(2);
+
+            if (currentUser) {
+                if (btn) btn.classList.remove('hidden');
+                if (btnMobile) btnMobile.classList.remove('hidden');
+            } else {
+                if (btn) btn.classList.add('hidden');
+                if (btnMobile) btnMobile.classList.add('hidden');
+            }
+            if (balanceEl) balanceEl.innerText = formatted;
+            if (balanceElMobile) balanceElMobile.innerText = formatted;
+        }
+
+        async function callEdgeFunction(name, body) {
+            const { data, error } = await supabaseClient.functions.invoke(name, { body: body || {} });
+            if (error) {
+                // supabase-js buries the function's own JSON error body inside
+                // error.context - surface that instead of the generic "non-2xx"
+                // message wherever it's available.
+                let message = error.message || 'Something went wrong - please try again.';
+                try {
+                    if (error.context && typeof error.context.json === 'function') {
+                        const body = await error.context.json();
+                        if (body && body.error) message = body.error;
+                    }
+                } catch (e) { /* fall back to the generic message above */ }
+                throw new Error(message);
+            }
+            if (data && data.error) throw new Error(data.error);
+            return data;
+        }
+
+        function openWalletModal() {
+            if (!currentUser) return openAuthModal();
+            document.getElementById('walletModalBalance').innerText = '£' + Number(currentUser.balance || 0).toFixed(2);
+            document.getElementById('walletTopupCustomAmount').value = '';
+            renderWalletTopupPresets();
+            openModal('walletModal');
+            loadWalletTransactions();
+        }
+
+        function closeWalletModal() {
+            closeModal('walletModal');
+        }
+
+        function renderWalletTopupPresets() {
+            const container = document.getElementById('walletTopupPresets');
+            if (!container) return;
+            container.innerHTML = WALLET_TOPUP_PRESETS_PENCE.map(pence => `
+                <button onclick="startWalletTopup(${pence})" class="membership-duration-option" style="padding: 14px 4px;">
+                    <p class="font-black text-lg">£${(pence / 100).toFixed(0)}</p>
+                </button>
+            `).join('');
+        }
+
+        function startWalletTopupCustom() {
+            const pounds = Number(document.getElementById('walletTopupCustomAmount').value);
+            if (!pounds || pounds <= 0) return triggerError('Please enter an amount.');
+            startWalletTopup(Math.round(pounds * 100));
+        }
+
+        function startWalletTopup(amountPence) {
+            const btn = document.getElementById('walletTopupSubmitBtn');
+            if (btn) { btn.disabled = true; btn.innerText = 'Redirecting to Stripe...'; }
+            callEdgeFunction('wallet-topup-checkout', { amountPence })
+                .then(res => {
+                    if (res && res.url) window.location.href = res.url;
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    if (btn) { btn.disabled = false; btn.innerText = 'Top Up with Card'; }
+                });
+        }
+
+        function walletTransactionLabel(tx) {
+            const labels = {
+                topup: '💳 Stripe Top-Up',
+                event_fee: '🏓 Event Fee',
+                event_refund: '↩️ Event Refund',
+                membership: '⭐ Membership',
+                merch: '🛍️ Merchandise',
+                admin_adjustment: '⚙️ Admin Adjustment'
+            };
+            return labels[tx.type] || tx.type;
+        }
+
+        function loadWalletTransactions() {
+            const container = document.getElementById('walletTransactionsList');
+            if (!container) return;
+            container.innerHTML = `<p class="text-center text-gray-400 italic py-6 text-sm">Loading...</p>`;
+            // RLS on wallet_transactions restricts this to the logged-in member's own
+            // rows regardless of any filter here - see the SQL migration file.
+            supabaseClient.from('wallet_transactions').select('*').order('created_at', { ascending: false }).limit(25)
+                .then(({ data, error }) => {
+                    if (error) { container.innerHTML = `<p class="text-center text-rose-500 text-xs py-6">${error.message}</p>`; return; }
+                    if (!data || data.length === 0) { container.innerHTML = `<p class="text-center text-gray-400 italic py-6 text-sm">No transactions yet.</p>`; return; }
+                    container.innerHTML = data.map(tx => `
+                        <div class="flex justify-between items-center py-2 border-b border-gray-50">
+                            <div>
+                                <p class="font-black text-xs uppercase">${walletTransactionLabel(tx)}</p>
+                                <p class="text-[10px] text-gray-400 font-bold">${new Date(tx.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}${tx.note ? ' &bull; ' + tx.note : ''}</p>
+                            </div>
+                            <p class="font-black text-sm ${Number(tx.amount) >= 0 ? 'text-green-600' : 'text-rose-600'}">${Number(tx.amount) >= 0 ? '+' : ''}£${Number(tx.amount).toFixed(2)}</p>
+                        </div>
+                    `).join('');
+                });
+        }
+
+        // Picks up Stripe's redirect back to the site after a top-up (see
+        // wallet-topup-checkout's success_url/cancel_url) and refreshes balance.
+        function handleWalletTopupRedirect() {
+            const params = new URLSearchParams(window.location.search);
+            if (!params.has('topup')) return;
+            if (params.get('topup') === 'success') {
+                triggerToast('Payment received! Your balance is updating now...');
+                if (currentUser) setTimeout(() => refreshCurrentUserMembership(), 1500);
+            } else if (params.get('topup') === 'cancelled') {
+                triggerToast('Top-up cancelled - no payment was taken.');
+            }
+            params.delete('topup');
+            params.delete('session_id');
+            const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+            window.history.replaceState({}, '', newUrl);
+        }
+
+        // DEPRECATED (wallet system): membership purchases now go straight through
+        // spend-balance (see executeSubmitMembershipPayment()) and activate
+        // instantly - there's no more "requested, awaiting review" step, and this
+        // would fail anyway since membership_status/membership_requested_duration_weeks
+        // can no longer be written directly by the browser. Left for reference only.
         async function submitMembershipPaymentRequest(payload) {
             if (!currentUser) throw new Error('Please log in first.');
             const durationWeeks = Number(payload.durationWeeks);
@@ -3544,6 +3683,8 @@
             return refreshAllData();
         }
 
+        // DEPRECATED (wallet system): see submitMembershipPaymentRequest() above -
+        // nothing calls this any more.
         async function cancelMembershipRequest() {
             if (!currentUser) throw new Error('Please log in first.');
             const { data: userRow, error: fetchErr } = await supabaseClient.from('users').select('*').eq('username', currentUser.username).single();
@@ -3563,6 +3704,16 @@
             return refreshAllData();
         }
 
+        // ONE-TIME TRANSITIONAL FLOW ONLY (wallet system): this is the old bank-
+        // transfer "Requests" review queue. Membership purchases now activate
+        // instantly via spend-balance and never populate this queue, so in normal
+        // operation this tab will simply stay empty. Before running the SQL in
+        // supabase/sql/wallet_stripe_auth_migration.sql (which revokes the
+        // browser's ability to write membership_status/dates directly), use this
+        // screen one last time to activate or decline any requests left over from
+        // before the switch - after that migration runs, this function (like
+        // declineMembershipRequest() below) will fail with a permission error,
+        // by design.
         async function activateMembership(payload) {
             const { data: userRow, error: fetchErr } = await supabaseClient.from('users').select('*').eq('id', payload.userId).single();
             if (fetchErr) throw new Error(fetchErr.message);
@@ -3643,6 +3794,11 @@
             return refreshAllData();
         }
 
+        // DEPRECATED (wallet system): role/membership_status/membership_*_date can
+        // no longer be written directly by the browser - see
+        // supabase/sql/wallet_stripe_auth_migration.sql. executeAdjustMembership()
+        // now calls the admin-actions Edge Function instead. Left here for
+        // reference only.
         async function adjustMembership(payload) {
             const startDate = payload.startDate || null;
             const endDate = payload.endDate || null;
@@ -3672,6 +3828,8 @@
         // (in which case it simply extends their current expiry by a month).
         const FREE_MEMBERSHIP_GIFT_WEEKS = 4;
 
+        // DEPRECATED (wallet system): see adjustMembership() above -
+        // executeGiftMembership() now calls the admin-actions Edge Function.
         async function giftFreeMembership(payload) {
             const { data: users, error: fetchErr } = await supabaseClient.from('users').select('*');
             if (fetchErr) throw new Error(fetchErr.message);
@@ -3742,6 +3900,7 @@
                 role: role,
                 gender: userRow.gender || currentUser.gender || '',
                 isUnder18: !!userRow.is_under18,
+                balance: Number(userRow.balance || 0),
                 membershipStatus: status,
                 membershipDurationWeeks: userRow.membership_duration_weeks || null,
                 membershipRequestedDurationWeeks: userRow.membership_requested_duration_weeks || null,
@@ -3752,6 +3911,7 @@
             sessionStorage.setItem('pickleUser', JSON.stringify(currentUser));
             updateUIForLogin();
             renderMembershipPage();
+            renderWalletWidget();
 
             // globalData.members/standings are only (re)fetched on initial page load
             // or after an action the current user themselves triggers - a long-lived
@@ -3954,6 +4114,12 @@
             return Number((isMemberRate ? eventRow.member_price : eventRow.non_member_price) || 0);
         }
 
+        // DEPRECATED (wallet system): confirming payment now goes through the
+        // spend-balance Edge Function (see confirmPaymentMade()), which is the only
+        // thing allowed to write signups.payment_status - see
+        // supabase/sql/wallet_stripe_auth_migration.sql. Left here for reference/
+        // history only; calling this from the browser will now fail with a
+        // permission error, by design.
         async function markSignupPaid(payload) {
             // Item #14: if this was a temporary 15-minute hold, confirming payment
             // immediately confirms the seat outright and clears the countdown - per
@@ -4027,6 +4193,8 @@
         async function registerUser(data) {
             const username = normalizeCredential(data.username);
             const password = normalizeCredential(data.password);
+            const email = normalizeCredential(data.email);
+            if (!email || email.indexOf('@') === -1) throw new Error('Please enter a valid email address - it doubles as your login going forward.');
 
             const { data: existing, error: existingErr } = await supabaseClient
                 .from('users')
@@ -4036,12 +4204,20 @@
             if (existingErr) throw new Error(existingErr.message);
             if (existing && existing.length > 0) throw new Error('Username already exists.');
 
+            // Real authentication now lives in Supabase Auth (not the old
+            // password_hash column) - see supabase/sql/wallet_stripe_auth_migration.sql
+            // for why. signUp() creates the login credential; the `users` row below is
+            // still this app's own profile record, linked to it via auth_user_id.
+            const { data: authData, error: authErr } = await supabaseClient.auth.signUp({ email: email, password: password });
+            if (authErr) throw new Error(authErr.message);
+            if (!authData || !authData.user) throw new Error('Could not create your login - please try again.');
+
             const { error } = await supabaseClient.from('users').insert({
                 username: username,
-                password_hash: hashPassword(password),
+                auth_user_id: authData.user.id,
                 first_name: data.firstName,
                 surname: data.surname,
-                email: data.email || null,
+                email: email,
                 role: 'Non-Member',
                 gender: data.gender || null,
                 starting_elo: Number(data.startingElo || DEFAULT_ELO),
@@ -4075,6 +4251,9 @@
             const username = normalizeCredential(payload.username);
             const password = normalizeCredential(payload.password);
 
+            // Usernames are still how members identify themselves on this site, but
+            // Supabase Auth signs in by email - look up the email on file for this
+            // username, then hand off the actual password check to Supabase Auth.
             const { data, error } = await supabaseClient
                 .from('users')
                 .select('*')
@@ -4085,10 +4264,16 @@
             if (!data || data.length === 0) throw new Error('Invalid username or password.');
 
             const user = data[0];
-            if (user.password_hash !== hashPassword(password)) throw new Error('Invalid username or password.');
+            if (!user.email) throw new Error('This account has no email on file yet - please contact an admin.');
+
+            const { error: authErr } = await supabaseClient.auth.signInWithPassword({ email: user.email, password: password });
+            if (authErr) throw new Error('Invalid username or password.');
 
             // Client-side safety net: auto-expire a lapsed membership as soon as the member
             // logs in. The authoritative check lives in the scheduled Supabase Edge Function.
+            // (This is only a display nicety now - membership_status/role can no longer be
+            // written by the browser, so a permission error here is expected and harmless;
+            // isMembershipActive() elsewhere always re-checks membership_end_date anyway.)
             if (user.role !== 'Admin' && user.membership_status === 'Active' && user.membership_end_date && user.membership_end_date < todayStr()) {
                 await applyMembershipFields(user.username, { membership_status: 'Expired' }).catch(() => {});
                 user.membership_status = 'Expired';
@@ -4103,6 +4288,7 @@
                 role: user.role || 'Non-Member',
                 gender: user.gender || '',
                 isUnder18: !!user.is_under18,
+                balance: Number(user.balance || 0),
                 membershipStatus: user.membership_status || 'None',
                 membershipDurationWeeks: user.membership_duration_weeks || null,
                 membershipRequestedDurationWeeks: user.membership_requested_duration_weeks || null,
@@ -4204,63 +4390,51 @@
             return refreshAllData();
         }
 
-        async function requestPasswordReset(payload) {
-            const identifier = escapeIlikeValue(normalizeCredential(payload.identifier));
+        // Resolves the "username or email" the reset form accepts into a real email -
+        // Supabase Auth itself only knows about emails, not usernames.
+        async function resolveEmailForIdentifier(identifier) {
+            const escaped = escapeIlikeValue(normalizeCredential(identifier));
             const { data: users, error } = await supabaseClient
                 .from('users')
-                .select('*')
-                .or(`username.ilike.${identifier},email.ilike.${identifier}`)
+                .select('email')
+                .or(`username.ilike.${escaped},email.ilike.${escaped}`)
                 .limit(1);
             if (error) throw new Error(error.message);
-            if (!users || users.length === 0) throw new Error('No account found for that username/email.');
+            if (!users || users.length === 0 || !users[0].email) throw new Error('No account found for that username/email.');
+            return users[0].email;
+        }
 
-            const user = users[0];
-            const token = String(Math.floor(100000 + Math.random() * 900000));
-            const expiry = new Date(serverNow().getTime() + 60 * 60 * 1000).toISOString();
-
-            const { error: updateErr } = await supabaseClient
-                .from('users')
-                .update({ reset_token: token, reset_token_expiry: expiry })
-                .eq('id', user.id);
-            if (updateErr) throw new Error(updateErr.message);
-
-            if (user.email) {
-                await sendEmail('password_reset', {
-					firstName: user.first_name,
-					email: user.email,
-					token: token
-				});
-            }
-            return true;
+        // Sends the same 6-digit reset code experience as before, now backed by
+        // Supabase Auth's own password-recovery emails instead of a home-grown
+        // reset_token column - see resetPassword() below and
+        // supabase/functions/README.md for the one-off Dashboard setup (custom
+        // SMTP + email template) this relies on. Because it's Supabase Auth's own
+        // "forgot password" mechanism, this is also exactly what a member (or an
+        // admin migrating everyone to Supabase Auth) can call again if the first
+        // email never arrives - there's nothing admin-only or one-shot about it.
+        async function requestPasswordReset(payload) {
+            const email = await resolveEmailForIdentifier(payload.identifier);
+            const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+            if (error) throw new Error(error.message);
+            return { email };
         }
 
         async function resetPassword(payload) {
-            const { token, newPassword } = payload;
-            const identifier = escapeIlikeValue(normalizeCredential(payload.identifier));
-            const { data: users, error } = await supabaseClient
-                .from('users')
-                .select('*')
-                .or(`username.ilike.${identifier},email.ilike.${identifier}`)
-                .limit(1);
-            if (error) throw new Error(error.message);
-            if (!users || users.length === 0) throw new Error('Account not found.');
+            const email = payload.email || await resolveEmailForIdentifier(payload.identifier);
+            const token = String(payload.token || '').trim();
+            const newPassword = normalizeCredential(payload.newPassword);
 
-            const user = users[0];
-            const expiryTime = user.reset_token_expiry ? new Date(user.reset_token_expiry).getTime() : 0;
-            if (String(user.reset_token || '') !== String(token) || expiryTime < serverNow().getTime()) {
-                throw new Error('Invalid or expired reset code.');
-            }
+            // Verifying the code signs us in with a short-lived "recovery" session -
+            // just enough privilege to change this one account's own password, then
+            // we sign back out so the existing "log in again with your new password"
+            // flow is unchanged.
+            const { error: verifyErr } = await supabaseClient.auth.verifyOtp({ email, token, type: 'recovery' });
+            if (verifyErr) throw new Error('Invalid or expired reset code.');
 
-            const { error: updateErr } = await supabaseClient
-                .from('users')
-                .update({
-                    password_hash: hashPassword(normalizeCredential(newPassword)),
-                    reset_token: null,
-                    reset_token_expiry: null
-                })
-                .eq('id', user.id);
+            const { error: updateErr } = await supabaseClient.auth.updateUser({ password: newPassword });
             if (updateErr) throw new Error(updateErr.message);
 
+            await supabaseClient.auth.signOut();
             return true;
         }
 
@@ -5306,8 +5480,41 @@
             document.getElementById('playerProfileEmail').innerText = m.email || 'Not provided';
             document.getElementById('playerProfileRole').innerText = `${m.role} / ${m.status}`;
             document.getElementById('playerProfileMembershipNumberInput').value = m.membershipNumber || '';
+            document.getElementById('playerProfileBalanceAdjustAmount').value = '';
+            document.getElementById('playerProfileBalanceAdjustNote').value = '';
+            document.getElementById('playerProfileBalance').innerText = '...';
 
             openModal('adminPlayerProfileModal');
+
+            // Balance isn't part of the broadly-shared globalData.members fetch (it's
+            // sensitive - every visitor's browser loads that on page load for the
+            // public leaderboard, and balance has no business being in that blast
+            // radius) - fetch it separately, just for the one profile an admin has
+            // deliberately opened.
+            supabaseClient.from('users').select('id, balance').eq('username', username).maybeSingle().then(({ data, error }) => {
+                if (error || !data) { document.getElementById('playerProfileBalance').innerText = 'Unknown'; return; }
+                currentAdminPlayerProfile.userId = data.id;
+                document.getElementById('playerProfileBalance').innerText = '£' + Number(data.balance || 0).toFixed(2);
+            });
+        }
+
+        function savePlayerBalanceAdjustment() {
+            if (!currentAdminPlayerProfile || !currentAdminPlayerProfile.userId) return triggerError("Please wait for the balance to load first.");
+            const amount = Number(document.getElementById('playerProfileBalanceAdjustAmount').value);
+            if (!amount) return triggerError("Please enter a non-zero amount.");
+            const note = document.getElementById('playerProfileBalanceAdjustNote').value.trim();
+
+            const btn = document.getElementById('playerProfileBalanceAdjustBtn');
+            btn.disabled = true; btn.innerText = "Applying...";
+            callEdgeFunction('admin-actions', { action: 'adjustBalance', userId: currentAdminPlayerProfile.userId, amount, note })
+                .then(res => {
+                    document.getElementById('playerProfileBalance').innerText = '£' + Number(res.newBalance || 0).toFixed(2);
+                    document.getElementById('playerProfileBalanceAdjustAmount').value = '';
+                    document.getElementById('playerProfileBalanceAdjustNote').value = '';
+                    triggerToast("Balance Updated");
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => { btn.disabled = false; btn.innerText = "Apply"; });
         }
 
         function savePlayerMembershipNumber() {
@@ -6856,7 +7063,8 @@
             btn.disabled = true; btn.innerText = "Saving...";
             const startDate = document.getElementById('membershipAdjustStartDate').value;
             const endDate = document.getElementById('membershipAdjustEndDate').value;
-            adjustMembership({ username: membershipAdjustTarget.username, startDate, endDate })
+            callEdgeFunction('admin-actions', { action: 'adjustMembership', username: membershipAdjustTarget.username, startDate, endDate })
+                .then(() => refreshAllData())
                 .then(res => {
                     globalData = res;
                     closeModal('membershipAdjustModal');
@@ -6885,7 +7093,8 @@
             if (!membershipGiftTarget) return;
             const btn = document.getElementById('membershipGiftBtn');
             btn.disabled = true; btn.innerText = "Gifting...";
-            giftFreeMembership({ playerName: membershipGiftTarget.name })
+            callEdgeFunction('admin-actions', { action: 'giftMembership', playerName: membershipGiftTarget.name })
+                .then(() => refreshAllData())
                 .then(res => {
                     globalData = res;
                     closeModal('membershipGiftModal');
@@ -7379,9 +7588,7 @@
         function openMerchandiseOrderPaymentModal(orderId, itemName, sizeLabel, amount) {
             merchandiseOrderPaymentTargetId = orderId;
             document.getElementById('merchandiseOrderPaymentAmountText').innerText = `£${Number(amount).toFixed(2)}`;
-            const fullName = currentUser ? `${currentUser.firstName} ${currentUser.surname}` : '';
-            document.getElementById('merchandiseOrderPaymentRefText').innerText = `${fullName} - ${itemName} (${sizeLabel})`;
-            document.getElementById('merchandiseOrderPaymentConfirmCheck').checked = false;
+            document.getElementById('merchandiseOrderPaymentBalanceText').innerText = '£' + Number((currentUser && currentUser.balance) || 0).toFixed(2);
             openModal('merchandiseOrderPaymentModal');
         }
 
@@ -7390,20 +7597,27 @@
         }
 
         function confirmMerchandiseOrderPaymentMade() {
-            if (!document.getElementById('merchandiseOrderPaymentConfirmCheck').checked) {
-                return triggerError("Please tick the box to confirm you've made the transfer.");
-            }
             const orderId = merchandiseOrderPaymentTargetId;
             const btn = document.getElementById('merchandiseOrderPaymentConfirmBtn');
-            btn.disabled = true; btn.innerText = 'Saving...';
+            btn.disabled = true; btn.innerText = 'Processing...';
 
-            markMerchandiseOrderPaidRow(orderId)
+            callEdgeFunction('spend-balance', { type: 'merch', orderId: orderId })
+                .then(() => refreshAllData())
                 .then(r => {
                     render(r);
                     triggerToast("Payment Confirmed — Thank You!");
                     closeMerchandiseOrderPaymentModal();
+                    return refreshCurrentUserMembership();
                 })
-                .catch(err => triggerError(err.message))
+                .catch(err => {
+                    if (err.message === 'Insufficient balance') {
+                        triggerError("Insufficient balance - top up your wallet first.");
+                        closeMerchandiseOrderPaymentModal();
+                        openWalletModal();
+                    } else {
+                        triggerError(err.message);
+                    }
+                })
                 .finally(() => { btn.disabled = false; btn.innerText = 'Confirm Payment'; });
         }
 
@@ -7560,6 +7774,11 @@
             return { data: refreshed, orderId: row.id };
         }
 
+        // DEPRECATED (wallet system): merchandise_orders.payment_status can no
+        // longer be written directly by the browser - see
+        // supabase/sql/wallet_stripe_auth_migration.sql. Normal payment goes
+        // through spend-balance (confirmMerchandiseOrderPaymentMade()); this
+        // function is left for reference only.
         async function markMerchandiseOrderPaidRow(orderId) {
             const { error } = await supabaseClient.from('merchandise_orders').update({ payment_status: 'Paid' }).eq('id', orderId);
             if (error) throw new Error(error.message);
@@ -7568,8 +7787,9 @@
 
         function adminMarkMerchandiseOrderPaid(orderId) {
             if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
-            markMerchandiseOrderPaidRow(orderId)
-                .then(r => { render(r); triggerToast("Order marked as paid."); })
+            callEdgeFunction('admin-actions', { action: 'markOrderPaid', orderId: orderId })
+                .then(() => refreshAllData())
+                .then(r => { render(r); triggerToast("Order marked as paid (admin override - no balance taken)."); })
                 .catch(err => triggerError(err.message));
         }
 
@@ -7779,13 +7999,13 @@
             const requestedWeeks = currentUser.membershipRequestedDurationWeeks || null;
 
             if (requestedWeeks) {
-                const price = plans.find(p => p.durationWeeks === Number(requestedWeeks));
+                // Legacy state from before the wallet system - membership purchases now
+                // activate instantly via spend-balance, so nothing new ever sets this.
                 widget.innerHTML = `
                 <div class="card p-8 text-center bg-white shadow-xl border-l-8 border-amber-400">
-                    <p class="font-black uppercase text-lg mb-1">⏳ Payment Pending Review</p>
-                    <p class="text-gray-500 font-bold text-sm mb-4">We've received your request for <strong>${requestedWeeks} weeks</strong>${price ? ' (£' + price.price + ')' : ''} with reference <strong>${currentUser.membershipPaymentRef || ''}</strong>. An admin will review it shortly.</p>
-                    ${hasValidEnd ? `<p class="text-green-600 font-bold text-xs uppercase mb-4">You're still an active member until ${endDate}.</p>` : ''}
-                    <button onclick="doCancelMembershipRequest()" class="text-xs font-bold uppercase text-gray-400 hover:text-rose-600 underline">Cancel Request</button>
+                    <p class="font-black uppercase text-lg mb-1">⏳ Old Bank-Transfer Request Pending</p>
+                    <p class="text-gray-500 font-bold text-sm mb-4">You have an older bank-transfer membership request (${requestedWeeks} weeks) still awaiting admin review from before the club switched to instant wallet payments. Please contact an admin to resolve it.</p>
+                    ${hasValidEnd ? `<p class="text-green-600 font-bold text-xs uppercase">You're still an active member until ${endDate}.</p>` : ''}
                 </div>`;
                 return;
             }
@@ -7806,16 +8026,16 @@
             <div class="card p-8 text-center bg-white shadow-xl border-l-8 border-rose-600">
                 <p class="font-black uppercase text-lg mb-1">Not a Member Yet</p>
                 ${expiredNotice}
-                <p class="text-gray-500 font-bold text-sm mb-4">Select a duration below, send your payment, then click I've Paid.</p>
-                <button onclick="openMembershipPaymentModal(false)" class="btn-gold px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">I've Paid</button>
+                <p class="text-gray-500 font-bold text-sm mb-4">Select a duration and pay instantly from your club wallet balance.</p>
+                <button onclick="openMembershipPaymentModal(false)" class="btn-gold px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">Become a Member</button>
             </div>`;
         }
 
         function openMembershipPaymentModal(isRenewal) {
             if (!currentUser) return openAuthModal();
             selectedMembershipDuration = null;
-            document.getElementById('membershipPaymentModalTitle').innerText = isRenewal ? 'Renew Membership' : "I've Paid";
-            document.getElementById('membershipPaymentRef').value = '';
+            document.getElementById('membershipPaymentModalTitle').innerText = isRenewal ? 'Renew Membership' : "Become a Member";
+            document.getElementById('membershipPaymentBalanceText').innerText = '£' + Number(currentUser.balance || 0).toFixed(2);
             const plans = getMembershipPlans();
             const optionsEl = document.getElementById('membershipPaymentDurationOptions');
             optionsEl.innerHTML = plans.map(p => `
@@ -7837,28 +8057,25 @@
 
         function executeSubmitMembershipPayment() {
             if (!selectedMembershipDuration) return triggerError("Please select a membership duration.");
-            const paymentRef = document.getElementById('membershipPaymentRef').value.trim();
-            if (!paymentRef) return triggerError("Please enter a payment reference.");
 
             const btn = document.getElementById('membershipPaymentSubmitBtn');
-            btn.disabled = true; btn.innerText = "Submitting...";
-            submitMembershipPaymentRequest({ durationWeeks: selectedMembershipDuration, paymentRef })
-                .then(res => {
-                    globalData = res;
+            btn.disabled = true; btn.innerText = "Processing...";
+            callEdgeFunction('spend-balance', { type: 'membership', durationWeeks: selectedMembershipDuration })
+                .then(() => {
                     closeModal('membershipPaymentModal');
-                    triggerToast("Payment Reported — Awaiting Review");
+                    triggerToast("Membership Activated!");
+                    return refreshCurrentUserMembership();
                 })
-                .catch(err => triggerError(err.message))
-                .finally(() => { btn.disabled = false; btn.innerText = "Submit for Review"; });
-        }
-
-        function doCancelMembershipRequest() {
-            cancelMembershipRequest()
-                .then(res => {
-                    globalData = res;
-                    triggerToast("Request Cancelled");
+                .catch(err => {
+                    if (err.message === 'Insufficient balance') {
+                        triggerError("Insufficient balance - top up your wallet first.");
+                        closeModal('membershipPaymentModal');
+                        openWalletModal();
+                    } else {
+                        triggerError(err.message);
+                    }
                 })
-                .catch(err => triggerError(err.message));
+                .finally(() => { btn.disabled = false; btn.innerText = "Pay Now (Balance)"; });
         }
 
         // --- EVENT TYPE CONFIG ---
@@ -8445,7 +8662,7 @@
                     <div class="mx-5 mb-3 px-4 py-4 rounded-xl bg-black text-white text-center">
                         <p class="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-1">Reservation Expires In</p>
                         <p id="reservationCountdown" class="text-3xl font-black italic tabular-nums">--:--</p>
-                        <p class="text-[10px] font-bold text-gray-400 mt-1 uppercase">Complete your bank transfer, then tap Make Payment below</p>
+                        <p class="text-[10px] font-bold text-gray-400 mt-1 uppercase">Tap Make Payment below to pay instantly from your wallet balance</p>
                     </div>
                 ` : ''}
 
@@ -8615,17 +8832,24 @@
 
         function confirmCancelSignup() {
             const eventId = document.getElementById('cancelEventId').value;
-            const fullName = currentUser.firstName + " " + currentUser.surname;
             const btn = document.getElementById('cancelConfirmBtn');
-            
+
             btn.disabled = true;
             btn.innerText = "Cancelling...";
-            
-            cancelSignup({ eventId: eventId, name: fullName })
-                .then(res => {
+
+            // Self-service cancellation goes through cancel-event-signup rather than
+            // the plain client-side cancelSignup() below, because crediting a refund
+            // to wallet balance (per the 24-hour policy) has to happen server-side -
+            // see that function for why. Admin-initiated removals (a different code
+            // path, further down this file) still use cancelSignup() directly and
+            // don't auto-refund.
+            callEdgeFunction('cancel-event-signup', { eventId: eventId })
+                .then(result => refreshAllData().then(res => ({ res, result })))
+                .then(({ res, result }) => {
                     render(res);
-                    triggerToast("Registration Cancelled");
+                    triggerToast(result && result.refunded ? `Registration Cancelled — £${Number(result.refundedAmount).toFixed(2)} refunded to your wallet` : "Registration Cancelled");
                     closeCancelSignupModal();
+                    return refreshCurrentUserMembership();
                 })
                 .catch(err => {
                     triggerError(err.message);
@@ -8660,9 +8884,7 @@
             document.getElementById('paymentEventId').value = eventId;
             document.getElementById('paymentEventTitle').value = title;
             document.getElementById('paymentAmountText').innerText = amount ? ("£" + amount) : "Amount on event listing";
-            const fullName = currentUser.firstName + " " + currentUser.surname;
-            document.getElementById('paymentRefText').innerText = fullName + " - " + title;
-            document.getElementById('paymentConfirmCheck').checked = false;
+            document.getElementById('paymentBalanceText').innerText = '£' + Number((currentUser && currentUser.balance) || 0).toFixed(2);
             openModal('paymentModal');
         }
 
@@ -8671,27 +8893,30 @@
         }
 
         function confirmPaymentMade() {
-            if (!document.getElementById('paymentConfirmCheck').checked) {
-                return triggerError("Please tick the box to confirm you've made the transfer.");
-            }
-
             const eventId = document.getElementById('paymentEventId').value;
-            const fullName = currentUser.firstName + " " + currentUser.surname;
             const btn = document.getElementById('paymentConfirmBtn');
 
             btn.disabled = true;
-            btn.innerText = "Saving...";
+            btn.innerText = "Processing...";
 
-            markSignupPaid({ eventId: eventId, name: fullName })
+            callEdgeFunction('spend-balance', { type: 'event', eventId: eventId })
+                .then(() => refreshAllData())
                 .then(res => {
                     render(res);
                     triggerToast("Payment Confirmed — Thank You!");
                     closePaymentModal();
-                    btn.disabled = false;
-                    btn.innerText = "Confirm Payment";
+                    return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    triggerError(err.message);
+                    if (err.message === 'Insufficient balance') {
+                        triggerError("Insufficient balance - top up your wallet first.");
+                        closePaymentModal();
+                        openWalletModal();
+                    } else {
+                        triggerError(err.message);
+                    }
+                })
+                .finally(() => {
                     btn.disabled = false;
                     btn.innerText = "Confirm Payment";
                 });
@@ -8869,8 +9094,8 @@
 
                 const confirmPass = document.getElementById('regPassConfirm').value.trim();
 
-                if (!data.username || !data.password || !data.firstName) {
-                    return triggerError("Please fill in all required fields.");
+                if (!data.username || !data.password || !data.firstName || !data.email) {
+                    return triggerError("Please fill in all required fields, including your email address.");
                 }
 
                 if (data.password !== confirmPass) {
@@ -8960,6 +9185,11 @@
             updateUIForLogin();
             showTab('welcome-page');
             triggerToast("Logged Out");
+            // Also end the real Supabase Auth session - without this, the JWT stays
+            // valid in localStorage even after "logging out" of the app's own UI,
+            // which would let wallet/spend-balance/etc. Edge Function calls still
+            // succeed as this person on a shared device.
+            supabaseClient.auth.signOut().catch(() => {});
         }
 
         function updateUIForLogin() {
@@ -9008,6 +9238,7 @@
 			}
 			updateScrambleAccess();
 			updateLaddersAccess();
+			renderWalletWidget();
 			updateRatingsAccess();
 			renderEvents();
 			if (globalData && globalData.standings) refreshAllData();
@@ -9767,6 +9998,7 @@
                 startAdminSession();
                 refreshCurrentUserMembership();
             }
+            handleWalletTopupRedirect();
 
             // Keep membership status/badges near-real-time for a logged-in member without
             // requiring a log out/in, in case an admin activates/expires it elsewhere.
@@ -10108,7 +10340,7 @@
             </div>
         </div>
     </div>
-    <!-- MERCHANDISE ORDER PAYMENT MODAL (bank transfer + self-reported "I've Paid", same pattern as event/membership payments) -->
+    <!-- MERCHANDISE ORDER PAYMENT MODAL (pays instantly from wallet balance via spend-balance, same pattern as event/membership payments) -->
     <div id="merchandiseOrderPaymentModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 100px; padding-bottom: 24px; z-index: 2000 !important;">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full border-t-8 border-rose-600">
             <div class="p-8 text-center max-h-full overflow-y-auto">
@@ -10120,30 +10352,7 @@
                 <h3 class="text-2xl font-black uppercase italic mb-2">Pay For Your Order</h3>
                 <p id="merchandiseOrderPaymentAmountText" class="text-3xl font-black text-rose-600 mb-4"></p>
 
-                <div class="bg-gray-50 rounded-xl p-4 text-left space-y-2 mb-6 border border-gray-100">
-                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Bank Transfer Details</p>
-                    <div class="flex justify-between text-sm">
-                        <span class="font-bold text-gray-500">Name:</span>
-                        <span class="font-black">Pontypool Pickleball</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="font-bold text-gray-500">Sort Code:</span>
-                        <span class="font-black">51-61-02</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="font-bold text-gray-500">Account No:</span>
-                        <span class="font-black">76584135</span>
-                    </div>
-                    <div class="flex justify-between text-sm pt-2 border-t border-gray-200">
-                        <span class="font-bold text-gray-500">Reference:</span>
-                        <span id="merchandiseOrderPaymentRefText" class="font-black text-rose-600"></span>
-                    </div>
-                </div>
-
-                <label class="flex items-center gap-3 bg-rose-50 p-4 rounded-xl mb-6 cursor-pointer">
-                    <input type="checkbox" id="merchandiseOrderPaymentConfirmCheck" class="w-5 h-5 accent-rose-600">
-                    <span class="text-xs font-bold text-left uppercase">I confirm I have transferred this payment</span>
-                </label>
+                <p class="text-sm font-bold text-gray-500 mb-6">Your wallet balance: <strong id="merchandiseOrderPaymentBalanceText">£0.00</strong> &bull; <a href="javascript:void(0)" onclick="closeMerchandiseOrderPaymentModal(); openWalletModal();" class="text-rose-600 underline">Top up</a></p>
 
                 <div class="flex flex-col gap-3">
                     <button onclick="confirmMerchandiseOrderPaymentMade()" id="merchandiseOrderPaymentConfirmBtn"
@@ -10236,6 +10445,16 @@
                         <p class="text-[9px] font-bold text-gray-400 uppercase">Role / Status</p>
                         <p id="playerProfileRole" class="font-black text-sm"></p>
                     </div>
+                </div>
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <p class="text-[9px] font-bold text-gray-400 uppercase mb-2">Wallet Balance</p>
+                    <p id="playerProfileBalance" class="font-black text-2xl mb-3" style="color: var(--ponty-gold) !important;">£0.00</p>
+                    <div class="flex gap-2 items-center">
+                        <input type="number" id="playerProfileBalanceAdjustAmount" step="0.01" placeholder="e.g. 10 or -5" class="input-field border-2 flex-1">
+                        <button onclick="savePlayerBalanceAdjustment()" id="playerProfileBalanceAdjustBtn" class="bg-black text-white px-4 py-3 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition whitespace-nowrap">Apply</button>
+                    </div>
+                    <input type="text" id="playerProfileBalanceAdjustNote" placeholder="Reason (e.g. bank transfer refund processed)" class="input-field border-2 mt-2">
+                    <p class="text-[10px] text-gray-400 font-bold mt-2">Use a positive amount to credit (e.g. a refund you processed manually by bank transfer) or a negative amount to correct a mistaken credit. Every change is logged.</p>
                 </div>
                 <div class="bg-rose-50 rounded-xl p-4 border border-rose-100">
                     <p class="text-[9px] font-bold text-rose-400 uppercase mb-2">Membership Number</p>
@@ -10656,16 +10875,41 @@
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8" style="border-color: var(--ponty-gold) !important;">
             <div class="p-8 space-y-4">
                 <div class="flex justify-between items-center">
-                    <h3 class="text-2xl font-black uppercase italic" id="membershipPaymentModalTitle">I've Paid</h3>
+                    <h3 class="text-2xl font-black uppercase italic" id="membershipPaymentModalTitle">Become a Member</h3>
                     <button onclick="closeModal('membershipPaymentModal')" class="text-gray-400 hover:text-black">✕</button>
                 </div>
                 <div id="membershipPaymentDurationOptions" class="grid grid-cols-3 gap-2"></div>
-                <div>
-                    <label class="text-[10px] font-bold uppercase text-gray-400">Payment Reference</label>
-                    <input type="text" id="membershipPaymentRef" placeholder="Membership followed by your initials" class="input-field border-2">
-                    <p class="text-[10px] text-gray-400 font-bold uppercase mt-1">So we can match your payment against the bank statement.</p>
+                <p class="text-[11px] font-bold text-gray-500">Your balance: <strong id="membershipPaymentBalanceText">£0.00</strong> &bull; <a href="javascript:void(0)" onclick="openWalletModal()" class="text-rose-600 underline">Top up</a></p>
+                <button onclick="executeSubmitMembershipPayment()" id="membershipPaymentSubmitBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">Pay Now (Balance)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WALLET MODAL (balance + Stripe top-up + transaction history) -->
+    <div id="walletModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 80px; padding-bottom: 24px; z-index: 1500 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8" style="border-color: var(--ponty-gold) !important;">
+            <div class="p-8 space-y-5">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-2xl font-black uppercase italic">💰 My Wallet</h3>
+                    <button onclick="closeWalletModal()" class="text-gray-400 hover:text-black">✕</button>
                 </div>
-                <button onclick="executeSubmitMembershipPayment()" id="membershipPaymentSubmitBtn" class="btn-gold w-full py-4 rounded font-black uppercase tracking-widest shadow-lg">Submit for Review</button>
+                <div class="text-center bg-black rounded-xl p-6" style="border: 2px solid var(--ponty-gold) !important;">
+                    <p class="text-[10px] font-black uppercase tracking-widest" style="color: var(--ponty-gold) !important;">Current Balance</p>
+                    <p id="walletModalBalance" class="text-4xl font-black text-white mt-1">£0.00</p>
+                </div>
+                <div>
+                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">Top Up with Card (Stripe)</p>
+                    <div id="walletTopupPresets" class="grid grid-cols-3 gap-2 mb-3"></div>
+                    <div class="flex gap-2">
+                        <input type="number" min="5" step="1" id="walletTopupCustomAmount" placeholder="Custom £ amount" class="input-field border-2 flex-1">
+                        <button onclick="startWalletTopupCustom()" id="walletTopupSubmitBtn" class="btn-gold px-4 rounded font-black uppercase text-xs whitespace-nowrap">Top Up with Card</button>
+                    </div>
+                    <p class="text-[10px] text-gray-400 font-bold uppercase mt-2">Minimum top-up £5. Balance is non-refundable to card - see the Membership page for the refund policy.</p>
+                </div>
+                <div>
+                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">Recent Activity</p>
+                    <div id="walletTransactionsList" class="overflow-y-auto" style="max-height: 220px;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -10724,7 +10968,7 @@
             <option value="1600">Advanced — Play in leagues or tournaments, reliable third-shot drop</option>
             <option value="1800">Elite — Tournament-level competitor, elite strategy and consistency</option>
         </select>
-            <input type="email" id="regEmail" placeholder="Email Address" class="input-field border-2">
+            <input type="email" id="regEmail" placeholder="Email Address (required - used to log in)" class="input-field border-2" required>
 
             <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
                 <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Age Confirmation</p>
@@ -10954,7 +11198,7 @@
                 </div>
                 <h3 class="text-2xl font-black uppercase italic mb-3">Payment Required</h3>
                 <p class="text-gray-600 text-sm font-bold mb-3">Your place has been reserved for 15 minutes to allow you time to complete payment.</p>
-                <p class="text-gray-600 text-sm font-bold mb-3">Please make your bank transfer now and then return to this page to click <strong>Paid</strong>.</p>
+                <p class="text-gray-600 text-sm font-bold mb-3">Tap <strong>Make Payment</strong> on the event to pay instantly from your wallet balance - top up first if you need to.</p>
                 <div class="bg-rose-50 rounded-xl p-4 mb-6">
                     <p class="text-rose-600 text-xs font-bold">If payment is not confirmed within 15 minutes, your reservation will automatically expire, and your place may be offered to another player.</p>
                 </div>
@@ -10973,32 +11217,9 @@
                 <h3 class="text-2xl font-black uppercase italic mb-2">Confirm Payment</h3>
                 <p id="paymentAmountText" class="text-3xl font-black text-rose-600 mb-4"></p>
 
-                <div class="bg-gray-50 rounded-xl p-4 text-left space-y-2 mb-6 border border-gray-100">
-                    <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Bank Transfer Details</p>
-                    <div class="flex justify-between text-sm">
-                        <span class="font-bold text-gray-500">Name:</span>
-                        <span class="font-black">Pontypool Pickleball</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="font-bold text-gray-500">Sort Code:</span>
-                        <span class="font-black">51-61-02</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="font-bold text-gray-500">Account No:</span>
-                        <span class="font-black">76584135</span>
-                    </div>
-                    <div class="flex justify-between text-sm pt-2 border-t border-gray-200">
-                        <span class="font-bold text-gray-500">Reference:</span>
-                        <span id="paymentRefText" class="font-black text-rose-600"></span>
-                    </div>
-                </div>
+                <p class="text-sm font-bold text-gray-500 mb-4">Your wallet balance: <strong id="paymentBalanceText">£0.00</strong> &bull; <a href="javascript:void(0)" onclick="closePaymentModal(); openWalletModal();" class="text-rose-600 underline">Top up</a></p>
 
                 <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-4">⏰ Payment is due within 15 minutes of booking or your spot may be given to a reserve. Cancellations within 24 hours of the event are not eligible for a refund.</p>
-
-                <label class="flex items-center gap-3 bg-rose-50 p-4 rounded-xl mb-6 cursor-pointer">
-                    <input type="checkbox" id="paymentConfirmCheck" class="w-5 h-5 accent-rose-600">
-                    <span class="text-xs font-bold text-left uppercase">I confirm I have transferred this payment</span>
-                </label>
 
                 <input type="hidden" id="paymentEventId">
                 <input type="hidden" id="paymentEventTitle">
