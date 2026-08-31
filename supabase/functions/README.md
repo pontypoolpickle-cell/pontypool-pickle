@@ -215,6 +215,24 @@ With `STRIPE_SECRET_KEY` still set to a `sk_test_...` key:
 4. Do one small real top-up yourself to confirm everything works with real
    money before announcing it to the club.
 
+## Follow-up: locking down the "Unrestricted" tables
+
+If Supabase's Table Editor shows `faqs`, `finance_transactions`,
+`gallery_photos`, `merchandise_items`, `merchandise_orders`,
+`merchandise_sizes`, or `site_settings` as **Unrestricted** (no Row Level
+Security), run [`supabase/sql/rls_content_and_orders.sql`](../sql/rls_content_and_orders.sql)
+in the SQL Editor, the same way as the main migration. It doesn't need any
+Edge Function changes or secrets - just run the SQL once.
+
+Most of those tables are just content (FAQs, gallery, settings) and get
+public-read/admin-write policies to clear the warning honestly. The
+important one is `merchandise_orders`: without it, someone with basic dev-
+tools knowledge could fabricate a cheap price on a merchandise order and
+then pay that fake amount instead of the real one - the migration makes the
+database itself verify an order's price against the live catalog at the
+moment it's created, and locks the order against further edits by anyone
+but an admin afterwards.
+
 ## What's intentionally *not* covered by this migration
 
 - **Admin-initiated event removals** (an admin removing a no-show, or
