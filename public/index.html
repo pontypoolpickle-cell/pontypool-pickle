@@ -4404,7 +4404,7 @@
             return users[0].email;
         }
 
-        // Sends the same 6-digit reset code experience as before, now backed by
+        // Sends the same reset-code experience as before, now backed by
         // Supabase Auth's own password-recovery emails instead of a home-grown
         // reset_token column - see resetPassword() below and
         // supabase/functions/README.md for the one-off Dashboard setup (custom
@@ -11106,9 +11106,9 @@
                 <h3 class="text-3xl font-black italic uppercase">New Password</h3>
                 <button onclick="closeResetPasswordModal()" class="text-gray-400 hover:text-black transition text-2xl font-black">✕</button>
             </div>
-            <p class="text-xs font-bold text-gray-400 uppercase">Enter the 6-digit code we sent to your email and choose a new password.</p>
+            <p class="text-xs font-bold text-gray-400 uppercase">Enter the reset code we sent to your email and choose a new password.</p>
             <div class="space-y-4">
-                <input type="text" id="resetToken" placeholder="6-Digit Reset Code" class="input-field border-2" maxlength="6">
+                <input type="text" id="resetToken" placeholder="Reset Code" class="input-field border-2" maxlength="16" inputmode="numeric">
                 <div class="relative">
                     <input type="password" id="resetNewPassword" placeholder="New Password" class="input-field border-2 pr-12">
                     <button type="button" onclick="togglePasswordVisibility('resetNewPassword', this)"
