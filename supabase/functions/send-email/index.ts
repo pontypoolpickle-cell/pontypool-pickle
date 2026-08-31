@@ -153,7 +153,7 @@ serve(async (req) => {
           <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Your place has been reserved for <strong>${minutes} minutes</strong> to allow you time to complete payment.</p>
           ${eventBox(data.eventTitle, data.eventDate, data.eventTime, data.eventLocation)}
           <div style="background-color:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin:20px 0;">
-            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#9a3412;font-weight:700;">⏰ Please make your bank transfer now, then return to the website and click <strong>Paid</strong> on this event.</p>
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#9a3412;font-weight:700;">⏰ Please log in and tap <strong>Make Payment</strong> on this event now to pay instantly from your wallet balance (top up first if you need to).</p>
           </div>
           <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
             <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">⚠️ If payment isn't confirmed within ${minutes} minutes, your reservation will automatically expire and your place may be offered to another player.</p>
@@ -583,34 +583,22 @@ serve(async (req) => {
 
       // EMAIL 19: Payment Reminder (admin-triggered, to player)
       case "payment_reminder": {
-        const paymentRef = data.paymentRef || `${data.name} - ${data.eventTitle}`;
-        const introText = data.alreadyPaid
-          ? `We can see you've marked the event below as <strong>paid</strong>, but we haven't been able to verify a matching bank transfer yet. Please double-check the payment was sent using the reference below, or make payment now if you haven't already.`
-          : `Our records show that you haven't yet paid for the event below. Please make payment via bank transfer as soon as possible to keep your spot.`;
         const body = `
           <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.name},</p>
-          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">${introText}</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Our records show that you haven't yet paid for the event below. Please log in and pay instantly from your wallet balance to keep your spot - top up first if you need to.</p>
           ${eventBox(data.eventTitle, data.eventDate, data.eventTime, data.eventLocation)}
+          ${data.amount ? `
           <div style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;padding:16px 20px;margin:0 0 20px;">
-            <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">Bank Transfer Details</p>
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
-              ${detailRow('Name', 'Pontypool Pickleball')}
-              ${detailRow('Sort Code', '51-61-02')}
-              ${detailRow('Account No', '76584135')}
-              ${detailRow('Reference', paymentRef)}
-              ${data.amount ? detailRow('Amount Due', `£${data.amount}`) : ''}
+              ${detailRow('Amount Due', `£${data.amount}`)}
             </table>
-          </div>
-          ${data.alreadyPaid ? '' : `
-          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin:0 0 20px;">
-            <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#16a34a;font-weight:700;">✅ Already paid? If you're receiving this email but have already made the bank transfer, please go to <a href="https://www.pontypoolpickle.com" style="color:#16a34a;">www.pontypoolpickle.com</a>, open this event, and click <strong>I've Paid</strong> to update your status.</p>
-          </div>`}
+          </div>` : ''}
           <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
             <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">⚠️ Failure to make payment can result in your spot being removed, with another player taking your place.</p>
           </div>
           <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">Thanks for your understanding.<br><strong>Pontypool Pickle Club</strong></p>
         `;
-        await sendEmail(data.email, data.alreadyPaid ? `⏰ Please Verify Your Payment — ${data.eventTitle}` : `⏰ Payment Reminder — ${data.eventTitle}`, buildEmailHtml(data.alreadyPaid ? "Verify Your Payment" : "Payment Reminder", body));
+        await sendEmail(data.email, `⏰ Payment Reminder — ${data.eventTitle}`, buildEmailHtml("Payment Reminder", body));
         break;
       }
 
@@ -639,6 +627,22 @@ serve(async (req) => {
           <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">See you on the courts!<br><strong>Pontypool Pickle Club</strong></p>
         `;
         await sendEmail(data.email, `🎁 You've Been Gifted a Free Month of Membership! — Pontypool Pickle Club`, buildEmailHtml("Free Membership Gifted", body));
+        break;
+      }
+
+      // EMAIL 21: Wallet Top-Up Receipt (triggered from stripe-webhook once
+      // Stripe confirms the payment - see supabase/functions/stripe-webhook)
+      case "wallet_topup_receipt": {
+        const body = `
+          <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.firstName},</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Thanks for topping up your Pontypool Pickle Club wallet! Your new balance is ready to spend on membership, event fees, and merchandise.</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 24px;">
+            ${detailRow('Amount Added', `£${Number(data.amount).toFixed(2)}`)}
+            ${detailRow('New Balance', `£${Number(data.newBalance).toFixed(2)}`)}
+          </table>
+          <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">See you on the courts!<br><strong>Pontypool Pickle Club</strong></p>
+        `;
+        await sendEmail(data.email, `✅ £${Number(data.amount).toFixed(2)} Added to Your Wallet — Pontypool Pickle Club`, buildEmailHtml("Wallet Top-Up Received", body));
         break;
       }
 
