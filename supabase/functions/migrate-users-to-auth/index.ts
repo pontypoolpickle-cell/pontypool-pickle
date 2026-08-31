@@ -27,11 +27,19 @@
 // actually do it. Pass `"usernames": ["alice", "bob"]` to retry just a
 // specific subset (e.g. after fixing a bad email address).
 //
+// Processes at most `batchSize` people per call (default 15) and reports
+// `remainingCount` - Edge Functions have a hard execution time limit, and a
+// club with 100+ members doing 1-3 Auth API calls each easily blows past it
+// in a single request. Just call this again (same body) if `remainingCount`
+// is greater than 0 - it always skips anyone already migrated, so calling
+// it repeatedly until remainingCount is 0 is the intended way to run this
+// for a real club-sized membership list.
+//
 // Required secrets (same pattern as send-email/membership-reminders - set
 // via `supabase secrets set NAME=value` or the Dashboard):
 //   MIGRATION_ADMIN_SECRET     - a random string only you know; invent one,
 //                                e.g. `openssl rand -hex 32`
-//   SITE_URL                   - e.g. https://pontypoolpickle.netlify.app -
+//   SITE_URL                   - e.g. https://www.pontypoolpickle.com -
 //                                used as the redirect target after someone
 //                                clicks the reset-password link
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - auto-injected by Supabase
@@ -77,13 +85,14 @@ serve(async (req) => {
     return jsonResponse({ error: "Unauthorized." }, 401);
   }
 
-  let payload: { dryRun?: boolean; usernames?: string[] } = {};
+  let payload: { dryRun?: boolean; usernames?: string[]; batchSize?: number } = {};
   try {
     payload = await req.json();
   } catch {
     // No body / not JSON - treat as defaults (dryRun: false, all users).
   }
   const dryRun = !!payload.dryRun;
+  const batchSize = Math.min(Math.max(Number(payload.batchSize) || 15, 1), 50);
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   // A plain anon-key client, on purpose - resetPasswordForEmail() below must
@@ -92,9 +101,14 @@ serve(async (req) => {
   // trigger, not an admin-only shortcut.
   const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  let query = admin.from("users").select("id, username, email, auth_user_id").is("auth_user_id", null);
-  if (payload.usernames && payload.usernames.length > 0) {
-    query = admin.from("users").select("id, username, email, auth_user_id").in("username", payload.usernames);
+  const usingExplicitList = !!(payload.usernames && payload.usernames.length > 0);
+  let query = admin.from("users").select("id, username, email, auth_user_id").is("auth_user_id", null).order("username", { ascending: true });
+  if (usingExplicitList) {
+    query = admin.from("users").select("id, username, email, auth_user_id").in("username", payload.usernames!);
+  } else if (!dryRun) {
+    // Only cap the batch for the real run - dry runs are cheap (no API
+    // calls at all) so it's more useful to see everyone at once there.
+    query = query.limit(batchSize);
   }
   const { data: candidates, error: fetchErr } = await query;
   if (fetchErr) return jsonResponse({ error: fetchErr.message }, 500);
@@ -155,9 +169,28 @@ serve(async (req) => {
     }
 
     // Gentle pacing - avoids hammering the Auth API / outgoing email
-    // provider with a big burst of requests in the same second.
-    await sleep(400);
+    // provider with a big burst of requests in the same second. Kept short
+    // deliberately - this whole function has to finish well inside the
+    // platform's execution time limit (see batchSize above).
+    await sleep(150);
   }
 
-  return jsonResponse({ dryRun, migratedCount: migrated.length, migrated, skippedCount: skipped.length, skipped, errorCount: errors.length, errors });
+  let remainingCount = 0;
+  if (!dryRun && !usingExplicitList) {
+    const { count } = await admin.from("users").select("id", { count: "exact", head: true }).is("auth_user_id", null);
+    remainingCount = count || 0;
+  }
+
+  return jsonResponse({
+    dryRun,
+    batchSize,
+    migratedCount: migrated.length,
+    migrated,
+    skippedCount: skipped.length,
+    skipped,
+    errorCount: errors.length,
+    errors,
+    remainingCount,
+    hint: remainingCount > 0 ? "Call this function again with the same body to migrate the next batch." : undefined
+  });
 });
