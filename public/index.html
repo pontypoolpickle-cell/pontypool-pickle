@@ -477,7 +477,7 @@
                 <div class="card p-8 border-t-8 border-black shadow-2xl bg-white space-y-6">
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Event Payments</h4>
-                        <p class="text-gray-700 leading-relaxed">Event fees are paid instantly from your club wallet balance and must be settled within <strong>15 minutes</strong> of booking your spot. Your place is only held for that 15-minute window - if payment isn't completed in time, the spot is automatically released and reassigned to the next reserve player, with club members receiving automatic priority. Top up your wallet balance any time using the 💰 Wallet button once logged in.</p>
+                        <p class="text-gray-700 leading-relaxed">Event fees are paid instantly from your club wallet balance the moment you sign up - there's no separate payment step. If your balance is too low, you'll be told straight away so you can top up and try again. Top up your wallet balance any time using the 💰 Wallet button once logged in.</p>
                     </div>
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Cancellations & Refunds</h4>
@@ -2237,18 +2237,21 @@
             }
         }
 
-        // Item #14: expire any 'Pending Payment' holds whose 15-minute window has
-        // passed. Runs opportunistically at the start of every data load/refresh
-        // (which happens very often in this app - after almost every action, plus
-        // on every page load) rather than needing a separate server-side scheduled
-        // job - the next person to touch Supabase clears out any stale hold, which
-        // frees the seat for the next reserve exactly like a manual cancellation.
-        // This is a "best-effort, eventually-consistent" approach rather than a
-        // hard real-time guarantee (a hold could sit briefly past 15 minutes if
-        // nobody's browser talks to the site in the meantime) - reasonable for a
-        // club site's traffic patterns, but a proper pg_cron job (like the existing
-        // membership-reminders one) would make this fully time-accurate regardless
-        // of traffic if that's ever wanted as a follow-up.
+        // Item #14: expire any 'Pending Payment' holds whose reservation window
+        // (RESERVATION_WINDOW_MINUTES - just a few minutes, purely a safety net
+        // now that payment happens automatically right after signup) has passed.
+        // In normal use a hold should never actually reach this - it only matters
+        // if the automatic payment attempt never got to run (e.g. the tab closed
+        // between creating the signup and paying for it). Runs opportunistically
+        // at the start of every data load/refresh (which happens very often in
+        // this app) rather than needing a separate server-side scheduled job - the
+        // next person to touch Supabase clears out any stale hold, which frees the
+        // seat for the next reserve exactly like a manual cancellation. This is a
+        // "best-effort, eventually-consistent" approach rather than a hard real-
+        // time guarantee - reasonable for a club site's traffic patterns, but a
+        // proper pg_cron job (like the existing membership-reminders one) would
+        // make this fully time-accurate regardless of traffic if that's ever
+        // wanted as a follow-up.
         async function expireStalePendingReservations() {
             const nowIso = new Date().toISOString();
             const { data: stale, error } = await supabaseClient
@@ -3960,17 +3963,20 @@
             }
         }
 
-        const RESERVATION_WINDOW_MINUTES = 15;
+        // Wallet system: paying for an event is now an automatic, near-instant step
+        // right after signing up (see payForEventSignupNow()) rather than something
+        // a member has 15 minutes to go and do separately via bank transfer. This
+        // window still briefly exists as a 'Pending Payment' hold purely as a safety
+        // net for the split second between creating the signup and the automatic
+        // payment attempt completing (or the rare case where that follow-up call
+        // never fires, e.g. the tab closes) - it's not shown to members as a
+        // countdown any more, and should almost never actually run out on someone.
+        const RESERVATION_WINDOW_MINUTES = 3;
 
         async function signupForEvent(payload) {
 			const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
 			const isFree = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
 
-			// Item #14: paid events start as a temporary 'Pending Payment' hold with a
-			// 15-minute countdown rather than going straight to 'Confirmed' - this
-			// stops two people both thinking they've secured the last spot while one
-			// of them still owes a bank transfer. Free events skip this entirely,
-			// since there's nothing to pay and nothing to hold up.
 			const reservedUntil = isFree ? null : new Date(Date.now() + RESERVATION_WINDOW_MINUTES * 60000).toISOString();
 
 			const { error } = await supabaseClient.from('signups').insert({
@@ -3983,20 +3989,65 @@
 				reserved_until: reservedUntil
 			});
 			if (error) throw new Error(error.message);
-			if (payload.email && payload.email.indexOf('@') !== -1 && eventRow) {
-				sendEmail(isFree ? 'event_signup' : 'payment_required', {
+			// Paid events no longer email here - payForEventSignupNow() sends the
+			// normal event_signup confirmation once the automatic payment actually
+			// succeeds, since that's now milliseconds away rather than a separate
+			// bank-transfer step worth emailing about on its own.
+			if (isFree && payload.email && payload.email.indexOf('@') !== -1 && eventRow) {
+				sendEmail('event_signup', {
 					name: payload.name,
 					email: payload.email,
 					eventTitle: eventRow[1],
 					eventDate: eventRow[2],
 					eventTime: eventRow[3] || 'TBC',
 					eventLocation: eventRow[8] || 'TBC',
-					isFree: isFree,
-					reservationMinutes: RESERVATION_WINDOW_MINUTES
+					isFree: true
 				});
 			}
 			return refreshAllData();
 		}
+
+        // Wallet system: called immediately after a successful (non-reserve) paid
+        // signup, so the whole "sign up + pay" experience is a single click from
+        // the member's point of view rather than two separate steps. If balance
+        // isn't sufficient, the just-created hold is withdrawn straight away (no
+        // money was ever taken, so nothing to refund) and the member is pointed at
+        // the wallet top-up instead of being left with a stuck reservation.
+        function payForEventSignupNow(eventId, successMsg, onDone) {
+            callEdgeFunction('spend-balance', { type: 'event', eventId: eventId })
+                .then(() => refreshAllData())
+                .then(res => {
+                    render(res);
+                    triggerToast(successMsg || 'Registration Successful!');
+                    const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+                    if (currentUser && currentUser.email && currentUser.email.indexOf('@') !== -1 && eventRow) {
+                        sendEmail('event_signup', {
+                            name: `${currentUser.firstName} ${currentUser.surname}`.trim(),
+                            email: currentUser.email,
+                            eventTitle: eventRow[1],
+                            eventDate: eventRow[2],
+                            eventTime: eventRow[3] || 'TBC',
+                            eventLocation: eventRow[8] || 'TBC',
+                            isFree: false
+                        });
+                    }
+                    return refreshCurrentUserMembership();
+                })
+                .catch(err => {
+                    if (err.message === 'Insufficient balance' && currentUser) {
+                        const fullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
+                        return cancelSignup({ eventId, name: fullName })
+                            .then(res => render(res))
+                            .catch(() => {})
+                            .finally(() => {
+                                triggerError("Insufficient balance - please top up your wallet, then sign up again.");
+                                openWalletModal();
+                            });
+                    }
+                    triggerError(err.message);
+                })
+                .finally(() => { if (onDone) onDone(); });
+        }
 
         async function signupAsReserve(payload) {
 			const { error } = await supabaseClient.from('signups').insert({
@@ -8657,15 +8708,6 @@
                     </div>
                 ` : ''}
 
-                <!-- Item #14: live 15-minute countdown while a payment hold is active -->
-                ${accessStatus === 'pendingPayment' ? `
-                    <div class="mx-5 mb-3 px-4 py-4 rounded-xl bg-black text-white text-center">
-                        <p class="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-1">Reservation Expires In</p>
-                        <p id="reservationCountdown" class="text-3xl font-black italic tabular-nums">--:--</p>
-                        <p class="text-[10px] font-bold text-gray-400 mt-1 uppercase">Tap Make Payment below to pay instantly from your wallet balance</p>
-                    </div>
-                ` : ''}
-
                 <!-- Action Buttons -->
                 <div class="p-5 pt-0 space-y-2">
                     ${accessStatus === 'open' ? `
@@ -8704,43 +8746,11 @@
 
             document.getElementById('calendarEventModal').classList.remove('hidden');
             document.body.classList.add('modal-open');
-
-            // Item #14: live-update the 15-minute countdown while this modal is open
-            // and the viewer has an active payment hold on this event.
-            if (reservationCountdownInterval) { clearInterval(reservationCountdownInterval); reservationCountdownInterval = null; }
-            if (isPendingPayment && mySignup && mySignup[7]) {
-                updateReservationCountdown(mySignup[7], eventId);
-                reservationCountdownInterval = setInterval(() => updateReservationCountdown(mySignup[7], eventId), 1000);
-            }
-        }
-
-        let reservationCountdownInterval = null;
-
-        function updateReservationCountdown(reservedUntilIso, eventId) {
-            const el = document.getElementById('reservationCountdown');
-            if (!el) { clearInterval(reservationCountdownInterval); reservationCountdownInterval = null; return; }
-
-            const remainingMs = new Date(reservedUntilIso).getTime() - Date.now();
-            if (remainingMs <= 0) {
-                el.innerText = "00:00";
-                clearInterval(reservationCountdownInterval);
-                reservationCountdownInterval = null;
-                // The reservation has just expired locally - refresh so the modal
-                // picks up whatever the next data load resolves it to (freed spot,
-                // or a reserve promoted into it), rather than leaving a stale "Make
-                // Payment" button showing for a hold that no longer exists.
-                refreshAllData().then(r => { render(r); if (!document.getElementById('calendarEventModal').classList.contains('hidden')) openCalendarEventModal(eventId); });
-                return;
-            }
-            const mins = Math.floor(remainingMs / 60000);
-            const secs = Math.floor((remainingMs % 60000) / 1000);
-            el.innerText = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
         }
 
         function closeCalendarEventModal() {
             document.getElementById('calendarEventModal').classList.add('hidden');
             document.body.classList.remove('modal-open');
-            if (reservationCountdownInterval) { clearInterval(reservationCountdownInterval); reservationCountdownInterval = null; }
         }
 
         function handleEventClickFromCalendar(eventId, asReserve) {
@@ -8766,13 +8776,12 @@
             const onSuccess = (res) => {
                 closeCalendarEventModal();
                 render(res);
-                // Item #14: a fresh (non-reserve) signup for a paid event just created
-                // a 15-minute payment hold - show the "Payment Required" popup instead
-                // of the plain success toast, per the spec wording.
+                // A fresh (non-reserve) signup for a paid event pays for itself
+                // immediately - single click, no separate "make payment" step.
                 if (!asReserve) {
                     const eventRow = (globalData.events || []).find(e => e[0] === eventId);
                     const isFree = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
-                    if (!isFree) { openPaymentRequiredModal(eventId); return; }
+                    if (!isFree) { payForEventSignupNow(eventId, successMsg); return; }
                 }
                 triggerToast(successMsg);
             };
@@ -8865,20 +8874,6 @@
             document.getElementById('cancelConfirmBtn').innerText = "Confirm Cancellation";
         }
 
-        // Item #14: shown once, immediately after signing up for a paid event -
-        // explains the 15-minute hold, then hands off to the event modal itself
-        // (which shows the live countdown + Make Payment / Cancel Reservation).
-        function openPaymentRequiredModal(eventId) {
-            document.getElementById('paymentRequiredEventId').value = eventId;
-            openModal('paymentRequiredModal');
-        }
-
-        function closePaymentRequiredModal() {
-            closeModal('paymentRequiredModal');
-            const eventId = document.getElementById('paymentRequiredEventId').value;
-            if (eventId) openCalendarEventModal(eventId);
-        }
-
         function openPaymentModal(eventId, title, amount) {
 			closeCalendarEventModal();
             document.getElementById('paymentEventId').value = eventId;
@@ -8934,8 +8929,16 @@
 					.then(res => { render(res); triggerToast(successMsg); resetBtn(); })
 					.catch(err => { triggerError(err.message); resetBtn(); });
 			} else {
+				const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+				const isFree = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
 				signupForEvent({ eventId, name, email, type })
-					.then(res => { render(res); triggerToast(successMsg); resetBtn(); })
+					.then(res => {
+						render(res);
+						if (isFree) { triggerToast(successMsg); resetBtn(); return; }
+						// Paid: pay for it immediately, single-click, instead of showing
+						// "Registration Successful!" and leaving payment as a separate step.
+						payForEventSignupNow(eventId, successMsg, resetBtn);
+					})
 					.catch(err => { triggerError(err.message); resetBtn(); });
 			}
 		}
@@ -9459,7 +9462,7 @@
                         </div>
                     ` : ''}
                     ${pending.length > 0 ? `
-                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">⏳ Pending Payment (${pending.length}) <span class="normal-case font-bold text-gray-300">— 15-min hold, not yet confirmed</span></p>
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">⏳ Pending Payment (${pending.length}) <span class="normal-case font-bold text-gray-300">— payment should resolve automatically within seconds; anyone still stuck here likely closed their browser mid-signup</span></p>
                         <div class="space-y-2 mb-6">
                             ${pending.map(s => `
                                 <div class="flex justify-between items-center py-2 border-b border-gray-50">
@@ -11187,25 +11190,6 @@
     </div>
     <!-- PAYMENT MODAL -->
     <!-- PAYMENT REQUIRED MODAL (item #14 - shown once right after signing up for a paid event) -->
-    <div id="paymentRequiredModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 100px; padding-bottom: 24px; z-index: 2050 !important;">
-        <input type="hidden" id="paymentRequiredEventId">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full border-t-8 border-black">
-            <div class="p-8 text-center">
-                <div class="w-16 h-16 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                </div>
-                <h3 class="text-2xl font-black uppercase italic mb-3">Payment Required</h3>
-                <p class="text-gray-600 text-sm font-bold mb-3">Your place has been reserved for 15 minutes to allow you time to complete payment.</p>
-                <p class="text-gray-600 text-sm font-bold mb-3">Tap <strong>Make Payment</strong> on the event to pay instantly from your wallet balance - top up first if you need to.</p>
-                <div class="bg-rose-50 rounded-xl p-4 mb-6">
-                    <p class="text-rose-600 text-xs font-bold">If payment is not confirmed within 15 minutes, your reservation will automatically expire, and your place may be offered to another player.</p>
-                </div>
-                <button onclick="closePaymentRequiredModal()" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Got It</button>
-            </div>
-        </div>
-    </div>
     <div id="paymentModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-start justify-center hidden p-4 overflow-y-auto" style="padding-top: 100px; padding-bottom: 24px; z-index: 2000 !important;">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full border-t-8 border-rose-600">
             <div class="p-8 text-center max-h-full overflow-y-auto">
@@ -11219,7 +11203,7 @@
 
                 <p class="text-sm font-bold text-gray-500 mb-4">Your wallet balance: <strong id="paymentBalanceText">£0.00</strong> &bull; <a href="javascript:void(0)" onclick="closePaymentModal(); openWalletModal();" class="text-rose-600 underline">Top up</a></p>
 
-                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-4">⏰ Payment is due within 15 minutes of booking or your spot may be given to a reserve. Cancellations within 24 hours of the event are not eligible for a refund.</p>
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-4">Cancellations within 24 hours of the event are not eligible for a refund.</p>
 
                 <input type="hidden" id="paymentEventId">
                 <input type="hidden" id="paymentEventTitle">
