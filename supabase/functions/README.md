@@ -64,7 +64,7 @@ Dashboard -> **Edge Functions -> Manage secrets** (or via the CLI:
 ```
 STRIPE_SECRET_KEY=sk_test_...          # from step 1 - switch to sk_live_... when you go live
 STRIPE_WEBHOOK_SECRET=whsec_...        # from step 5 below - you'll come back and set this
-SITE_URL=https://pontypoolpickle.netlify.app   # your real site URL, no trailing slash
+SITE_URL=https://www.pontypoolpickle.com   # your real site URL, no trailing slash
 MIGRATION_ADMIN_SECRET=<a random string, e.g. output of `openssl rand -hex 32`>
 ```
 
@@ -172,10 +172,19 @@ curl -X POST 'https://<your-project-ref>.supabase.co/functions/v1/migrate-users-
   -d '{"dryRun": false}'
 ```
 
+For a club-sized member list, this processes **15 people per call** by
+default (Edge Functions have an execution time limit, and doing this for
+everyone in one request can blow past it). The response includes a
+`remainingCount` - if it's above 0, just call the exact same request again
+(same body) to do the next batch, and repeat until `remainingCount` is 0.
+Pass `{"dryRun": false, "batchSize": 25}` to change the batch size if you
+want (max 50).
+
 Post in the club WhatsApp group letting everyone know to expect an email and
 to use the **Forgot Password** button on the site if it doesn't arrive - see
 the response's `errors` array for anyone who failed (usually a bad/missing
-email address) and fix those individually with `{"usernames": ["that_one_person"]}`.
+email address, or two accounts sharing the same email - only one of a pair
+can succeed) and fix those individually with `{"usernames": ["that_one_person"]}`.
 
 ## 8. Test it end-to-end (test mode)
 

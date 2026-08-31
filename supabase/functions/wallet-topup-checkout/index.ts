@@ -14,7 +14,7 @@
 //                        while testing, switch to sk_live_... when you're
 //                        ready to take real payments - see
 //                        supabase/functions/README.md.
-//   SITE_URL           - e.g. https://pontypoolpickle.netlify.app (no
+//   SITE_URL           - e.g. https://www.pontypoolpickle.com (no
 //                        trailing slash) - used to build the redirect URLs
 //                        Stripe sends the member back to.
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - auto-injected by Supabase
