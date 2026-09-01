@@ -3244,12 +3244,14 @@
                 // Uploaded photos vary in aspect ratio, but the slideshow frame is a
                 // fixed 16:9 - object-cover (used previously) always fills that frame
                 // by cropping whichever edges don't fit, which was chopping the sides
-                // off portrait/non-16:9 photos. A blurred, cropped copy fills the
-                // frame as a backdrop with no dead space, while the real photo sits on
-                // top fully visible via object-contain - nothing gets cut off.
+                // off portrait/non-16:9 photos. object-contain shows the whole photo
+                // with no cropping instead; any letterboxing that leaves is just the
+                // frame's own plain black background (bg-black on the parent) showing
+                // through - a blurred/zoomed duplicate of the same photo was tried
+                // there first, but on a photo full of people that just reads as a
+                // second, blurrier copy of them sitting right next to the real ones.
                 slidesEl.innerHTML = `
-                    <img src="${photo.imageUrl}" alt="" aria-hidden="true" class="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60">
-                    <img src="${photo.imageUrl}" alt="${safeAlt}" class="relative w-full h-full object-contain">
+                    <img src="${photo.imageUrl}" alt="${safeAlt}" class="w-full h-full object-contain">
                     ${photo.caption ? `<div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs md:text-sm font-bold px-4 py-3">${photo.caption}</div>` : ''}
                 `;
                 dotsEl.innerHTML = photos.map((_, i) => `
