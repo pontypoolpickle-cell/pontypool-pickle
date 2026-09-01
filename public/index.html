@@ -4125,9 +4125,29 @@
         // the error (e.g. a network hiccup on the *next* step after payment had
         // already gone through) before assuming the worst and telling someone to
         // sign up again when they might already be confirmed and paid.
+        // Single source of truth for "this member's name, as used to match
+        // signups.player_name" - collapses ANY run of whitespace (not just
+        // leading/trailing) to a single space. Bug history: first_name/surname
+        // can pick up stray whitespace (e.g. a trailing space typed at
+        // registration) that a plain `firstName + " " + surname` concatenation
+        // preserves verbatim into the signup row, while the server-side
+        // functions (spend-balance, cancel-event-signup) compute the name with
+        // `.trim()` - close, but a *trailing* space specifically survives
+        // `.trim()` just fine if it's in the middle of the joined string (it
+        // isn't here, but relying on multiple slightly-different formulas
+        // scattered across the file for what's supposed to be the exact same
+        // string is exactly how a mismatch like this creeps in). Every place
+        // that inserts, looks up, or cancels a signup by name should go through
+        // this one function so there's only one formula to keep in sync with
+        // the server side, instead of a dozen near-identical inline ones.
+        function currentUserFullName() {
+            if (!currentUser) return '';
+            return `${currentUser.firstName} ${currentUser.surname}`.replace(/\s+/g, ' ').trim();
+        }
+
         function getMySignupForEvent(eventId) {
             if (!currentUser) return null;
-            const fullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
+            const fullName = currentUserFullName();
             return (globalData.signups || []).find(s => s[0] === eventId && s[1] === fullName) || null;
         }
 
@@ -4180,7 +4200,7 @@
                     const eventRow = (globalData.events || []).find(e => e[0] === eventId);
                     if (currentUser && currentUser.email && currentUser.email.indexOf('@') !== -1 && eventRow) {
                         sendEmail('event_signup', {
-                            name: `${currentUser.firstName} ${currentUser.surname}`.trim(),
+                            name: currentUserFullName(),
                             email: currentUser.email,
                             eventTitle: eventRow[1],
                             eventDate: eventRow[2],
@@ -4193,7 +4213,7 @@
                 })
                 .catch(err => {
                     if (isInsufficientBalanceError(err) && currentUser) {
-                        const fullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
+                        const fullName = currentUserFullName();
                         return cancelSignup({ eventId, name: fullName })
                             .then(res => render(res))
                             .catch(() => {})
@@ -7797,7 +7817,7 @@
             const addInitials = true;
             const initialsPrice = 0;
             const totalPrice = size.price;
-            const fullName = `${currentUser.firstName} ${currentUser.surname}`;
+            const fullName = currentUserFullName();
 
             const btn = document.getElementById('merchandiseOrderPlaceBtn');
             btn.disabled = true; btn.innerText = 'Placing Order...';
@@ -8383,7 +8403,7 @@
 			const spacesAvailable = maxPlayers ? Math.max(0, maxPlayers - confirmedCount) : null;
 			const isFull = maxPlayers && confirmedCount >= maxPlayers;
 			const isPast = getEventStartDateTime(event) < serverNow();
-			const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
+			const fullName = currentUserFullName();
 			const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
 			const isPaidIn = !!(mySignup && mySignup[5] === 'Confirmed' && mySignup[6] === 'Paid');
 
@@ -8791,7 +8811,7 @@
             // for older cached sessions that predate that field.
             const viewerIsUnder18 = currentUser && (currentUser.isUnder18 || !!(viewerPlayer && viewerPlayer.isUnder18));
 
-            const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
+            const fullName = currentUserFullName();
             const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
             const isConfirmed = !!mySignup && mySignup[5] === "Confirmed";
             const isReserve = !!mySignup && mySignup[5] === "Reserve";
@@ -8961,7 +8981,7 @@
                 btn.style.opacity = "0.6";
             }
 
-            const fullName = currentUser.firstName + " " + currentUser.surname;
+            const fullName = currentUserFullName();
             const email = currentUser.email || "";
             const successMsg = asReserve ? "Added to Reserve List!" : "Registration Successful!";
 
@@ -9021,7 +9041,7 @@
                 btn.innerText = "Signing Up...";
                 btn.style.opacity = "0.7";
             }
-            const fullName = currentUser.firstName + " " + currentUser.surname;
+            const fullName = currentUserFullName();
             const email = currentUser.email || "";
             performSignup(eventId, fullName, email, currentUser.role, asReserve, btn);
         }
