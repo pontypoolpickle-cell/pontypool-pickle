@@ -4110,6 +4110,18 @@
                                 openWalletModal();
                             });
                     }
+                    // The 3-minute hold can occasionally be gone by the time this runs
+                    // (e.g. the tab was closed/backgrounded right after signing up, or
+                    // an earlier attempt already withdrew it) - spend-balance then
+                    // reports "no unpaid signup found" for this event/player. Refresh
+                    // the UI so any stale "Payment Pending" state clears immediately,
+                    // and tell the member plainly that they need to sign up again,
+                    // rather than leaving them looking at a dead "Make Payment" button.
+                    if (/no unpaid signup found/i.test(err.message || '')) {
+                        return refreshAllData().then(res => render(res)).catch(() => {}).finally(() => {
+                            triggerError("Your reservation for this event expired before payment completed. Please sign up again.");
+                        });
+                    }
                     triggerError(err.message);
                 })
                 .finally(() => { if (onDone) onDone(); });
@@ -8981,6 +8993,14 @@
                         triggerError("Insufficient balance - top up your wallet first.");
                         closePaymentModal();
                         openWalletModal();
+                    } else if (/no unpaid signup found/i.test(err.message || '')) {
+                        // Their signup/reservation is gone by the time payment was
+                        // confirmed (e.g. it expired, or was already paid/withdrawn on
+                        // another device) - refresh so the modal/button state matches
+                        // reality instead of repeating the same failed action forever.
+                        closePaymentModal();
+                        refreshAllData().then(res => render(res)).catch(() => {});
+                        triggerError("Your reservation for this event is no longer available. Please sign up again.");
                     } else {
                         triggerError(err.message);
                     }
