@@ -502,6 +502,7 @@
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Event Payments</h4>
                         <p class="text-gray-700 leading-relaxed">Event fees are paid instantly from your club wallet balance the moment you sign up - there's no separate payment step. If your balance is too low, you'll be told straight away so you can top up and try again. Top up your wallet balance any time using the 💰 Wallet button once logged in.</p>
+                        <p class="text-gray-700 leading-relaxed mt-3">Joining the <strong>reserve list</strong> for a full event never costs anything upfront - you'll only be asked to pay if a spot opens up and you're promoted to a confirmed place.</p>
                     </div>
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Cancellations & Refunds</h4>
@@ -3506,9 +3507,35 @@
 				});
 
 			const toPromote = reserves.slice(0, spotsOpen);
+			if (toPromote.length === 0) return;
+
+			// Item #8: a promoted reserve only owes money once they're actually
+			// promoted, never before - so free events promote straight to Confirmed
+			// (nothing to pay, same as a free direct signup), while paid events go
+			// to the existing 'Pending Payment' hold (same status/UI a fresh paid
+			// signup uses) with a much longer window than a fresh signup gets, since
+			// the member may well be offline at the moment they're promoted. If they
+			// don't pay in time, expireStalePendingReservations() automatically frees
+			// the spot again and offers it to the next reserve, exactly like an
+			// unpaid fresh signup would.
+			const { data: eventRow } = await supabaseClient.from('events').select('member_price, non_member_price, newcomers_only, event_date, event_time').eq('id', eventId).maybeSingle();
+			const isFree = isEventPriceFree(eventRow);
+			// Cap the payment deadline at the event's own start time, so a promoted-
+			// but-unpaid hold can never outlive the event itself.
+			let reservedUntil = null;
+			if (!isFree) {
+				const defaultDeadline = Date.now() + RESERVE_PROMOTION_PAYMENT_WINDOW_HOURS * 3600000;
+				const eventStart = eventRow && eventRow.event_date
+					? new Date(eventRow.event_date + 'T' + (eventRow.event_time || '23:59:59')).getTime()
+					: null;
+				reservedUntil = new Date(eventStart ? Math.min(defaultDeadline, eventStart) : defaultDeadline).toISOString();
+			}
 
 			for (const signup of toPromote) {
-				await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', signup.id);
+				await supabaseClient.from('signups').update({
+					status: isFree ? 'Confirmed' : 'Pending Payment',
+					reserved_until: reservedUntil
+				}).eq('id', signup.id);
 				if (signup.email && signup.email.indexOf('@') !== -1) {
 					sendEmail('reserve_promoted', {
 						name: signup.player_name,
@@ -3516,7 +3543,8 @@
 						eventTitle: eventDetails.title,
 						eventDate: eventDetails.date,
 						eventTime: eventDetails.time,
-						eventLocation: eventDetails.location
+						eventLocation: eventDetails.location,
+						paymentRequired: !isFree
 					});
 				}
 			}
@@ -4039,6 +4067,24 @@
         // countdown any more, and should almost never actually run out on someone.
         const RESERVATION_WINDOW_MINUTES = 3;
 
+        // Item #8: reserves never pay a penny while they're just on the reserve
+        // list - only once they're actually promoted into a real, paid spot (see
+        // promoteReservesForEvent() below). A promotion can happen at any time,
+        // including while that member is offline (e.g. an admin raises the event
+        // capacity, or someone else cancels overnight), so this window is
+        // deliberately much longer than the few-minutes one above - it just needs
+        // to give them a fair chance to notice the "you're in - please pay" email
+        // and act on it before the spot is offered to the next reserve instead.
+        const RESERVE_PROMOTION_PAYMENT_WINDOW_HOURS = 48;
+
+        // Mirrors the isFree check in signupForEvent() below - true when this
+        // event has no cost at all (either explicitly free/newcomers, or both
+        // prices are zero).
+        function isEventPriceFree(eventRow) {
+            if (!eventRow) return true;
+            return !!eventRow.newcomers_only || (!Number(eventRow.member_price) && !Number(eventRow.non_member_price));
+        }
+
         async function signupForEvent(payload) {
 			const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
 			const isFree = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
@@ -4199,37 +4245,19 @@
 			// Only promote a reserve when a real seat was actually vacated - either a
 			// Confirmed player, or a Pending Payment hold (item #14) being cancelled
 			// or expiring - not when someone merely leaves the reserve list (no seat
-			// freed up there).
+			// freed up there). Delegates to promoteReservesForEvent() (same function
+			// used elsewhere) so the "does this promotion need payment" logic (item
+			// #8) only lives in one place.
 			if (removedSignup && holdsSpot(removedSignup.status)) {
-				const { data: reserves, error: reserveErr } = await supabaseClient
-						.from('signups')
-						.select('*')
-						.eq('event_id', payload.eventId)
-						.eq('status', 'Reserve')
-						.order('created_at', { ascending: true });
-					if (reserveErr) throw new Error(reserveErr.message);
-					if (reserves && reserves.length > 0) {
-						// Members/Admins get priority; earliest reserved wins within the same tier
-						const sortedReserves = [...reserves].sort((a, b) => {
-							const aPriority = (a.player_type === 'Member' || a.player_type === 'Admin') ? 0 : 1;
-							const bPriority = (b.player_type === 'Member' || b.player_type === 'Admin') ? 0 : 1;
-							return aPriority - bPriority;
-						});
-						const nextReserve = sortedReserves[0];
-
-						await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', nextReserve.id);
-						if (nextReserve.email && nextReserve.email.indexOf('@') !== -1) {
-							const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-							sendEmail('reserve_promoted', {
-								name: nextReserve.player_name,
-								email: nextReserve.email,
-								eventTitle: eventRow ? eventRow[1] : '',
-								eventDate: eventRow ? eventRow[2] : '',
-								eventTime: eventRow ? eventRow[3] : '',
-								eventLocation: eventRow ? eventRow[8] : ''
-							});
-						}
-					}
+				const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+				if (eventRow && eventRow[4]) {
+					await promoteReservesForEvent(payload.eventId, Number(eventRow[4]), {
+						title: eventRow[1],
+						date: eventRow[2],
+						time: eventRow[3],
+						location: eventRow[8]
+					});
+				}
 			}
 			return refreshAllData();
 		}
@@ -8811,8 +8839,11 @@
                     ` : ''}
 
 
-                    ${!under18Only && (isConfirmed || isReserve || isPendingPayment) && mySignup && mySignup[6] !== 'Paid' ? `
+                    ${!under18Only && (isConfirmed || isPendingPayment) && mySignup && mySignup[6] !== 'Paid' ? `
                         <button onclick="openPaymentModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}', '${userPrice}')" style="background-color: #e11d48 !important; color: #ffffff !important;" class="w-full py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-black transition">💳 Make Payment</button>
+                    ` : ''}
+                    ${!under18Only && isReserve ? `
+                        <p class="text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide px-2">No payment needed while on the reserve list — you'll only be asked to pay if you're promoted to a confirmed spot.</p>
                     ` : ''}
                     ${!under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] === 'Paid' ? `
                         <span class="w-full inline-block text-center bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest">💳 Paid</span>
@@ -9556,7 +9587,7 @@
                         </div>
                     ` : ''}
                     ${pending.length > 0 ? `
-                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">⏳ Pending Payment (${pending.length}) <span class="normal-case font-bold text-gray-300">— payment should resolve automatically within seconds; anyone still stuck here likely closed their browser mid-signup</span></p>
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">⏳ Pending Payment (${pending.length}) <span class="normal-case font-bold text-gray-300">— a fresh paid signup should resolve automatically within seconds (anyone stuck here likely closed their browser mid-signup); a promoted reserve can sit here for up to 48 hours while they're given a chance to pay</span></p>
                         <div class="space-y-2 mb-6">
                             ${pending.map(s => `
                                 <div class="flex justify-between items-center py-2 border-b border-gray-50">

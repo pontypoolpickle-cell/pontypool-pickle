@@ -221,6 +221,15 @@ serve(async (req) => {
       if (signupErr) throw new Error(signupErr.message);
       if (!signup) return jsonResponse({ error: "No unpaid signup found for this event. Please sign up first." }, 404);
 
+      // Item #8: reserves don't pay until they're actually promoted to a real
+      // spot (status flips to 'Pending Payment'/'Confirmed' - see
+      // promoteReservesForEvent() on the client). Block it here too, not just by
+      // hiding the "Make Payment" button client-side, since this is the only
+      // thing allowed to move money.
+      if (signup.status === "Reserve") {
+        return jsonResponse({ error: "You're still on the reserve list - there's nothing to pay yet. You'll be asked to pay only if you're promoted to a confirmed spot." }, 400);
+      }
+
       const isMemberRate = signup.player_type === "Member" || signup.player_type === "Admin";
       const price = Number((isMemberRate ? eventRow.member_price : eventRow.non_member_price) || 0);
 
