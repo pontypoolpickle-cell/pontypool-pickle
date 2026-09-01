@@ -286,6 +286,30 @@
                     </div>
                 </a>
             </div>
+            <div class="px-4">
+                <a href="https://www.facebook.com/share/19L9P7V9wo/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer"
+                   class="card p-8 md:p-10 bg-white border-l-8 border-rose-600 shadow-xl max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-8 hover:shadow-2xl transition group">
+                    <div class="flex-shrink-0">
+                        <img src="https://i.postimg.cc/L6y4hSYg/JP-Photography.png"
+                             alt="JP Photography Logo"
+                             class="h-20 md:h-24 w-auto object-contain">
+                    </div>
+                    <div class="text-center md:text-left flex-grow">
+                        <p class="text-[10px] font-black uppercase text-rose-600 tracking-widest mb-2">Proud Collaboration</p>
+                        <h3 class="text-2xl md:text-3xl font-black italic uppercase tracking-tight text-black mb-2 group-hover:text-rose-600 transition">
+                            Working in Collaboration with JP Photography
+                        </h3>
+                        <p class="text-gray-600 font-medium">
+                            We're proud to be working in collaboration with JP Photography. Tap to check out their socials and see them in action at the club.
+                        </p>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <span class="btn-red px-6 py-3 rounded-full font-black uppercase text-sm tracking-widest shadow-lg inline-block whitespace-nowrap">
+                            View Socials →
+                        </span>
+                    </div>
+                </a>
+            </div>
             <div class="mt-16 text-center space-y-8 px-4">
                 <div class="card p-8 md:p-12 bg-white border-b-8 border-rose-600 shadow-2xl max-w-4xl mx-auto">
                     <h3 class="text-4xl font-black italic uppercase tracking-tighter mb-4 text-black">Ready to step onto the court?</h3>
@@ -478,6 +502,7 @@
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Event Payments</h4>
                         <p class="text-gray-700 leading-relaxed">Event fees are paid instantly from your club wallet balance the moment you sign up - there's no separate payment step. If your balance is too low, you'll be told straight away so you can top up and try again. Top up your wallet balance any time using the 💰 Wallet button once logged in.</p>
+                        <p class="text-gray-700 leading-relaxed mt-3">Joining the <strong>reserve list</strong> for a full event never costs anything upfront - you'll only be asked to pay if a spot opens up and you're promoted to a confirmed place.</p>
                     </div>
                     <div>
                         <h4 class="font-black text-lg uppercase italic text-black mb-2">Cancellations & Refunds</h4>
@@ -1305,9 +1330,14 @@
 
         -- Membership Number (item #17) - a permanent "PPC-0001" style identifier
         -- assigned once per account and never reused, even if membership lapses.
-        -- New approvals get the next number automatically; existing/legacy members
-        -- need their historical number backfilled once via the admin player
-        -- profile (Manage Players) - see assignNextMembershipNumber() in the app.
+        -- Assigned automatically the moment membership actually becomes Active
+        -- (a real Stripe-backed payment via spend-balance, or an admin-granted
+        -- gift membership) - NOT when the account is first created/approved,
+        -- since plenty of approved accounts never go on to pay for membership at
+        -- all. See assignNextMembershipNumberIfNeeded() in supabase/functions/
+        -- spend-balance/index.ts and supabase/functions/admin-actions/index.ts.
+        -- Existing/legacy members need their historical number backfilled once
+        -- via the admin player profile (Manage Players).
         alter table users add column if not exists membership_number integer;
         create unique index if not exists users_membership_number_idx
             on users (membership_number) where membership_number is not null;
@@ -1542,6 +1572,20 @@
           score_a integer,
           score_b integer
         );
+
+        -- Substitute tracking (fix: subbed-out players were losing their ladder
+        -- points for that game). p{N}_original records who was originally in that
+        -- slot (i.e. whose `ladder_courts` row this game's round_points belong to)
+        -- the first time that slot is substituted - left null otherwise, meaning
+        -- "pN itself is the original player, no sub has happened". Elo/match
+        -- history still credits whoever actually played (pN, the substitute) -
+        -- only the ladder standings' round_points (updateLadderScore()) are
+        -- redirected back to the original player via this column. See
+        -- substituteLadderGamePlayer()/updateLadderScore() in this file.
+        alter table ladder_games add column if not exists p1_original text;
+        alter table ladder_games add column if not exists p2_original text;
+        alter table ladder_games add column if not exists p3_original text;
+        alter table ladder_games add column if not exists p4_original text;
 
         -- Trusted server time (see syncServerTime()/serverNow() below) --
         -- Lets the app check the database's clock instead of trusting the visitor's
@@ -2071,6 +2115,13 @@
 				p2: g.p2 || 'Singles',
 				p3: g.p3 || '',
 				p4: g.p4 || 'Singles',
+				// Item #6: which players (if any) have been subbed out of this game -
+				// the ladder-points-holder is still p1_original etc., not the current
+				// pN, so surface it in the UI to keep that visible to admins.
+				p1Original: g.p1_original || '',
+				p2Original: g.p2_original || '',
+				p3Original: g.p3_original || '',
+				p4Original: g.p4_original || '',
 				scoreA: g.score_a ?? '',
 				scoreB: g.score_b ?? ''
 			}));
@@ -2863,8 +2914,21 @@
                 .eq('id', gameUuid);
             if (error) throw new Error(error.message);
 
-            const teamA = [game.p1, game.p2].filter(n => n && n !== 'Singles');
-            const teamB = [game.p3, game.p4].filter(n => n && n !== 'Singles');
+            // Item #6 fix: round_points (which decide promotion/relegation) belong to
+            // whoever's ladder slot this is, NOT necessarily whoever physically played
+            // - if the slot was subbed (see substituteLadderGamePlayer()), pN_original
+            // holds the name of the player that ladder slot actually belongs to, and
+            // that's who should earn/lose the points here. Falls back to the played
+            // name itself when there's been no substitution (pN_original is null).
+            const ladderNameFor = (slotName, originalName) => originalName || slotName;
+            const teamA = [
+                game.p1 && game.p1 !== 'Singles' ? ladderNameFor(game.p1, game.p1_original) : null,
+                game.p2 && game.p2 !== 'Singles' ? ladderNameFor(game.p2, game.p2_original) : null
+            ].filter(Boolean);
+            const teamB = [
+                game.p3 && game.p3 !== 'Singles' ? ladderNameFor(game.p3, game.p3_original) : null,
+                game.p4 && game.p4 !== 'Singles' ? ladderNameFor(game.p4, game.p4_original) : null
+            ].filter(Boolean);
             const winners = scoreA > scoreB ? teamA : teamB;
             const losers = scoreA > scoreB ? teamB : teamA;
 
@@ -2897,9 +2961,15 @@
 			// Manually swap one player out of a single (not-yet-scored) game - e.g. someone
 			// gets tired and needs to sit out. Only that game's line-up changes; the rest of
 			// the court/round is untouched. The substitute is picked from the full player
-			// list, and once this game is scored/round ends, results/Elo are attributed to
-			// whoever is in the game row at that time - so the sub is treated exactly like
-			// any other player for history and ratings purposes.
+			// list, and once this game is scored/round ends, match history/Elo are
+			// attributed to whoever is in the game row at that time - so the sub is
+			// treated exactly like any other player for history and ratings purposes.
+			// The ORIGINAL player's ladder standing is a different matter though: they
+			// still hold that slot on the ladder (see ladder_courts) even though someone
+			// else is filling in for this one game, so their round_points (which decide
+			// promotion/relegation) need to keep tracking that slot's result regardless
+			// of who actually played it - see the p{N}_original columns and
+			// updateLadderScore() below.
 			async function substituteLadderGamePlayer(payload) {
 				const slot = payload.slot;
 				if (!['p1', 'p2', 'p3', 'p4'].includes(slot)) throw new Error('Invalid player slot.');
@@ -2916,7 +2986,14 @@
 					throw new Error('That player is already in this game.');
 				}
 
-				const { error } = await supabaseClient.from('ladder_games').update({ [slot]: newName }).eq('id', payload.gameId);
+				const originalCol = slot + '_original';
+				const update = { [slot]: newName };
+				// Only capture the original the FIRST time this slot is subbed - if it's
+				// subbed a second time, the original ladder player (from before the very
+				// first swap) must still be the one credited, not the outgoing sub.
+				if (!game[originalCol]) update[originalCol] = game[slot];
+
+				const { error } = await supabaseClient.from('ladder_games').update(update).eq('id', payload.gameId);
 				if (error) throw new Error(error.message);
 
 				clearLeagueCache();
@@ -3163,8 +3240,16 @@
 
             const renderSlide = () => {
                 const photo = photos[homepageGalleryIndex];
+                const safeAlt = (photo.caption || 'Club photo').replace(/"/g, '&quot;');
+                // Uploaded photos vary in aspect ratio, but the slideshow frame is a
+                // fixed 16:9 - object-cover (used previously) always fills that frame
+                // by cropping whichever edges don't fit, which was chopping the sides
+                // off portrait/non-16:9 photos. A blurred, cropped copy fills the
+                // frame as a backdrop with no dead space, while the real photo sits on
+                // top fully visible via object-contain - nothing gets cut off.
                 slidesEl.innerHTML = `
-                    <img src="${photo.imageUrl}" alt="${(photo.caption || 'Club photo').replace(/"/g, '&quot;')}" class="w-full h-full object-cover">
+                    <img src="${photo.imageUrl}" alt="" aria-hidden="true" class="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60">
+                    <img src="${photo.imageUrl}" alt="${safeAlt}" class="relative w-full h-full object-contain">
                     ${photo.caption ? `<div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs md:text-sm font-bold px-4 py-3">${photo.caption}</div>` : ''}
                 `;
                 dotsEl.innerHTML = photos.map((_, i) => `
@@ -3276,29 +3361,11 @@
                 .catch(err => triggerError(err.message));
         }
 
-        // Assigns the next sequential membership number (PPC-0001, PPC-0002, ...)
-        // to a newly-approved account, unless it somehow already has one. Historical
-        // members backfilled from banking records get their number set manually via
-        // the admin "Manage Players" profile instead of through this auto-assign path.
-        async function assignNextMembershipNumber(username) {
-            const { data: rows, error: fetchErr } = await supabaseClient
-                .from('users').select('membership_number').eq('username', username).limit(1);
-            if (fetchErr) throw new Error(fetchErr.message);
-            if (rows && rows[0] && rows[0].membership_number) return;
-
-            const { data: maxRows, error: maxErr } = await supabaseClient
-                .from('users').select('membership_number')
-                .not('membership_number', 'is', null)
-                .order('membership_number', { ascending: false })
-                .limit(1);
-            if (maxErr) throw new Error(maxErr.message);
-            const next = (maxRows && maxRows[0] ? Number(maxRows[0].membership_number) : 0) + 1;
-
-            const { error: updateErr } = await supabaseClient
-                .from('users').update({ membership_number: next }).eq('username', username);
-            if (updateErr) throw new Error(updateErr.message);
-        }
-
+        // Manual override only (admin "Manage Players" profile) - automatic
+        // sequential assignment now happens server-side, only once membership
+        // actually goes Active (see assignNextMembershipNumberIfNeeded() in
+        // supabase/functions/spend-balance/index.ts and admin-actions/index.ts),
+        // not at account approval time (item #17 fix).
         async function setMembershipNumber(username, number) {
             const { error } = await supabaseClient.from('users').update({ membership_number: number }).eq('username', username);
             if (error) throw new Error(error.message);
@@ -3440,9 +3507,35 @@
 				});
 
 			const toPromote = reserves.slice(0, spotsOpen);
+			if (toPromote.length === 0) return;
+
+			// Item #8: a promoted reserve only owes money once they're actually
+			// promoted, never before - so free events promote straight to Confirmed
+			// (nothing to pay, same as a free direct signup), while paid events go
+			// to the existing 'Pending Payment' hold (same status/UI a fresh paid
+			// signup uses) with a much longer window than a fresh signup gets, since
+			// the member may well be offline at the moment they're promoted. If they
+			// don't pay in time, expireStalePendingReservations() automatically frees
+			// the spot again and offers it to the next reserve, exactly like an
+			// unpaid fresh signup would.
+			const { data: eventRow } = await supabaseClient.from('events').select('member_price, non_member_price, newcomers_only, event_date, event_time').eq('id', eventId).maybeSingle();
+			const isFree = isEventPriceFree(eventRow);
+			// Cap the payment deadline at the event's own start time, so a promoted-
+			// but-unpaid hold can never outlive the event itself.
+			let reservedUntil = null;
+			if (!isFree) {
+				const defaultDeadline = Date.now() + RESERVE_PROMOTION_PAYMENT_WINDOW_HOURS * 3600000;
+				const eventStart = eventRow && eventRow.event_date
+					? new Date(eventRow.event_date + 'T' + (eventRow.event_time || '23:59:59')).getTime()
+					: null;
+				reservedUntil = new Date(eventStart ? Math.min(defaultDeadline, eventStart) : defaultDeadline).toISOString();
+			}
 
 			for (const signup of toPromote) {
-				await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', signup.id);
+				await supabaseClient.from('signups').update({
+					status: isFree ? 'Confirmed' : 'Pending Payment',
+					reserved_until: reservedUntil
+				}).eq('id', signup.id);
 				if (signup.email && signup.email.indexOf('@') !== -1) {
 					sendEmail('reserve_promoted', {
 						name: signup.player_name,
@@ -3450,7 +3543,8 @@
 						eventTitle: eventDetails.title,
 						eventDate: eventDetails.date,
 						eventTime: eventDetails.time,
-						eventLocation: eventDetails.location
+						eventLocation: eventDetails.location,
+						paymentRequired: !isFree
 					});
 				}
 			}
@@ -3973,6 +4067,24 @@
         // countdown any more, and should almost never actually run out on someone.
         const RESERVATION_WINDOW_MINUTES = 3;
 
+        // Item #8: reserves never pay a penny while they're just on the reserve
+        // list - only once they're actually promoted into a real, paid spot (see
+        // promoteReservesForEvent() below). A promotion can happen at any time,
+        // including while that member is offline (e.g. an admin raises the event
+        // capacity, or someone else cancels overnight), so this window is
+        // deliberately much longer than the few-minutes one above - it just needs
+        // to give them a fair chance to notice the "you're in - please pay" email
+        // and act on it before the spot is offered to the next reserve instead.
+        const RESERVE_PROMOTION_PAYMENT_WINDOW_HOURS = 48;
+
+        // Mirrors the isFree check in signupForEvent() below - true when this
+        // event has no cost at all (either explicitly free/newcomers, or both
+        // prices are zero).
+        function isEventPriceFree(eventRow) {
+            if (!eventRow) return true;
+            return !!eventRow.newcomers_only || (!Number(eventRow.member_price) && !Number(eventRow.non_member_price));
+        }
+
         async function signupForEvent(payload) {
 			const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
 			const isFree = eventRow ? (!!eventRow[13] || (!Number(eventRow[11]) && !Number(eventRow[12]))) : false;
@@ -4043,6 +4155,18 @@
                                 triggerError("Insufficient balance - please top up your wallet, then sign up again.");
                                 openWalletModal();
                             });
+                    }
+                    // The 3-minute hold can occasionally be gone by the time this runs
+                    // (e.g. the tab was closed/backgrounded right after signing up, or
+                    // an earlier attempt already withdrew it) - spend-balance then
+                    // reports "no unpaid signup found" for this event/player. Refresh
+                    // the UI so any stale "Payment Pending" state clears immediately,
+                    // and tell the member plainly that they need to sign up again,
+                    // rather than leaving them looking at a dead "Make Payment" button.
+                    if (/no unpaid signup found/i.test(err.message || '')) {
+                        return refreshAllData().then(res => render(res)).catch(() => {}).finally(() => {
+                            triggerError("Your reservation for this event expired before payment completed. Please sign up again.");
+                        });
                     }
                     triggerError(err.message);
                 })
@@ -4121,37 +4245,19 @@
 			// Only promote a reserve when a real seat was actually vacated - either a
 			// Confirmed player, or a Pending Payment hold (item #14) being cancelled
 			// or expiring - not when someone merely leaves the reserve list (no seat
-			// freed up there).
+			// freed up there). Delegates to promoteReservesForEvent() (same function
+			// used elsewhere) so the "does this promotion need payment" logic (item
+			// #8) only lives in one place.
 			if (removedSignup && holdsSpot(removedSignup.status)) {
-				const { data: reserves, error: reserveErr } = await supabaseClient
-						.from('signups')
-						.select('*')
-						.eq('event_id', payload.eventId)
-						.eq('status', 'Reserve')
-						.order('created_at', { ascending: true });
-					if (reserveErr) throw new Error(reserveErr.message);
-					if (reserves && reserves.length > 0) {
-						// Members/Admins get priority; earliest reserved wins within the same tier
-						const sortedReserves = [...reserves].sort((a, b) => {
-							const aPriority = (a.player_type === 'Member' || a.player_type === 'Admin') ? 0 : 1;
-							const bPriority = (b.player_type === 'Member' || b.player_type === 'Admin') ? 0 : 1;
-							return aPriority - bPriority;
-						});
-						const nextReserve = sortedReserves[0];
-
-						await supabaseClient.from('signups').update({ status: 'Confirmed' }).eq('id', nextReserve.id);
-						if (nextReserve.email && nextReserve.email.indexOf('@') !== -1) {
-							const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
-							sendEmail('reserve_promoted', {
-								name: nextReserve.player_name,
-								email: nextReserve.email,
-								eventTitle: eventRow ? eventRow[1] : '',
-								eventDate: eventRow ? eventRow[2] : '',
-								eventTime: eventRow ? eventRow[3] : '',
-								eventLocation: eventRow ? eventRow[8] : ''
-							});
-						}
-					}
+				const eventRow = (globalData.events || []).find(e => e[0] === payload.eventId);
+				if (eventRow && eventRow[4]) {
+					await promoteReservesForEvent(payload.eventId, Number(eventRow[4]), {
+						title: eventRow[1],
+						date: eventRow[2],
+						time: eventRow[3],
+						location: eventRow[8]
+					});
+				}
 			}
 			return refreshAllData();
 		}
@@ -4381,10 +4487,13 @@
                         female_total_games: 0
                     });
                 }
-                // Best-effort: never let a missing membership_number column (see the
-                // migration comment near the top of this file) block approving a
-                // new member, which is the far more important action here.
-                try { await assignNextMembershipNumber(username); } catch (e) { console.warn('assignNextMembershipNumber skipped:', e.message); }
+                // Membership numbers are no longer assigned here (item #17 fix) -
+                // approving an account just means it's allowed to log in, not that
+                // the person has paid for/become a member. The number is now
+                // assigned server-side the moment membership actually goes Active
+                // (see assignNextMembershipNumberIfNeeded() in spend-balance and
+                // admin-actions), so someone who registers but never pays never
+                // takes up a membership number at all.
                 if (user.email) {
                     sendEmail('account_approved', {
                         firstName: user.first_name,
@@ -6438,6 +6547,11 @@
         function generateLadderGameCard(g) {
             const isScored = (g.scoreA !== "" && g.scoreB !== "");
             const boxStyle = 'width: 65px !important; height: 55px !important; font-size: 1.5rem !important; color: black !important; border: 1px solid #ddd !important;';
+            // Item #6: show who's actually filling a slot vs. whose ladder points
+            // it is, so a substitution stays obvious at a glance (e.g. on court).
+            const nameLabel = (name, original) => original
+                ? `${name} <span style="color:#999; font-weight:700;">(sub for ${original})</span>`
+                : name;
 
             return `
             <div class="border-2 border-gray-100 rounded-xl p-4">
@@ -6445,13 +6559,13 @@
                     <input type="number" id="ladderScoreA_${g.gameId}" value="${g.scoreA}" placeholder="0"
                           ${isScored ? 'disabled' : ''} class="ladder-score-A rounded text-center font-black bg-white" style="${boxStyle} ${isScored ? 'opacity: 0.5;' : ''}">
                     <div class="flex-grow font-bold text-xs leading-tight text-black">
-                        ${g.p1} <br><span style="color: #999;">&</span> ${g.p2}
+                        ${nameLabel(g.p1, g.p1Original)} <br><span style="color: #999;">&</span> ${nameLabel(g.p2, g.p2Original)}
                     </div>
                 </div>
                 <div class="text-center text-[10px] font-black my-1" style="color: #ccc;">VERSUS</div>
                 <div class="flex items-center gap-3 mt-2">
                     <div class="flex-grow font-bold text-xs text-right leading-tight text-black">
-                        ${g.p3} <br><span style="color: #999;">&</span> ${g.p4}
+                        ${nameLabel(g.p3, g.p3Original)} <br><span style="color: #999;">&</span> ${nameLabel(g.p4, g.p4Original)}
                     </div>
                     <input type="number" id="ladderScoreB_${g.gameId}" value="${g.scoreB}" placeholder="0"
                           ${isScored ? 'disabled' : ''} class="ladder-score-B rounded text-center font-black bg-white" style="${boxStyle} ${isScored ? 'opacity: 0.5;' : ''}">
@@ -8725,8 +8839,11 @@
                     ` : ''}
 
 
-                    ${!under18Only && (isConfirmed || isReserve || isPendingPayment) && mySignup && mySignup[6] !== 'Paid' ? `
+                    ${!under18Only && (isConfirmed || isPendingPayment) && mySignup && mySignup[6] !== 'Paid' ? `
                         <button onclick="openPaymentModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}', '${userPrice}')" style="background-color: #e11d48 !important; color: #ffffff !important;" class="w-full py-3 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-black transition">💳 Make Payment</button>
+                    ` : ''}
+                    ${!under18Only && isReserve ? `
+                        <p class="text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide px-2">No payment needed while on the reserve list — you'll only be asked to pay if you're promoted to a confirmed spot.</p>
                     ` : ''}
                     ${!under18Only && (isConfirmed || isReserve) && mySignup && mySignup[6] === 'Paid' ? `
                         <span class="w-full inline-block text-center bg-black text-white py-3 rounded-xl font-black uppercase text-xs tracking-widest">💳 Paid</span>
@@ -8907,6 +9024,14 @@
                         triggerError("Insufficient balance - top up your wallet first.");
                         closePaymentModal();
                         openWalletModal();
+                    } else if (/no unpaid signup found/i.test(err.message || '')) {
+                        // Their signup/reservation is gone by the time payment was
+                        // confirmed (e.g. it expired, or was already paid/withdrawn on
+                        // another device) - refresh so the modal/button state matches
+                        // reality instead of repeating the same failed action forever.
+                        closePaymentModal();
+                        refreshAllData().then(res => render(res)).catch(() => {});
+                        triggerError("Your reservation for this event is no longer available. Please sign up again.");
                     } else {
                         triggerError(err.message);
                     }
@@ -9462,7 +9587,7 @@
                         </div>
                     ` : ''}
                     ${pending.length > 0 ? `
-                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">⏳ Pending Payment (${pending.length}) <span class="normal-case font-bold text-gray-300">— payment should resolve automatically within seconds; anyone still stuck here likely closed their browser mid-signup</span></p>
+                        <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">⏳ Pending Payment (${pending.length}) <span class="normal-case font-bold text-gray-300">— a fresh paid signup should resolve automatically within seconds (anyone stuck here likely closed their browser mid-signup); a promoted reserve can sit here for up to 48 hours while they're given a chance to pay</span></p>
                         <div class="space-y-2 mb-6">
                             ${pending.map(s => `
                                 <div class="flex justify-between items-center py-2 border-b border-gray-50">

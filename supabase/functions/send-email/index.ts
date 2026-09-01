@@ -305,13 +305,25 @@ serve(async (req) => {
 
       // EMAIL 9: Reserve Promoted to Confirmed
       case "reserve_promoted": {
+        // Item #8: reserves never pay upfront - they only owe anything once
+        // they're actually promoted, so this email is also where they first
+        // find out payment is needed (for a paid event) and by when, before
+        // the spot is offered on to the next reserve instead.
+        const paymentRequired = !!data.paymentRequired;
         const body = `
           <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.name},</p>
           <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Great news — a spot has just opened up and you've been moved from the reserve list to <strong>confirmed</strong>! 🎉</p>
           ${eventBox(data.eventTitle, data.eventDate, data.eventTime, data.eventLocation)}
-          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin:20px 0;">
-            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;font-weight:900;color:#16a34a;">✅ You are now confirmed for this event!</p>
+          ${paymentRequired ? `
+          <div style="background-color:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px 18px;margin:20px 0;">
+            <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:13px;font-weight:900;color:#c2410c;">⏳ Payment needed to keep your spot</p>
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#c2410c;">Log in and hit "Make Payment" on this event within the next 48 hours, or your spot will be offered to the next reserve.</p>
           </div>
+          ` : `
+          <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin:20px 0;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;font-weight:900;color:#16a34a;">✅ You are now confirmed for this event - nothing to pay!</p>
+          </div>
+          `}
           <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
             <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">⚠️ If you can no longer attend, please cancel your registration on the website so your spot can go to someone else.</p>
           </div>
