@@ -3636,16 +3636,39 @@
                 // error.context - surface that instead of the generic "non-2xx"
                 // message wherever it's available.
                 let message = error.message || 'Something went wrong - please try again.';
+                let status = null;
                 try {
-                    if (error.context && typeof error.context.json === 'function') {
-                        const body = await error.context.json();
-                        if (body && body.error) message = body.error;
+                    if (error.context) {
+                        status = error.context.status || null;
+                        if (typeof error.context.json === 'function') {
+                            const body = await error.context.json();
+                            if (body && body.error) message = body.error;
+                        }
                     }
                 } catch (e) { /* fall back to the generic message above */ }
+                // Defensive fallback: spend-balance only ever returns HTTP 402 for
+                // "Insufficient balance" - if the JSON body couldn't be read for
+                // whatever reason (e.g. the response stream already being consumed
+                // by the time we get to it, which can happen with some supabase-js
+                // versions), still recognise this case from the status code alone.
+                // Callers match on this exact message to auto-cancel a stuck
+                // payment hold and point the member at the wallet - silently
+                // falling through to a generic error here is exactly how someone
+                // ends up stuck looking at "Payment Pending" with no explanation.
+                if (status === 402 && !/insufficient balance/i.test(message)) message = 'Insufficient balance';
                 throw new Error(message);
             }
             if (data && data.error) throw new Error(data.error);
             return data;
+        }
+
+        // Matches loosely (case-insensitive substring) rather than requiring an
+        // exact string match against callEdgeFunction()'s thrown error, so a
+        // stray whitespace/casing difference (or any future minor wording tweak
+        // server-side) can't silently fall through to a generic error and leave
+        // a payment hold stuck instead of being recognised and handled properly.
+        function isInsufficientBalanceError(err) {
+            return /insufficient balance/i.test((err && err.message) || '');
         }
 
         function openWalletModal() {
@@ -4169,7 +4192,7 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance' && currentUser) {
+                    if (isInsufficientBalanceError(err) && currentUser) {
                         const fullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
                         return cancelSignup({ eventId, name: fullName })
                             .then(res => render(res))
@@ -7827,7 +7850,7 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance') {
+                    if (isInsufficientBalanceError(err)) {
                         triggerError("Insufficient balance - top up your wallet first.");
                         closeMerchandiseOrderPaymentModal();
                         openWalletModal();
@@ -8284,7 +8307,7 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance') {
+                    if (isInsufficientBalanceError(err)) {
                         triggerError("Insufficient balance - top up your wallet first.");
                         closeModal('membershipPaymentModal');
                         openWalletModal();
@@ -9072,7 +9095,7 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance') {
+                    if (isInsufficientBalanceError(err)) {
                         triggerError("Insufficient balance - top up your wallet first.");
                         closePaymentModal();
                         openWalletModal();
