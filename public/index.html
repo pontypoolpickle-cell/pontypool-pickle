@@ -1567,6 +1567,20 @@
           score_b integer
         );
 
+        -- Substitute tracking (fix: subbed-out players were losing their ladder
+        -- points for that game). p{N}_original records who was originally in that
+        -- slot (i.e. whose `ladder_courts` row this game's round_points belong to)
+        -- the first time that slot is substituted - left null otherwise, meaning
+        -- "pN itself is the original player, no sub has happened". Elo/match
+        -- history still credits whoever actually played (pN, the substitute) -
+        -- only the ladder standings' round_points (updateLadderScore()) are
+        -- redirected back to the original player via this column. See
+        -- substituteLadderGamePlayer()/updateLadderScore() in this file.
+        alter table ladder_games add column if not exists p1_original text;
+        alter table ladder_games add column if not exists p2_original text;
+        alter table ladder_games add column if not exists p3_original text;
+        alter table ladder_games add column if not exists p4_original text;
+
         -- Trusted server time (see syncServerTime()/serverNow() below) --
         -- Lets the app check the database's clock instead of trusting the visitor's
         -- device, since a wrong device date/time previously caused confusing "why is
@@ -2095,6 +2109,13 @@
 				p2: g.p2 || 'Singles',
 				p3: g.p3 || '',
 				p4: g.p4 || 'Singles',
+				// Item #6: which players (if any) have been subbed out of this game -
+				// the ladder-points-holder is still p1_original etc., not the current
+				// pN, so surface it in the UI to keep that visible to admins.
+				p1Original: g.p1_original || '',
+				p2Original: g.p2_original || '',
+				p3Original: g.p3_original || '',
+				p4Original: g.p4_original || '',
 				scoreA: g.score_a ?? '',
 				scoreB: g.score_b ?? ''
 			}));
@@ -2887,8 +2908,21 @@
                 .eq('id', gameUuid);
             if (error) throw new Error(error.message);
 
-            const teamA = [game.p1, game.p2].filter(n => n && n !== 'Singles');
-            const teamB = [game.p3, game.p4].filter(n => n && n !== 'Singles');
+            // Item #6 fix: round_points (which decide promotion/relegation) belong to
+            // whoever's ladder slot this is, NOT necessarily whoever physically played
+            // - if the slot was subbed (see substituteLadderGamePlayer()), pN_original
+            // holds the name of the player that ladder slot actually belongs to, and
+            // that's who should earn/lose the points here. Falls back to the played
+            // name itself when there's been no substitution (pN_original is null).
+            const ladderNameFor = (slotName, originalName) => originalName || slotName;
+            const teamA = [
+                game.p1 && game.p1 !== 'Singles' ? ladderNameFor(game.p1, game.p1_original) : null,
+                game.p2 && game.p2 !== 'Singles' ? ladderNameFor(game.p2, game.p2_original) : null
+            ].filter(Boolean);
+            const teamB = [
+                game.p3 && game.p3 !== 'Singles' ? ladderNameFor(game.p3, game.p3_original) : null,
+                game.p4 && game.p4 !== 'Singles' ? ladderNameFor(game.p4, game.p4_original) : null
+            ].filter(Boolean);
             const winners = scoreA > scoreB ? teamA : teamB;
             const losers = scoreA > scoreB ? teamB : teamA;
 
@@ -2921,9 +2955,15 @@
 			// Manually swap one player out of a single (not-yet-scored) game - e.g. someone
 			// gets tired and needs to sit out. Only that game's line-up changes; the rest of
 			// the court/round is untouched. The substitute is picked from the full player
-			// list, and once this game is scored/round ends, results/Elo are attributed to
-			// whoever is in the game row at that time - so the sub is treated exactly like
-			// any other player for history and ratings purposes.
+			// list, and once this game is scored/round ends, match history/Elo are
+			// attributed to whoever is in the game row at that time - so the sub is
+			// treated exactly like any other player for history and ratings purposes.
+			// The ORIGINAL player's ladder standing is a different matter though: they
+			// still hold that slot on the ladder (see ladder_courts) even though someone
+			// else is filling in for this one game, so their round_points (which decide
+			// promotion/relegation) need to keep tracking that slot's result regardless
+			// of who actually played it - see the p{N}_original columns and
+			// updateLadderScore() below.
 			async function substituteLadderGamePlayer(payload) {
 				const slot = payload.slot;
 				if (!['p1', 'p2', 'p3', 'p4'].includes(slot)) throw new Error('Invalid player slot.');
@@ -2940,7 +2980,14 @@
 					throw new Error('That player is already in this game.');
 				}
 
-				const { error } = await supabaseClient.from('ladder_games').update({ [slot]: newName }).eq('id', payload.gameId);
+				const originalCol = slot + '_original';
+				const update = { [slot]: newName };
+				// Only capture the original the FIRST time this slot is subbed - if it's
+				// subbed a second time, the original ladder player (from before the very
+				// first swap) must still be the one credited, not the outgoing sub.
+				if (!game[originalCol]) update[originalCol] = game[slot];
+
+				const { error } = await supabaseClient.from('ladder_games').update(update).eq('id', payload.gameId);
 				if (error) throw new Error(error.message);
 
 				clearLeagueCache();
@@ -6470,6 +6517,11 @@
         function generateLadderGameCard(g) {
             const isScored = (g.scoreA !== "" && g.scoreB !== "");
             const boxStyle = 'width: 65px !important; height: 55px !important; font-size: 1.5rem !important; color: black !important; border: 1px solid #ddd !important;';
+            // Item #6: show who's actually filling a slot vs. whose ladder points
+            // it is, so a substitution stays obvious at a glance (e.g. on court).
+            const nameLabel = (name, original) => original
+                ? `${name} <span style="color:#999; font-weight:700;">(sub for ${original})</span>`
+                : name;
 
             return `
             <div class="border-2 border-gray-100 rounded-xl p-4">
@@ -6477,13 +6529,13 @@
                     <input type="number" id="ladderScoreA_${g.gameId}" value="${g.scoreA}" placeholder="0"
                           ${isScored ? 'disabled' : ''} class="ladder-score-A rounded text-center font-black bg-white" style="${boxStyle} ${isScored ? 'opacity: 0.5;' : ''}">
                     <div class="flex-grow font-bold text-xs leading-tight text-black">
-                        ${g.p1} <br><span style="color: #999;">&</span> ${g.p2}
+                        ${nameLabel(g.p1, g.p1Original)} <br><span style="color: #999;">&</span> ${nameLabel(g.p2, g.p2Original)}
                     </div>
                 </div>
                 <div class="text-center text-[10px] font-black my-1" style="color: #ccc;">VERSUS</div>
                 <div class="flex items-center gap-3 mt-2">
                     <div class="flex-grow font-bold text-xs text-right leading-tight text-black">
-                        ${g.p3} <br><span style="color: #999;">&</span> ${g.p4}
+                        ${nameLabel(g.p3, g.p3Original)} <br><span style="color: #999;">&</span> ${nameLabel(g.p4, g.p4Original)}
                     </div>
                     <input type="number" id="ladderScoreB_${g.gameId}" value="${g.scoreB}" placeholder="0"
                           ${isScored ? 'disabled' : ''} class="ladder-score-B rounded text-center font-black bg-white" style="${boxStyle} ${isScored ? 'opacity: 0.5;' : ''}">
