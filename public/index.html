@@ -3636,16 +3636,39 @@
                 // error.context - surface that instead of the generic "non-2xx"
                 // message wherever it's available.
                 let message = error.message || 'Something went wrong - please try again.';
+                let status = null;
                 try {
-                    if (error.context && typeof error.context.json === 'function') {
-                        const body = await error.context.json();
-                        if (body && body.error) message = body.error;
+                    if (error.context) {
+                        status = error.context.status || null;
+                        if (typeof error.context.json === 'function') {
+                            const body = await error.context.json();
+                            if (body && body.error) message = body.error;
+                        }
                     }
                 } catch (e) { /* fall back to the generic message above */ }
+                // Defensive fallback: spend-balance only ever returns HTTP 402 for
+                // "Insufficient balance" - if the JSON body couldn't be read for
+                // whatever reason (e.g. the response stream already being consumed
+                // by the time we get to it, which can happen with some supabase-js
+                // versions), still recognise this case from the status code alone.
+                // Callers match on this exact message to auto-cancel a stuck
+                // payment hold and point the member at the wallet - silently
+                // falling through to a generic error here is exactly how someone
+                // ends up stuck looking at "Payment Pending" with no explanation.
+                if (status === 402 && !/insufficient balance/i.test(message)) message = 'Insufficient balance';
                 throw new Error(message);
             }
             if (data && data.error) throw new Error(data.error);
             return data;
+        }
+
+        // Matches loosely (case-insensitive substring) rather than requiring an
+        // exact string match against callEdgeFunction()'s thrown error, so a
+        // stray whitespace/casing difference (or any future minor wording tweak
+        // server-side) can't silently fall through to a generic error and leave
+        // a payment hold stuck instead of being recognised and handled properly.
+        function isInsufficientBalanceError(err) {
+            return /insufficient balance/i.test((err && err.message) || '');
         }
 
         function openWalletModal() {
@@ -4102,9 +4125,29 @@
         // the error (e.g. a network hiccup on the *next* step after payment had
         // already gone through) before assuming the worst and telling someone to
         // sign up again when they might already be confirmed and paid.
+        // Single source of truth for "this member's name, as used to match
+        // signups.player_name" - collapses ANY run of whitespace (not just
+        // leading/trailing) to a single space. Bug history: first_name/surname
+        // can pick up stray whitespace (e.g. a trailing space typed at
+        // registration) that a plain `firstName + " " + surname` concatenation
+        // preserves verbatim into the signup row, while the server-side
+        // functions (spend-balance, cancel-event-signup) compute the name with
+        // `.trim()` - close, but a *trailing* space specifically survives
+        // `.trim()` just fine if it's in the middle of the joined string (it
+        // isn't here, but relying on multiple slightly-different formulas
+        // scattered across the file for what's supposed to be the exact same
+        // string is exactly how a mismatch like this creeps in). Every place
+        // that inserts, looks up, or cancels a signup by name should go through
+        // this one function so there's only one formula to keep in sync with
+        // the server side, instead of a dozen near-identical inline ones.
+        function currentUserFullName() {
+            if (!currentUser) return '';
+            return `${currentUser.firstName} ${currentUser.surname}`.replace(/\s+/g, ' ').trim();
+        }
+
         function getMySignupForEvent(eventId) {
             if (!currentUser) return null;
-            const fullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
+            const fullName = currentUserFullName();
             return (globalData.signups || []).find(s => s[0] === eventId && s[1] === fullName) || null;
         }
 
@@ -4157,7 +4200,7 @@
                     const eventRow = (globalData.events || []).find(e => e[0] === eventId);
                     if (currentUser && currentUser.email && currentUser.email.indexOf('@') !== -1 && eventRow) {
                         sendEmail('event_signup', {
-                            name: `${currentUser.firstName} ${currentUser.surname}`.trim(),
+                            name: currentUserFullName(),
                             email: currentUser.email,
                             eventTitle: eventRow[1],
                             eventDate: eventRow[2],
@@ -4169,8 +4212,8 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance' && currentUser) {
-                        const fullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
+                    if (isInsufficientBalanceError(err) && currentUser) {
+                        const fullName = currentUserFullName();
                         return cancelSignup({ eventId, name: fullName })
                             .then(res => render(res))
                             .catch(() => {})
@@ -7774,7 +7817,7 @@
             const addInitials = true;
             const initialsPrice = 0;
             const totalPrice = size.price;
-            const fullName = `${currentUser.firstName} ${currentUser.surname}`;
+            const fullName = currentUserFullName();
 
             const btn = document.getElementById('merchandiseOrderPlaceBtn');
             btn.disabled = true; btn.innerText = 'Placing Order...';
@@ -7827,7 +7870,7 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance') {
+                    if (isInsufficientBalanceError(err)) {
                         triggerError("Insufficient balance - top up your wallet first.");
                         closeMerchandiseOrderPaymentModal();
                         openWalletModal();
@@ -8284,7 +8327,7 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance') {
+                    if (isInsufficientBalanceError(err)) {
                         triggerError("Insufficient balance - top up your wallet first.");
                         closeModal('membershipPaymentModal');
                         openWalletModal();
@@ -8360,7 +8403,7 @@
 			const spacesAvailable = maxPlayers ? Math.max(0, maxPlayers - confirmedCount) : null;
 			const isFull = maxPlayers && confirmedCount >= maxPlayers;
 			const isPast = getEventStartDateTime(event) < serverNow();
-			const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
+			const fullName = currentUserFullName();
 			const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
 			const isPaidIn = !!(mySignup && mySignup[5] === 'Confirmed' && mySignup[6] === 'Paid');
 
@@ -8768,7 +8811,7 @@
             // for older cached sessions that predate that field.
             const viewerIsUnder18 = currentUser && (currentUser.isUnder18 || !!(viewerPlayer && viewerPlayer.isUnder18));
 
-            const fullName = currentUser ? currentUser.firstName + " " + currentUser.surname : "";
+            const fullName = currentUserFullName();
             const mySignup = currentUser ? signups.find(s => s[1] === fullName) : null;
             const isConfirmed = !!mySignup && mySignup[5] === "Confirmed";
             const isReserve = !!mySignup && mySignup[5] === "Reserve";
@@ -8938,7 +8981,7 @@
                 btn.style.opacity = "0.6";
             }
 
-            const fullName = currentUser.firstName + " " + currentUser.surname;
+            const fullName = currentUserFullName();
             const email = currentUser.email || "";
             const successMsg = asReserve ? "Added to Reserve List!" : "Registration Successful!";
 
@@ -8998,7 +9041,7 @@
                 btn.innerText = "Signing Up...";
                 btn.style.opacity = "0.7";
             }
-            const fullName = currentUser.firstName + " " + currentUser.surname;
+            const fullName = currentUserFullName();
             const email = currentUser.email || "";
             performSignup(eventId, fullName, email, currentUser.role, asReserve, btn);
         }
@@ -9072,7 +9115,7 @@
                     return refreshCurrentUserMembership();
                 })
                 .catch(err => {
-                    if (err.message === 'Insufficient balance') {
+                    if (isInsufficientBalanceError(err)) {
                         triggerError("Insufficient balance - top up your wallet first.");
                         closePaymentModal();
                         openWalletModal();

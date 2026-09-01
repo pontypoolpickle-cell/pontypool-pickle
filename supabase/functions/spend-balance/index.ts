@@ -147,7 +147,14 @@ serve(async (req) => {
     return jsonResponse({ error: "Invalid request body." }, 400);
   }
 
-  const fullName = `${profile.first_name} ${profile.surname}`.trim();
+  // Collapses ANY run of whitespace (not just leading/trailing) to a single
+  // space, matching currentUserFullName() on the client exactly - a plain
+  // `.trim()` alone doesn't help if e.g. first_name itself has a trailing
+  // space (giving "John  Smith" with a double space in the middle after
+  // joining), which a naive client-side concatenation elsewhere could still
+  // preserve verbatim into signups.player_name. Keeping this formula
+  // identical on both sides is what actually matters here.
+  const fullName = `${profile.first_name} ${profile.surname}`.replace(/\s+/g, " ").trim();
 
   try {
     if (body.type === "membership") {

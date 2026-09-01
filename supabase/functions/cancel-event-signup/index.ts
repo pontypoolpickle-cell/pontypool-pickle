@@ -70,7 +70,11 @@ serve(async (req) => {
   }
   if (!body.eventId) return jsonResponse({ error: "Missing eventId." }, 400);
 
-  const fullName = `${profile.first_name} ${profile.surname}`.trim();
+  // Mirrors currentUserFullName() on the client and the same formula in
+  // spend-balance/index.ts exactly - collapses ANY run of whitespace (not
+  // just leading/trailing) to a single space, so a stray space anywhere in
+  // first_name/surname can't cause this to mismatch signups.player_name.
+  const fullName = `${profile.first_name} ${profile.surname}`.replace(/\s+/g, " ").trim();
 
   try {
     const { data: eventRow, error: eventErr } = await supabase.from("events").select("*").eq("id", body.eventId).maybeSingle();
