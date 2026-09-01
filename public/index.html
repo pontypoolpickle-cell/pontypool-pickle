@@ -4062,12 +4062,20 @@
         // Wallet system: paying for an event is now an automatic, near-instant step
         // right after signing up (see payForEventSignupNow()) rather than something
         // a member has 15 minutes to go and do separately via bank transfer. This
-        // window still briefly exists as a 'Pending Payment' hold purely as a safety
-        // net for the split second between creating the signup and the automatic
-        // payment attempt completing (or the rare case where that follow-up call
-        // never fires, e.g. the tab closes) - it's not shown to members as a
-        // countdown any more, and should almost never actually run out on someone.
-        const RESERVATION_WINDOW_MINUTES = 3;
+        // window still exists as a 'Pending Payment' hold purely as a safety net for
+        // the (hopefully rare) case where the automatic payment attempt doesn't
+        // cleanly succeed - a slow/dropped connection, the tab closing mid-request,
+        // etc. It used to be just 3 minutes on the assumption that only lets a
+        // genuinely-abandoned signup, but that turned out to be too tight: if the
+        // automatic attempt fails for a transient reason, the member is shown an
+        // error and pointed at the "Make Payment" button to retry manually (see the
+        // catch handler below) - 3 minutes often isn't long enough for someone to
+        // notice, read the message, and tap it before the hold silently expires out
+        // from under them, which is confusing since nothing about the *event page*
+        // itself looked like it was on a countdown. 15 minutes matches how long a
+        // manual "Make Payment" window used to be before payment was automatic, and
+        // gives a much more realistic grace period to retry.
+        const RESERVATION_WINDOW_MINUTES = 15;
 
         // Item #8: reserves never pay a penny while they're just on the reserve
         // list - only once they're actually promoted into a real, paid spot (see
@@ -4085,6 +4093,19 @@
         function isEventPriceFree(eventRow) {
             if (!eventRow) return true;
             return !!eventRow.newcomers_only || (!Number(eventRow.member_price) && !Number(eventRow.non_member_price));
+        }
+
+        // Looks up the current user's own signup for an event straight from
+        // globalData (so call refreshAllData()/render() first if you need this to
+        // reflect the very latest server state) - used after a payment attempt
+        // errors out, to tell whether it actually succeeded server-side despite
+        // the error (e.g. a network hiccup on the *next* step after payment had
+        // already gone through) before assuming the worst and telling someone to
+        // sign up again when they might already be confirmed and paid.
+        function getMySignupForEvent(eventId) {
+            if (!currentUser) return null;
+            const fullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
+            return (globalData.signups || []).find(s => s[0] === eventId && s[1] === fullName) || null;
         }
 
         async function signupForEvent(payload) {
@@ -4158,19 +4179,48 @@
                                 openWalletModal();
                             });
                     }
-                    // The 3-minute hold can occasionally be gone by the time this runs
-                    // (e.g. the tab was closed/backgrounded right after signing up, or
-                    // an earlier attempt already withdrew it) - spend-balance then
-                    // reports "no unpaid signup found" for this event/player. Refresh
-                    // the UI so any stale "Payment Pending" state clears immediately,
-                    // and tell the member plainly that they need to sign up again,
-                    // rather than leaving them looking at a dead "Make Payment" button.
+                    // The hold can occasionally be gone by the time this runs (e.g. the
+                    // tab was closed/backgrounded right after signing up, or an earlier
+                    // attempt already withdrew it) - spend-balance then reports "no
+                    // unpaid signup found" for this event/player. That almost always
+                    // means it genuinely expired and they need to sign up again - but
+                    // check first in case the payment actually succeeded and it's some
+                    // *later*, unrelated step that's erroring (e.g. the confirmation
+                    // email), so a member who's actually already confirmed and paid
+                    // isn't wrongly told to sign up again (which would create a second,
+                    // duplicate signup).
                     if (/no unpaid signup found/i.test(err.message || '')) {
-                        return refreshAllData().then(res => render(res)).catch(() => {}).finally(() => {
+                        return refreshAllData().then(() => {
+                            const mySignup = getMySignupForEvent(eventId);
+                            if (mySignup && mySignup[6] === 'Paid') {
+                                triggerToast(successMsg || "You're already registered and paid for this event!");
+                            } else {
+                                triggerError("Your reservation for this event expired before payment completed. Please sign up again.");
+                            }
+                        }).catch(() => {
                             triggerError("Your reservation for this event expired before payment completed. Please sign up again.");
                         });
                     }
-                    triggerError(err.message);
+                    // Anything else (a network blip, a temporary server error, etc.) -
+                    // the signup itself went through and is being held as 'Pending
+                    // Payment' (see RESERVATION_WINDOW_MINUTES above for how long), but
+                    // this automatic payment attempt didn't complete. Previously this
+                    // just showed the raw error and left it at that, which is exactly
+                    // how a member ends up looking at a "Payment Pending" event with no
+                    // idea why or what to do about it. Refresh first in case it actually
+                    // did succeed despite the error, then give a clear next step either
+                    // way instead of a dead end.
+                    console.error('Automatic event payment failed:', err.message);
+                    return refreshAllData().then(() => {
+                        const mySignup = getMySignupForEvent(eventId);
+                        if (mySignup && mySignup[6] === 'Paid') {
+                            triggerToast(successMsg || "You're already registered and paid for this event!");
+                        } else {
+                            triggerError(`We couldn't automatically complete payment for this event (${err.message}). Your spot is being held - tap "Make Payment" on the event to try again.`);
+                        }
+                    }).catch(() => {
+                        triggerError(`We couldn't automatically complete payment for this event (${err.message}). Your spot is being held - tap "Make Payment" on the event to try again.`);
+                    });
                 })
                 .finally(() => { if (onDone) onDone(); });
         }
@@ -9028,14 +9078,25 @@
                         openWalletModal();
                     } else if (/no unpaid signup found/i.test(err.message || '')) {
                         // Their signup/reservation is gone by the time payment was
-                        // confirmed (e.g. it expired, or was already paid/withdrawn on
-                        // another device) - refresh so the modal/button state matches
-                        // reality instead of repeating the same failed action forever.
+                        // confirmed - refresh so the modal/button state matches reality
+                        // instead of repeating the same failed action forever. Check
+                        // whether it's actually already Paid first (e.g. paid via
+                        // another device, or an earlier attempt succeeded despite
+                        // erroring on a later step) rather than assuming it expired.
                         closePaymentModal();
-                        refreshAllData().then(res => render(res)).catch(() => {});
-                        triggerError("Your reservation for this event is no longer available. Please sign up again.");
+                        refreshAllData().then(() => {
+                            const mySignup = getMySignupForEvent(eventId);
+                            if (mySignup && mySignup[6] === 'Paid') {
+                                triggerToast("You're already registered and paid for this event!");
+                            } else {
+                                triggerError("Your reservation for this event is no longer available. Please sign up again.");
+                            }
+                        }).catch(() => {
+                            triggerError("Your reservation for this event is no longer available. Please sign up again.");
+                        });
                     } else {
-                        triggerError(err.message);
+                        console.error('Manual event payment failed:', err.message);
+                        triggerError(`Payment failed (${err.message}). Your spot is still being held - please try again.`);
                     }
                 })
                 .finally(() => {
