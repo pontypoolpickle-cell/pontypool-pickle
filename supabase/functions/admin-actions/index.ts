@@ -77,6 +77,33 @@ function normalizeName(name: string): string {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+// Mirrors assignNextMembershipNumberIfNeeded() in spend-balance/index.ts -
+// membership numbers are earned by actually becoming a member (paying, or
+// being granted a gift/backdated membership by an admin), never just by
+// registering an account. No-ops if this user already has a number.
+async function assignNextMembershipNumberIfNeeded(userId: string): Promise<void> {
+  const { data: userRow, error: fetchErr } = await supabase.from("users").select("membership_number").eq("id", userId).maybeSingle();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (userRow && userRow.membership_number) return;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: maxRows, error: maxErr } = await supabase
+      .from("users").select("membership_number")
+      .not("membership_number", "is", null)
+      .order("membership_number", { ascending: false })
+      .limit(1);
+    if (maxErr) throw new Error(maxErr.message);
+    const next = (maxRows && maxRows[0] ? Number(maxRows[0].membership_number) : 0) + 1;
+
+    const { error: updateErr } = await supabase
+      .from("users").update({ membership_number: next })
+      .eq("id", userId).is("membership_number", null);
+    if (!updateErr) return;
+    if (!/duplicate key|unique constraint/i.test(updateErr.message)) throw new Error(updateErr.message);
+  }
+  throw new Error("Could not assign a membership number - please try again.");
+}
+
 // Mirrors applyMembershipFields() on the client: keeps `role` in sync with
 // membership_end_date, exempting Admins.
 async function applyMembershipFields(userId: string, currentRole: string, fields: Record<string, unknown>) {
@@ -142,6 +169,13 @@ serve(async (req) => {
         membership_duration_weeks: body.durationWeeks != null ? Number(body.durationWeeks) : undefined
       });
 
+      // Item #17 fix: if this admin correction is what actually makes the
+      // membership Active (e.g. backdating a real bank-transfer payment),
+      // that's still "actually becoming a member" and earns a number the
+      // same as a wallet payment would - but only then, not for edits that
+      // don't result in an Active membership.
+      if (status === "Active") await assignNextMembershipNumberIfNeeded(userRow.id);
+
       return jsonResponse({ success: true });
     }
 
@@ -166,6 +200,9 @@ serve(async (req) => {
         membership_requested_duration_weeks: null,
         membership_last_reminder_sent: null
       });
+
+      // Item #17 fix: a gifted membership is still becoming a member.
+      await assignNextMembershipNumberIfNeeded(userRow.id);
 
       return jsonResponse({ success: true, startDate: newStart, endDate: newEnd });
     }

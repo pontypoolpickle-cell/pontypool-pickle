@@ -82,6 +82,37 @@ async function debit(userId: string, amount: number, type: string, referenceId: 
   return newBalance as number;
 }
 
+// Assigns the next sequential membership number (PPC-0001, PPC-0002, ...) the
+// moment membership actually goes Active from a real payment - not when the
+// account was created/approved (see the schema comment near `membership_number`
+// in public/index.html for why that distinction matters). No-ops if this user
+// already has a number (e.g. renewing an existing membership). Retries a
+// handful of times on a unique-constraint collision, which can only happen if
+// two memberships are activated in the same instant.
+async function assignNextMembershipNumberIfNeeded(userId: string): Promise<void> {
+  const { data: userRow, error: fetchErr } = await supabase.from("users").select("membership_number").eq("id", userId).maybeSingle();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (userRow && userRow.membership_number) return;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: maxRows, error: maxErr } = await supabase
+      .from("users").select("membership_number")
+      .not("membership_number", "is", null)
+      .order("membership_number", { ascending: false })
+      .limit(1);
+    if (maxErr) throw new Error(maxErr.message);
+    const next = (maxRows && maxRows[0] ? Number(maxRows[0].membership_number) : 0) + 1;
+
+    const { error: updateErr } = await supabase
+      .from("users").update({ membership_number: next })
+      .eq("id", userId).is("membership_number", null);
+    if (!updateErr) return;
+    if (!/duplicate key|unique constraint/i.test(updateErr.message)) throw new Error(updateErr.message);
+    // Someone else grabbed `next` in the same instant - loop and try the new max.
+  }
+  throw new Error("Could not assign a membership number - please try again.");
+}
+
 async function recordFinanceTransaction(fields: Record<string, unknown>) {
   try {
     await supabase.from("finance_transactions").insert({
@@ -149,6 +180,11 @@ serve(async (req) => {
       if (profile.role !== "Admin") update.role = "Member";
       const { error: updateErr } = await supabase.from("users").update(update).eq("id", profile.id);
       if (updateErr) throw new Error(updateErr.message);
+
+      // Item #17 fix: the membership number is earned by paying, not by
+      // registering - assign it here, the moment membership actually goes
+      // Active, rather than back when the account was first approved.
+      await assignNextMembershipNumberIfNeeded(profile.id);
 
       if (price > 0) {
         await recordFinanceTransaction({

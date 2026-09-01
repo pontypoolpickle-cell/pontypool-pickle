@@ -1329,9 +1329,14 @@
 
         -- Membership Number (item #17) - a permanent "PPC-0001" style identifier
         -- assigned once per account and never reused, even if membership lapses.
-        -- New approvals get the next number automatically; existing/legacy members
-        -- need their historical number backfilled once via the admin player
-        -- profile (Manage Players) - see assignNextMembershipNumber() in the app.
+        -- Assigned automatically the moment membership actually becomes Active
+        -- (a real Stripe-backed payment via spend-balance, or an admin-granted
+        -- gift membership) - NOT when the account is first created/approved,
+        -- since plenty of approved accounts never go on to pay for membership at
+        -- all. See assignNextMembershipNumberIfNeeded() in supabase/functions/
+        -- spend-balance/index.ts and supabase/functions/admin-actions/index.ts.
+        -- Existing/legacy members need their historical number backfilled once
+        -- via the admin player profile (Manage Players).
         alter table users add column if not exists membership_number integer;
         create unique index if not exists users_membership_number_idx
             on users (membership_number) where membership_number is not null;
@@ -3355,29 +3360,11 @@
                 .catch(err => triggerError(err.message));
         }
 
-        // Assigns the next sequential membership number (PPC-0001, PPC-0002, ...)
-        // to a newly-approved account, unless it somehow already has one. Historical
-        // members backfilled from banking records get their number set manually via
-        // the admin "Manage Players" profile instead of through this auto-assign path.
-        async function assignNextMembershipNumber(username) {
-            const { data: rows, error: fetchErr } = await supabaseClient
-                .from('users').select('membership_number').eq('username', username).limit(1);
-            if (fetchErr) throw new Error(fetchErr.message);
-            if (rows && rows[0] && rows[0].membership_number) return;
-
-            const { data: maxRows, error: maxErr } = await supabaseClient
-                .from('users').select('membership_number')
-                .not('membership_number', 'is', null)
-                .order('membership_number', { ascending: false })
-                .limit(1);
-            if (maxErr) throw new Error(maxErr.message);
-            const next = (maxRows && maxRows[0] ? Number(maxRows[0].membership_number) : 0) + 1;
-
-            const { error: updateErr } = await supabaseClient
-                .from('users').update({ membership_number: next }).eq('username', username);
-            if (updateErr) throw new Error(updateErr.message);
-        }
-
+        // Manual override only (admin "Manage Players" profile) - automatic
+        // sequential assignment now happens server-side, only once membership
+        // actually goes Active (see assignNextMembershipNumberIfNeeded() in
+        // supabase/functions/spend-balance/index.ts and admin-actions/index.ts),
+        // not at account approval time (item #17 fix).
         async function setMembershipNumber(username, number) {
             const { error } = await supabaseClient.from('users').update({ membership_number: number }).eq('username', username);
             if (error) throw new Error(error.message);
@@ -4460,10 +4447,13 @@
                         female_total_games: 0
                     });
                 }
-                // Best-effort: never let a missing membership_number column (see the
-                // migration comment near the top of this file) block approving a
-                // new member, which is the far more important action here.
-                try { await assignNextMembershipNumber(username); } catch (e) { console.warn('assignNextMembershipNumber skipped:', e.message); }
+                // Membership numbers are no longer assigned here (item #17 fix) -
+                // approving an account just means it's allowed to log in, not that
+                // the person has paid for/become a member. The number is now
+                // assigned server-side the moment membership actually goes Active
+                // (see assignNextMembershipNumberIfNeeded() in spend-balance and
+                // admin-actions), so someone who registers but never pays never
+                // takes up a membership number at all.
                 if (user.email) {
                     sendEmail('account_approved', {
                         firstName: user.first_name,
