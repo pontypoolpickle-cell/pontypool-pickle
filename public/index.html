@@ -1556,8 +1556,15 @@
           session_id uuid references ladder_session(id),
           court integer,
           player_name text,
-          round_points integer default 0
+          round_points integer default 0,
+          -- Sum of each game's winning-margin (points scored minus points
+          -- conceded) for this player's slot this round: +margin when they win
+          -- a game, -margin when they lose it. Used as the tiebreaker between
+          -- players level on round_points at promotion/relegation time - see
+          -- sortLadderCourtStandings()/endLadderRound() in this file.
+          points_diff integer default 0
         );
+        alter table ladder_courts add column if not exists points_diff integer default 0;
 
         -- Ladder games table
         create table ladder_games (
@@ -2138,7 +2145,8 @@
 				courts: (courts || []).map(c => ({
 					court: Number(c.court || 0),
 					playerName: c.player_name || '',
-					roundPoints: Number(c.round_points || 0)
+					roundPoints: Number(c.round_points || 0),
+					pointsDiff: Number(c.points_diff || 0)
 				})),
 				games: mappedGames
 			};
@@ -2890,7 +2898,8 @@
 				session_id: insertedSession.id,
 				court: c.court,
 				player_name: playerName,
-				round_points: 0
+				round_points: 0,
+				points_diff: 0
 			})));
 			const { error: courtsError } = await supabaseClient.from('ladder_courts').insert(courtRows);
 			if (courtsError) throw new Error(courtsError.message);
@@ -2945,6 +2954,11 @@
             ].filter(Boolean);
             const winners = scoreA > scoreB ? teamA : teamB;
             const losers = scoreA > scoreB ? teamB : teamA;
+            // Winning margin for this game - accrued into points_diff below so ties on
+            // round_points at promotion/relegation time can be broken by who won (or
+            // lost) by more, before falling back to a random pick - see
+            // sortLadderCourtStandings()/endLadderRound().
+            const margin = Math.abs(scoreA - scoreB);
 
             for (const name of winners) {
                 const { data: row, error: rowErr } = await supabaseClient
@@ -2954,7 +2968,10 @@
                     .eq('court', game.court)
                     .eq('player_name', name)
                     .single();
-                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 2 }).eq('id', row.id);
+                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({
+                    round_points: Number(row.round_points || 0) + 2,
+                    points_diff: Number(row.points_diff || 0) + margin
+                }).eq('id', row.id);
             }
 
             for (const name of losers) {
@@ -2965,7 +2982,10 @@
                     .eq('court', game.court)
                     .eq('player_name', name)
                     .single();
-                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({ round_points: Number(row.round_points || 0) + 1 }).eq('id', row.id);
+                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({
+                    round_points: Number(row.round_points || 0) + 1,
+                    points_diff: Number(row.points_diff || 0) - margin
+                }).eq('id', row.id);
             }
 
             clearLeagueCache();
@@ -3014,6 +3034,40 @@
 				return getLadderStateForSession(game.session_id);
 			}
 
+			// Orders one court's players for promotion/relegation: most round_points
+			// first, then (for anyone level on round_points) the bigger points_diff
+			// (winning margin minus losing margin across the round) first. Anyone still
+			// tied after both of those is genuinely a coin-flip, so rather than always
+			// resolving it the same way (e.g. alphabetically by name, which would mean
+			// the same unlucky player keeps getting relegated every time), those players
+			// are shuffled randomly amongst themselves with shuffleArray() - everyone
+			// else's order is left untouched.
+			function sortLadderCourtStandings(rows) {
+				const sorted = [...rows].sort((a, b) => {
+					const roundPointsDiff = Number(b.round_points || 0) - Number(a.round_points || 0);
+					if (roundPointsDiff !== 0) return roundPointsDiff;
+					return Number(b.points_diff || 0) - Number(a.points_diff || 0);
+				});
+
+				let i = 0;
+				while (i < sorted.length) {
+					let j = i + 1;
+					while (
+						j < sorted.length &&
+						Number(sorted[j].round_points || 0) === Number(sorted[i].round_points || 0) &&
+						Number(sorted[j].points_diff || 0) === Number(sorted[i].points_diff || 0)
+					) {
+						j++;
+					}
+					if (j - i > 1) {
+						const shuffled = shuffleArray(sorted.slice(i, j));
+						for (let k = i; k < j; k++) sorted[k] = shuffled[k - i];
+					}
+					i = j;
+				}
+				return sorted;
+			}
+
 			async function endLadderRound(sessionId) {
 				const session = await getLadderSessionRawById(sessionId);
 				if (!session) throw new Error('Ladder session not found.');
@@ -3052,7 +3106,7 @@
                 grouped[r.court].push(r);
             });
             const courts = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-            courts.forEach(c => grouped[c].sort((a, b) => Number(b.round_points || 0) - Number(a.round_points || 0)));
+            courts.forEach(c => { grouped[c] = sortLadderCourtStandings(grouped[c]); });
 
             const promotions = [];
             const relegations = [];
@@ -3082,7 +3136,7 @@
 
             const nextRound = Number(session.current_round) + 1;
             await supabaseClient.from('ladder_session').update({ current_round: nextRound }).eq('id', session.id);
-            await supabaseClient.from('ladder_courts').update({ round_points: 0 }).eq('session_id', session.id);
+            await supabaseClient.from('ladder_courts').update({ round_points: 0, points_diff: 0 }).eq('session_id', session.id);
 
             const { data: nextCourtRows, error: nextCourtsErr } = await supabaseClient
                 .from('ladder_courts')
@@ -4462,6 +4516,14 @@
             const email = normalizeCredential(data.email);
             if (!email || email.indexOf('@') === -1) throw new Error('Please enter a valid email address - it doubles as your login going forward.');
 
+            // Belt-and-braces: collapse leading/trailing/internal whitespace here too
+            // (not just in processSignup()) so first_name/surname can never end up with
+            // a stray space no matter how registerUser() gets called - a trailing space
+            // here would otherwise survive into `${firstName} ${surname}` and mismatch
+            // the normalized name used for signups.player_name/players.name elsewhere.
+            const firstName = String(data.firstName || '').trim().replace(/\s+/g, ' ');
+            const surname = String(data.surname || '').trim().replace(/\s+/g, ' ');
+
             const { data: existing, error: existingErr } = await supabaseClient
                 .from('users')
                 .select('id')
@@ -4481,8 +4543,8 @@
             const { error } = await supabaseClient.from('users').insert({
                 username: username,
                 auth_user_id: authData.user.id,
-                first_name: data.firstName,
-                surname: data.surname,
+                first_name: firstName,
+                surname: surname,
                 email: email,
                 role: 'Non-Member',
                 gender: data.gender || null,
@@ -4495,16 +4557,16 @@
             clearLeagueCache();
 
             sendEmail('new_member_admin', {
-                firstName: data.firstName,
-                surname: data.surname,
+                firstName: firstName,
+                surname: surname,
                 username: username,
                 email: data.email || 'Not provided',
                 isUnder18: !!data.isUnder18
             });
             if (data.email) {
                 sendEmail(data.isUnder18 ? 'application_received_u18' : 'application_received_adult', {
-                    firstName: data.firstName,
-                    surname: data.surname,
+                    firstName: firstName,
+                    surname: surname,
                     username: username,
                     email: data.email
                 });
@@ -4572,7 +4634,12 @@
                 const { data: user, error: userErr } = await supabaseClient.from('users').select('*').eq('username', username).single();
                 if (userErr) throw new Error(userErr.message);
                 await supabaseClient.from('users').update({ status: 'Approved' }).eq('username', username);
-                const fullName = `${user.first_name} ${user.surname}`.trim();
+                // Collapse whitespace the same way as currentUserFullName() (not just a
+                // trailing/leading .trim()) so a stray space already stored in
+                // first_name/surname - e.g. from an account created before the signup
+                // form started trimming - can't produce a players.name that fails to
+                // exactly match the normalized name used elsewhere for signups.
+                const fullName = `${user.first_name} ${user.surname}`.replace(/\s+/g, ' ').trim();
                 const { data: existingPlayer } = await supabaseClient.from('players').select('id').eq('name', fullName).limit(1);
                 if (!existingPlayer || existingPlayer.length === 0) {
                     await supabaseClient.from('players').insert({
@@ -4647,7 +4714,10 @@
 
         async function updatePlayerName(payload) {
             const oldName = payload.oldName;
-            const newName = payload.newName;
+            // Collapse whitespace the same way as currentUserFullName() so a stray
+            // space typed into the admin rename field can't reintroduce this bug via
+            // players.name/signups.player_name after the fact.
+            const newName = String(payload.newName || '').trim().replace(/\s+/g, ' ');
 
             await supabaseClient.from('players').update({ name: newName }).eq('name', oldName);
             await supabaseClient.from('matches').update({ w1: newName }).eq('w1', oldName);
@@ -6628,16 +6698,21 @@
 			const courtNumbers = [...new Set(current.courts.map(c => c.court))].sort((a, b) => a - b);
 
 			container.innerHTML = courtNumbers.map(courtNum => {
+				// Mirrors sortLadderCourtStandings()'s ranking (round_points, then
+				// points_diff) so what's shown mid-round matches what end-of-round
+				// promotion/relegation will actually use, short of the random tiebreak
+				// for anyone still level on both - that's only resolved when the round
+				// is ended.
 				const players = current.courts
 					.filter(c => c.court === courtNum)
-					.sort((a, b) => b.roundPoints - a.roundPoints);
+					.sort((a, b) => (b.roundPoints - a.roundPoints) || (b.pointsDiff - a.pointsDiff));
 
 				const courtGames = current.games.filter(g => g.court === courtNum);
 
 				const playersHtml = players.map((p, i) => `
 					<div class="flex justify-between items-center py-2 ${i < players.length - 1 ? 'border-b border-gray-100' : ''}">
 						<span class="font-bold text-sm uppercase">${i + 1}. ${p.playerName}</span>
-						<span class="font-black text-rose-600">${p.roundPoints} pts</span>
+						<span class="font-black text-rose-600">${p.roundPoints} pts <span class="text-gray-400 font-bold">(${p.pointsDiff > 0 ? '+' : ''}${p.pointsDiff})</span></span>
 					</div>
 				`).join('');
 
@@ -9325,8 +9400,13 @@
             }
 
             const data = {
-                firstName: document.getElementById('regFirst').value,
-                surname: document.getElementById('regLast').value,
+                // Collapse leading/trailing/internal whitespace here (same formula as
+                // currentUserFullName()) so a stray space typed at signup (e.g. "John ")
+                // can never sneak into users.first_name/surname and later cause
+                // `${firstName} ${surname}` to mismatch the normalized name used to
+                // look up/insert signups.player_name and players.name.
+                firstName: document.getElementById('regFirst').value.trim().replace(/\s+/g, ' '),
+                surname: document.getElementById('regLast').value.trim().replace(/\s+/g, ' '),
                 email: document.getElementById('regEmail').value,
                 // Trim accidental leading/trailing spaces here so the duplicate-username
                 // check below and the eventual registerUser() call both see the same,
