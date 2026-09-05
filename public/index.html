@@ -2789,6 +2789,20 @@
             return refreshAllData();
         }
 
+        // Splits a headcount into court sizes of 4 or 5 (courts can never be
+        // uneven/odd sized outside that range - e.g. no 3s or 6s). Prefers the
+        // fewest courts possible, and puts any "extra" players on the earlier
+        // courts - startLadderSessionData() then fills court 1 first with the
+        // highest-rated players sorted down to the lowest-rated on the last
+        // court, so a bigger court 1 also means it's absorbing the extra
+        // higher-rated players rather than the lower-rated ones.
+        // This exactly reproduces the club's agreed court-split table for
+        // every valid headcount from 4 to 20 players:
+        //   4:[4]  5:[5]  8:[4,4]  9:[5,4]  10:[5,5]
+        //   12:[4,4,4]  13:[5,4,4]  14:[5,5,4]  15:[5,5,5]
+        //   16:[4,4,4,4]  17:[5,4,4,4]  18:[5,5,4,4]  19:[5,5,5,4]  20:[5,5,5,5]
+        // (1, 2, 3, 6, 7, and 11 can't be split into courts of 4-5 at all -
+        // see INVALID_LADDER_COUNTS - so "Can't start ladder" for those.)
         function splitCourtSizes(count) {
             for (let courts = Math.ceil(count / 5); courts <= Math.floor(count / 4); courts++) {
                 const base = Math.floor(count / courts);
