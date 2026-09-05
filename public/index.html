@@ -4448,6 +4448,14 @@
             const email = normalizeCredential(data.email);
             if (!email || email.indexOf('@') === -1) throw new Error('Please enter a valid email address - it doubles as your login going forward.');
 
+            // Belt-and-braces: collapse leading/trailing/internal whitespace here too
+            // (not just in processSignup()) so first_name/surname can never end up with
+            // a stray space no matter how registerUser() gets called - a trailing space
+            // here would otherwise survive into `${firstName} ${surname}` and mismatch
+            // the normalized name used for signups.player_name/players.name elsewhere.
+            const firstName = String(data.firstName || '').trim().replace(/\s+/g, ' ');
+            const surname = String(data.surname || '').trim().replace(/\s+/g, ' ');
+
             const { data: existing, error: existingErr } = await supabaseClient
                 .from('users')
                 .select('id')
@@ -4467,8 +4475,8 @@
             const { error } = await supabaseClient.from('users').insert({
                 username: username,
                 auth_user_id: authData.user.id,
-                first_name: data.firstName,
-                surname: data.surname,
+                first_name: firstName,
+                surname: surname,
                 email: email,
                 role: 'Non-Member',
                 gender: data.gender || null,
@@ -4481,16 +4489,16 @@
             clearLeagueCache();
 
             sendEmail('new_member_admin', {
-                firstName: data.firstName,
-                surname: data.surname,
+                firstName: firstName,
+                surname: surname,
                 username: username,
                 email: data.email || 'Not provided',
                 isUnder18: !!data.isUnder18
             });
             if (data.email) {
                 sendEmail(data.isUnder18 ? 'application_received_u18' : 'application_received_adult', {
-                    firstName: data.firstName,
-                    surname: data.surname,
+                    firstName: firstName,
+                    surname: surname,
                     username: username,
                     email: data.email
                 });
@@ -4558,7 +4566,12 @@
                 const { data: user, error: userErr } = await supabaseClient.from('users').select('*').eq('username', username).single();
                 if (userErr) throw new Error(userErr.message);
                 await supabaseClient.from('users').update({ status: 'Approved' }).eq('username', username);
-                const fullName = `${user.first_name} ${user.surname}`.trim();
+                // Collapse whitespace the same way as currentUserFullName() (not just a
+                // trailing/leading .trim()) so a stray space already stored in
+                // first_name/surname - e.g. from an account created before the signup
+                // form started trimming - can't produce a players.name that fails to
+                // exactly match the normalized name used elsewhere for signups.
+                const fullName = `${user.first_name} ${user.surname}`.replace(/\s+/g, ' ').trim();
                 const { data: existingPlayer } = await supabaseClient.from('players').select('id').eq('name', fullName).limit(1);
                 if (!existingPlayer || existingPlayer.length === 0) {
                     await supabaseClient.from('players').insert({
@@ -4633,7 +4646,10 @@
 
         async function updatePlayerName(payload) {
             const oldName = payload.oldName;
-            const newName = payload.newName;
+            // Collapse whitespace the same way as currentUserFullName() so a stray
+            // space typed into the admin rename field can't reintroduce this bug via
+            // players.name/signups.player_name after the fact.
+            const newName = String(payload.newName || '').trim().replace(/\s+/g, ' ');
 
             await supabaseClient.from('players').update({ name: newName }).eq('name', oldName);
             await supabaseClient.from('matches').update({ w1: newName }).eq('w1', oldName);
@@ -9311,8 +9327,13 @@
             }
 
             const data = {
-                firstName: document.getElementById('regFirst').value,
-                surname: document.getElementById('regLast').value,
+                // Collapse leading/trailing/internal whitespace here (same formula as
+                // currentUserFullName()) so a stray space typed at signup (e.g. "John ")
+                // can never sneak into users.first_name/surname and later cause
+                // `${firstName} ${surname}` to mismatch the normalized name used to
+                // look up/insert signups.player_name and players.name.
+                firstName: document.getElementById('regFirst').value.trim().replace(/\s+/g, ' '),
+                surname: document.getElementById('regLast').value.trim().replace(/\s+/g, ' '),
                 email: document.getElementById('regEmail').value,
                 // Trim accidental leading/trailing spaces here so the duplicate-username
                 // check below and the eventual registerUser() call both see the same,
