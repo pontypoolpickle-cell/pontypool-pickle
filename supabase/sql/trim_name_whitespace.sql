@@ -28,6 +28,14 @@
 -- - see the optional, commented-out block near the bottom if you'd also like
 -- that (it mirrors what normalizeName() already does client-side).
 --
+-- This is a one-off CLEANUP of data that's already in the database. It does
+-- NOT stop new whitespace-padded values being written going forward - for
+-- that, see auto_trim_name_whitespace_triggers.sql, which installs database
+-- triggers that keep every column below clean automatically from now on,
+-- no matter what writes to them (this app, a future admin tool, an Edge
+-- Function, or manual SQL). Recommended order: run this script once, then
+-- that one.
+--
 -- Column-existence safe: a few of the columns below (e.g.
 -- ladder_games.p1_original, added by a later feature) were introduced via an
 -- `alter table ... add column if not exists ...` patch in public/index.html
