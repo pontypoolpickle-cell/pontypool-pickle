@@ -2937,59 +2937,89 @@
                 .eq('id', gameUuid);
             if (error) throw new Error(error.message);
 
-            // Item #6 fix: round_points (which decide promotion/relegation) belong to
-            // whoever's ladder slot this is, NOT necessarily whoever physically played
-            // - if the slot was subbed (see substituteLadderGamePlayer()), pN_original
-            // holds the name of the player that ladder slot actually belongs to, and
-            // that's who should earn/lose the points here. Falls back to the played
-            // name itself when there's been no substitution (pN_original is null).
-            const ladderNameFor = (slotName, originalName) => originalName || slotName;
-            const teamA = [
-                game.p1 && game.p1 !== 'Singles' ? ladderNameFor(game.p1, game.p1_original) : null,
-                game.p2 && game.p2 !== 'Singles' ? ladderNameFor(game.p2, game.p2_original) : null
-            ].filter(Boolean);
-            const teamB = [
-                game.p3 && game.p3 !== 'Singles' ? ladderNameFor(game.p3, game.p3_original) : null,
-                game.p4 && game.p4 !== 'Singles' ? ladderNameFor(game.p4, game.p4_original) : null
-            ].filter(Boolean);
-            const winners = scoreA > scoreB ? teamA : teamB;
-            const losers = scoreA > scoreB ? teamB : teamA;
-            // Winning margin for this game - accrued into points_diff below so ties on
-            // round_points at promotion/relegation time can be broken by who won (or
-            // lost) by more, before falling back to a random pick - see
-            // sortLadderCourtStandings()/endLadderRound().
-            const margin = Math.abs(scoreA - scoreB);
-
-            for (const name of winners) {
-                const { data: row, error: rowErr } = await supabaseClient
-                    .from('ladder_courts')
-                    .select('*')
-                    .eq('session_id', game.session_id)
-                    .eq('court', game.court)
-                    .eq('player_name', name)
-                    .single();
-                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({
-                    round_points: Number(row.round_points || 0) + 2,
-                    points_diff: Number(row.points_diff || 0) + margin
-                }).eq('id', row.id);
-            }
-
-            for (const name of losers) {
-                const { data: row, error: rowErr } = await supabaseClient
-                    .from('ladder_courts')
-                    .select('*')
-                    .eq('session_id', game.session_id)
-                    .eq('court', game.court)
-                    .eq('player_name', name)
-                    .single();
-                if (!rowErr && row) await supabaseClient.from('ladder_courts').update({
-                    round_points: Number(row.round_points || 0) + 1,
-                    points_diff: Number(row.points_diff || 0) - margin
-                }).eq('id', row.id);
-            }
+            await recalculateLadderCourtStandings(game.session_id, game.round, game.court);
 
             clearLeagueCache();
 				return getLadderStateForSession(game.session_id);
+			}
+
+			// Bug fix: this used to live inline in updateLadderScore() and only ever
+			// ADDED +2/+1 (and +/-margin) on top of whatever round_points/points_diff
+			// a player already had. That's correct the very first time a game is
+			// scored, but editing an already-scored game (unlock -> Confirm Score
+			// again) called it a second time and simply piled more points on top of
+			// the old ones instead of replacing them - so e.g. correcting a typo'd
+			// score, or just re-confirming the same result, silently inflated
+			// round_points every time. It also looked up each player with an exact
+			// `.eq('player_name', name)` match and *silently* skipped awarding any
+			// points at all if that lookup didn't find exactly one row (mismatched
+			// case/whitespace, a stale name, etc.) - dropping that game's points for
+			// that player with no error surfaced anywhere.
+			//
+			// Fixed by recalculating round_points/points_diff for the WHOLE court
+			// from scratch every time a score is saved or edited, based on every
+			// currently-scored game on that court this round - so editing a score
+			// (or fixing a mistake) now genuinely recalculates the standings instead
+			// of incrementing them, and matching is done in-memory via
+			// normalizeName() (case/whitespace tolerant) against every court row
+			// instead of a fragile per-name exact-match DB query.
+			async function recalculateLadderCourtStandings(sessionId, round, court) {
+				const [{ data: courtGames, error: gamesErr }, { data: courtRows, error: courtsErr }] = await Promise.all([
+					supabaseClient.from('ladder_games').select('*').eq('session_id', sessionId).eq('round', round).eq('court', court),
+					supabaseClient.from('ladder_courts').select('*').eq('session_id', sessionId).eq('court', court)
+				]);
+				if (gamesErr) throw new Error(gamesErr.message);
+				if (courtsErr) throw new Error(courtsErr.message);
+
+				// Item #6: round_points (which decide promotion/relegation) belong to
+				// whoever's ladder slot this is, NOT necessarily whoever physically
+				// played - if the slot was subbed (see substituteLadderGamePlayer()),
+				// pN_original holds the name of the player that ladder slot actually
+				// belongs to, and that's who should earn/lose the points here. Falls
+				// back to the played name itself when there's been no substitution
+				// (pN_original is null).
+				const ladderNameFor = (slotName, originalName) => originalName || slotName;
+
+				const totals = new Map();
+				const addPoints = (name, roundPoints, pointsDiff) => {
+					const key = normalizeName(name);
+					const existing = totals.get(key) || { roundPoints: 0, pointsDiff: 0 };
+					existing.roundPoints += roundPoints;
+					existing.pointsDiff += pointsDiff;
+					totals.set(key, existing);
+				};
+
+				(courtGames || []).forEach(g => {
+					if (g.score_a === null || g.score_b === null) return;
+					const scoreA = Number(g.score_a);
+					const scoreB = Number(g.score_b);
+					const teamA = [
+						g.p1 && g.p1 !== 'Singles' ? ladderNameFor(g.p1, g.p1_original) : null,
+						g.p2 && g.p2 !== 'Singles' ? ladderNameFor(g.p2, g.p2_original) : null
+					].filter(Boolean);
+					const teamB = [
+						g.p3 && g.p3 !== 'Singles' ? ladderNameFor(g.p3, g.p3_original) : null,
+						g.p4 && g.p4 !== 'Singles' ? ladderNameFor(g.p4, g.p4_original) : null
+					].filter(Boolean);
+					const winners = scoreA > scoreB ? teamA : teamB;
+					const losers = scoreA > scoreB ? teamB : teamA;
+					// Winning margin for this game - accrued into points_diff so ties on
+					// round_points at promotion/relegation time can be broken by who
+					// won (or lost) by more, before falling back to a random pick -
+					// see sortLadderCourtStandings()/endLadderRound().
+					const margin = Math.abs(scoreA - scoreB);
+					winners.forEach(name => addPoints(name, 2, margin));
+					losers.forEach(name => addPoints(name, 1, -margin));
+				});
+
+				await Promise.all((courtRows || []).map(row => {
+					const t = totals.get(normalizeName(row.player_name)) || { roundPoints: 0, pointsDiff: 0 };
+					if (Number(row.round_points || 0) === t.roundPoints && Number(row.points_diff || 0) === t.pointsDiff) return null;
+					return supabaseClient.from('ladder_courts').update({
+						round_points: t.roundPoints,
+						points_diff: t.pointsDiff
+					}).eq('id', row.id);
+				}));
 			}
 
 			// Manually swap one player out of a single (not-yet-scored) game - e.g. someone
