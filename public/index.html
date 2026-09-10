@@ -5842,10 +5842,26 @@
             const standing = (globalData.standings || []).find(s => normalizeName(s.name) === normalizeName(m.name));
             const registeredDate = m.createdAt ? new Date(m.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown';
 
+            // Combine mixed + female_only last match dates into one "last
+            // game played" signal, same approach as the combined activity
+            // check used for leaderboard visibility (see toPlayerView).
+            const lastGameDate = standing
+                ? [standing.lastMatchDate, standing.femaleLastMatchDate].filter(Boolean).sort().pop() || null
+                : null;
+            const daysSinceLastGame = lastGameDate
+                ? Math.floor((serverNow().getTime() - new Date(lastGameDate).getTime()) / 86400000)
+                : null;
+
             document.getElementById('playerProfileName').innerText = m.name;
             document.getElementById('playerProfileUsername').innerText = '@' + m.username;
             document.getElementById('playerProfileRegistered').innerText = registeredDate;
             document.getElementById('playerProfileGames').innerText = standing ? standing.totalGames : '0';
+            document.getElementById('playerProfileLastGame').innerText = lastGameDate
+                ? new Date(lastGameDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                : 'Not Played';
+            document.getElementById('playerProfileDaysSinceLastGame').innerText = daysSinceLastGame !== null
+                ? `${daysSinceLastGame} day${daysSinceLastGame === 1 ? '' : 's'}`
+                : '';
             document.getElementById('playerProfileEmail').innerText = m.email || 'Not provided';
             document.getElementById('playerProfileRole').innerText = `${m.role} / ${m.status}`;
             document.getElementById('playerProfileMembershipNumberInput').value = m.membershipNumber || '';
@@ -10794,6 +10810,14 @@
                     <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
                         <p class="text-[9px] font-bold text-gray-400 uppercase">Games Played</p>
                         <p id="playerProfileGames" class="font-black text-sm"></p>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Last Game Played</p>
+                        <p id="playerProfileLastGame" class="font-black text-sm"></p>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        <p class="text-[9px] font-bold text-gray-400 uppercase">Days Since Last Game</p>
+                        <p id="playerProfileDaysSinceLastGame" class="font-black text-sm"></p>
                     </div>
                     <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
                         <p class="text-[9px] font-bold text-gray-400 uppercase">Email</p>
