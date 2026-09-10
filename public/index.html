@@ -6125,8 +6125,14 @@
 				return;
 			}
 
-            // 1. Calculate Rating Rank (mixed board)
-            const ratingSorted = [...globalData.standings].sort((a,b) => b.elo - a.elo);
+            // 1. Calculate Rating Rank (mixed board) - must mirror the exact
+            // same filtering renderStandings() applies before assigning rank
+            // numbers on the actual leaderboard (excluding "Singles", hidden
+            // players and under-18s), otherwise a player's profile rank won't
+            // match the number they see on the board itself.
+            const ratingSorted = [...globalData.standings]
+                .filter(x => x.name !== "Singles" && !x.isHidden && !x.isUnder18)
+                .sort((a,b) => b.elo - a.elo);
             const skillRank = ratingSorted.findIndex(x => x.name === playerName) + 1;
 
             // 2. Calculate Advanced Stats from History. Item #1: mixed and
@@ -6223,7 +6229,12 @@
             const isFemale = p.gender === 'Female';
             let femaleSectionHtml = '';
             if (isFemale) {
-                const femaleRankSorted = [...globalData.standings].filter(x => x.gender === 'Female').sort((a,b) => b.femaleElo - a.femaleElo);
+                // Same filtering renderStandings() applies for the Women's
+                // Rankings board (name !== "Singles", not femaleIsHidden, not
+                // under-18) so this matches the rank shown on the board.
+                const femaleRankSorted = [...globalData.standings]
+                    .filter(x => x.gender === 'Female' && x.name !== "Singles" && !x.femaleIsHidden && !x.isUnder18)
+                    .sort((a,b) => b.femaleElo - a.femaleElo);
                 const femaleRank = femaleRankSorted.findIndex(x => x.name === playerName) + 1;
                 const femaleStats = computeProfileStats(femaleHistory);
                 const femaleWinPct = p.femaleTotalGames > 0 ? Math.round((p.femaleWins / p.femaleTotalGames) * 100) : 0;
@@ -6280,7 +6291,7 @@
             document.getElementById('profileHeaderTitle').innerHTML = `
                 <div class="flex items-center gap-2 mb-1 flex-wrap">
                     <span class="skill-badge ${badgeClass}" style="font-size: 9px; padding: 3px 10px;">${badgeText}</span>
-                    <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank}</span>
+                    <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank || '—'}</span>
                     ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
                     ${membershipNumberBadge}
                 </div>
