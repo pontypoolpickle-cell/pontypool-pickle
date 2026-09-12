@@ -558,7 +558,7 @@
                     <div class="px-5 pb-5 pt-1 space-y-3 text-sm font-bold text-gray-700 leading-relaxed border-t border-gray-100">
                         <p class="pt-4"><span class="text-black font-black uppercase">Privacy:</span> All member names and personal order details are kept strictly confidential and are only visible to club administrators.</p>
                         <p><span class="text-black font-black uppercase">Bespoke Items:</span> Because every item is custom-made to order, all orders are non-refundable. If an item does not fit, you can try reaching out to other members of the club to try swapping.</p>
-                        <p><span class="text-black font-black uppercase">Initials:</span> All garments come with your initials on the bottom left or right as standard, at no additional charge - just let us know which initials you'd like when you order.</p>
+                        <p><span class="text-black font-black uppercase">Initials:</span> Adding your initials to the bottom left or right of the garment is optional and free of charge - just let us know which initials you'd like when you order, or leave it blank for none.</p>
                     </div>
                 </details>
 
@@ -7981,11 +7981,13 @@
             const size = item.sizes.find(s => s.id === sizeId);
             if (!size) return triggerError("Please select a size.");
 
-            // Initials are included as standard on every garment at no extra
-            // cost - not an opt-in choice - so they're required here.
+            // Initials are included at no extra cost if the member wants them,
+            // but they're optional - leaving this blank just means no initials
+            // are stitched on. Only enforce the 2-letter format when something
+            // was actually entered.
             const initials = document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
-            if (!/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials.");
-            const addInitials = true;
+            if (initials && !/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials, or leave this blank for none.");
+            const addInitials = !!initials;
             const initialsPrice = 0;
             const totalPrice = size.price;
             const fullName = currentUserFullName();
@@ -10737,9 +10739,9 @@
                     <select id="merchandiseOrderSize" onchange="updateMerchandiseOrderTotal()" class="input-field border-2 w-full"></select>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">✏️ Your Initials</label>
-                    <input type="text" id="merchandiseOrderInitials" maxlength="2" required placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase();" class="input-field border-2 uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
-                    <p class="text-[10px] text-gray-400 font-bold mt-1">Included as standard at no extra cost - stitched on the bottom left or right of your garment.</p>
+                    <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">✏️ Your Initials <span class="text-gray-300">(Optional)</span></label>
+                    <input type="text" id="merchandiseOrderInitials" maxlength="2" placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase();" class="input-field border-2 uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
+                    <p class="text-[10px] text-gray-400 font-bold mt-1">Optional and included at no extra cost if you'd like them - stitched on the bottom left or right of your garment. Leave blank for no initials.</p>
                 </div>
                 <div class="bg-black rounded-xl p-4 flex items-center justify-between">
                     <span class="text-[10px] font-black uppercase tracking-widest" style="color: var(--ponty-gold-light) !important;">Total</span>
