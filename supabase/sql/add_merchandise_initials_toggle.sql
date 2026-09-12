@@ -1,0 +1,23 @@
+-- ============================================================================
+-- ADD MERCHANDISE ITEM "INITIALS ALLOWED" TOGGLE (merchandise_items.initials_allowed)
+-- ============================================================================
+-- Run this once in the Supabase SQL Editor if it hasn't been run already.
+-- Safe to re-run (uses "if not exists").
+--
+-- What this is for: some merchandise items (e.g. items with printed rather
+-- than embroidered branding) can't have a member's initials added to them.
+-- This column lets an admin toggle, per item, whether the "add your
+-- initials" option is offered to members ordering it at all - see
+-- openMerchandiseOrderModal()/placeMerchandiseOrder() (member order flow)
+-- and openAddMerchandiseItemModal()/openEditMerchandiseItemModal()/
+-- saveMerchandiseItem() (Admin View's Edit Merchandise Item modal) in
+-- public/index.html.
+--
+-- Defaults to true so every existing merchandise item keeps behaving exactly
+-- as it did before this column existed (initials offered on every item).
+-- Without this column, saving a merchandise item's "Allow Initials" toggle
+-- from the Admin View fails with a Postgres/PostgREST "column does not
+-- exist" error until this is run.
+-- ============================================================================
+
+alter table merchandise_items add column if not exists initials_allowed boolean not null default true;

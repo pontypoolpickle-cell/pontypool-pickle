@@ -1396,8 +1396,21 @@
           description text,
           image_url text,
           sort_order integer not null default 0,
+          -- Whether members ordering this item are offered the "add your
+          -- initials" option at all (see openMerchandiseOrderModal()/
+          -- placeMerchandiseOrder() in this file). Defaults to true so
+          -- existing items keep behaving exactly as before this column was
+          -- added. Admins can flip this per item from the Edit Merchandise
+          -- Item modal on the Merchandise page's Admin View - once switched
+          -- off, the initials field is hidden from the order modal entirely
+          -- for that item.
+          initials_allowed boolean not null default true,
           created_at timestamptz default now()
         );
+
+        -- Existing installations that created merchandise_items before the
+        -- initials_allowed column above existed - safe to re-run.
+        alter table merchandise_items add column if not exists initials_allowed boolean not null default true;
 
         create table merchandise_sizes (
           id uuid primary key default gen_random_uuid(),
@@ -2063,6 +2076,10 @@
                         description: item.description || '',
                         imageUrl: item.image_url || '',
                         sortOrder: Number(item.sort_order || 0),
+                        // Defaults to true (initials offered) until the
+                        // initials_allowed migration has been run - see
+                        // supabase/sql/add_merchandise_initials_toggle.sql.
+                        initialsAllowed: item.initials_allowed !== false,
                         sizes: (payload.merchandiseSizes || [])
                             .filter(s => s.item_id === item.id)
                             .map(s => ({
@@ -7832,6 +7849,7 @@
                             <div>
                                 <h4 class="font-black uppercase italic text-lg leading-tight">${item.name}</h4>
                                 ${item.description ? `<p class="text-xs text-gray-500 font-bold mt-1 leading-relaxed">${item.description}</p>` : ''}
+                                ${adminViewOn ? `<p class="text-[9px] font-black uppercase tracking-widest mt-2 ${item.initialsAllowed === false ? 'text-gray-400' : 'text-rose-600'}">${item.initialsAllowed === false ? '🚫 Initials Off' : '✏️ Initials Available'}</p>` : ''}
                             </div>
                             <p class="text-2xl font-black" style="color: var(--ponty-red) !important;">${merchandisePriceDisplay(item)}</p>
                             <div class="mt-auto space-y-2">
@@ -7959,6 +7977,11 @@
                 .map(s => `<option value="${s.id}">${s.sizeLabel} — £${s.price.toFixed(2)}</option>`).join('');
 
             document.getElementById('merchandiseOrderInitials').value = '';
+            // Admins can switch initials off per-item (e.g. for items that
+            // can't be personalised) - see initials_allowed on
+            // merchandise_items. Hide the field entirely for those items so
+            // members never see the option in the first place.
+            document.getElementById('merchandiseOrderInitialsWrapper').classList.toggle('hidden', item.initialsAllowed === false);
 
             updateMerchandiseOrderTotal();
             openModal('merchandiseOrderModal');
@@ -7984,8 +8007,11 @@
             // Initials are included at no extra cost if the member wants them,
             // but they're optional - leaving this blank just means no initials
             // are stitched on. Only enforce the 2-letter format when something
-            // was actually entered.
-            const initials = document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
+            // was actually entered. If the admin has switched initials off for
+            // this item (initials_allowed = false), the field is hidden in the
+            // modal - ignore any leftover value rather than validating it.
+            const initialsAllowedForItem = item.initialsAllowed !== false;
+            const initials = initialsAllowedForItem ? document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase() : '';
             if (initials && !/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials, or leave this blank for none.");
             const addInitials = !!initials;
             const initialsPrice = 0;
@@ -8131,7 +8157,8 @@
                 name: data.name,
                 description: data.description || null,
                 image_url: data.imageUrl || null,
-                sort_order: (globalData.merchandise || []).length
+                sort_order: (globalData.merchandise || []).length,
+                initials_allowed: data.initialsAllowed !== false
             });
             if (error) throw new Error(error.message);
             return refreshAllData();
@@ -8141,7 +8168,8 @@
             const { error } = await supabaseClient.from('merchandise_items').update({
                 name: data.name,
                 description: data.description || null,
-                image_url: data.imageUrl || null
+                image_url: data.imageUrl || null,
+                initials_allowed: data.initialsAllowed !== false
             }).eq('id', id);
             if (error) throw new Error(error.message);
             return refreshAllData();
@@ -8264,6 +8292,7 @@
             document.getElementById('merchandiseItemImageUrl').value = '';
             document.getElementById('merchandiseItemImageFile').value = '';
             document.getElementById('merchandiseItemCurrentImage').innerHTML = '';
+            document.getElementById('merchandiseItemInitialsAllowed').checked = true;
             openModal('merchandiseItemEditModal');
         }
 
@@ -8279,6 +8308,7 @@
             document.getElementById('merchandiseItemImageFile').value = '';
             document.getElementById('merchandiseItemCurrentImage').innerHTML = item.imageUrl
                 ? `<img src="${item.imageUrl}" class="h-20 rounded-lg border mt-2 object-cover">` : '';
+            document.getElementById('merchandiseItemInitialsAllowed').checked = item.initialsAllowed !== false;
             openModal('merchandiseItemEditModal');
         }
 
@@ -8290,13 +8320,14 @@
             const pastedImageUrl = document.getElementById('merchandiseItemImageUrl').value.trim();
             const fileInput = document.getElementById('merchandiseItemImageFile');
             const file = fileInput.files && fileInput.files[0];
+            const initialsAllowed = document.getElementById('merchandiseItemInitialsAllowed').checked;
 
             const btn = document.getElementById('merchandiseItemSaveBtn');
             btn.disabled = true; btn.innerText = 'Saving...';
 
             (file ? uploadMerchandiseImage(file) : Promise.resolve(pastedImageUrl))
                 .then(finalImageUrl => {
-                    const data = { name, description, imageUrl: finalImageUrl };
+                    const data = { name, description, imageUrl: finalImageUrl, initialsAllowed };
                     return merchandiseItemEditTarget
                         ? updateMerchandiseItem(merchandiseItemEditTarget.id, data)
                         : addMerchandiseItem(data);
@@ -10655,6 +10686,13 @@
                     <p class="text-[9px] text-gray-500 normal-case mt-1">If you upload a file it's used instead of the URL above.</p>
                     <div id="merchandiseItemCurrentImage"></div>
                 </div>
+                <div class="flex items-center justify-between gap-3 bg-gray-50 border-2 border-gray-100 rounded-xl p-4">
+                    <div>
+                        <label for="merchandiseItemInitialsAllowed" class="block text-xs font-black uppercase tracking-widest">✏️ Allow Initials</label>
+                        <p class="text-[10px] text-gray-500 font-bold normal-case mt-1 leading-relaxed">When on, members ordering this item can add their initials. Switch off for items that can't be personalised.</p>
+                    </div>
+                    <input type="checkbox" id="merchandiseItemInitialsAllowed" checked class="w-6 h-6 flex-shrink-0 accent-rose-600">
+                </div>
                 <button onclick="saveMerchandiseItem()" id="merchandiseItemSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
             </div>
         </div>
@@ -10738,7 +10776,7 @@
                     <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Size</label>
                     <select id="merchandiseOrderSize" onchange="updateMerchandiseOrderTotal()" class="input-field border-2 w-full"></select>
                 </div>
-                <div>
+                <div id="merchandiseOrderInitialsWrapper">
                     <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">✏️ Your Initials <span class="text-gray-300">(Optional)</span></label>
                     <input type="text" id="merchandiseOrderInitials" maxlength="2" placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase();" class="input-field border-2 uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
                     <p class="text-[10px] text-gray-400 font-bold mt-1">Optional and included at no extra cost if you'd like them - stitched on the bottom left or right of your garment. Leave blank for no initials.</p>
