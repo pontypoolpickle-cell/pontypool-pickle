@@ -310,6 +310,30 @@
                     </div>
                 </a>
             </div>
+            <div class="px-4">
+                <a href="https://foxpickleball.co.uk" target="_blank" rel="noopener noreferrer"
+                   class="card p-8 md:p-10 bg-white border-l-8 border-rose-600 shadow-xl max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-8 hover:shadow-2xl transition group">
+                    <div class="flex-shrink-0">
+                        <img src="https://i.postimg.cc/QdhGN4Cq/Fox.png"
+                             alt="Fox Pickleball Logo"
+                             class="h-20 md:h-24 w-auto object-contain">
+                    </div>
+                    <div class="text-center md:text-left flex-grow">
+                        <p class="text-[10px] font-black uppercase text-rose-600 tracking-widest mb-2">Proud Collaboration</p>
+                        <h3 class="text-2xl md:text-3xl font-black italic uppercase tracking-tight text-black mb-2 group-hover:text-rose-600 transition">
+                            Happy to Partner with Fox Pickleball
+                        </h3>
+                        <p class="text-gray-600 font-medium">
+                            We're proud to be in collaboration with Fox Pickleball. Tap to check out their range, and use code <strong class="text-rose-600">PPBC10</strong> at checkout for 10% off your order.
+                        </p>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <span class="btn-red px-6 py-3 rounded-full font-black uppercase text-sm tracking-widest shadow-lg inline-block whitespace-nowrap">
+                            Visit Shop →
+                        </span>
+                    </div>
+                </a>
+            </div>
             <div class="mt-16 text-center space-y-8 px-4">
                 <div class="card p-8 md:p-12 bg-white border-b-8 border-rose-600 shadow-2xl max-w-4xl mx-auto">
                     <h3 class="text-4xl font-black italic uppercase tracking-tighter mb-4 text-black">Ready to step onto the court?</h3>
@@ -1395,9 +1419,18 @@
           name text not null,
           description text,
           image_url text,
+          -- Whether members ordering this item are offered the "Your Initials"
+          -- field (see MERCHANDISE ORDER MODAL). Defaults to true so existing
+          -- items keep behaving exactly as before; an admin can switch it off
+          -- per item from the Merchandise page (Admin View) if that garment
+          -- can't be embroidered.
+          allow_initials boolean not null default true,
           sort_order integer not null default 0,
           created_at timestamptz default now()
         );
+        -- Existing installs: add the column above if this table was created
+        -- before initials became optional-per-item.
+        alter table merchandise_items add column if not exists allow_initials boolean not null default true;
 
         create table merchandise_sizes (
           id uuid primary key default gen_random_uuid(),
@@ -2062,6 +2095,11 @@
                         name: item.name,
                         description: item.description || '',
                         imageUrl: item.image_url || '',
+                        // Backwards-compatible: treat missing/undefined (column not
+                        // migrated yet) the same as true so existing items keep
+                        // showing the initials field until an admin explicitly
+                        // switches it off.
+                        allowInitials: item.allow_initials !== false,
                         sortOrder: Number(item.sort_order || 0),
                         sizes: (payload.merchandiseSizes || [])
                             .filter(s => s.item_id === item.id)
@@ -7832,6 +7870,7 @@
                             <div>
                                 <h4 class="font-black uppercase italic text-lg leading-tight">${item.name}</h4>
                                 ${item.description ? `<p class="text-xs text-gray-500 font-bold mt-1 leading-relaxed">${item.description}</p>` : ''}
+                                ${adminViewOn && item.allowInitials === false ? `<p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mt-2">✏️ Initials Off</p>` : ''}
                             </div>
                             <p class="text-2xl font-black" style="color: var(--ponty-red) !important;">${merchandisePriceDisplay(item)}</p>
                             <div class="mt-auto space-y-2">
@@ -7959,6 +7998,7 @@
                 .map(s => `<option value="${s.id}">${s.sizeLabel} — £${s.price.toFixed(2)}</option>`).join('');
 
             document.getElementById('merchandiseOrderInitials').value = '';
+            document.getElementById('merchandiseOrderInitialsSection').classList.toggle('hidden', item.allowInitials === false);
 
             updateMerchandiseOrderTotal();
             openModal('merchandiseOrderModal');
@@ -7984,8 +8024,10 @@
             // Initials are included at no extra cost if the member wants them,
             // but they're optional - leaving this blank just means no initials
             // are stitched on. Only enforce the 2-letter format when something
-            // was actually entered.
-            const initials = document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
+            // was actually entered. If the admin has switched initials off for
+            // this item, ignore any leftover value entirely (the field is also
+            // hidden in the UI, see openMerchandiseOrderModal()).
+            const initials = item.allowInitials === false ? '' : document.getElementById('merchandiseOrderInitials').value.trim().toUpperCase();
             if (initials && !/^[A-Z]{2}$/.test(initials)) return triggerError("Please enter exactly 2 letters for your initials, or leave this blank for none.");
             const addInitials = !!initials;
             const initialsPrice = 0;
@@ -8131,6 +8173,7 @@
                 name: data.name,
                 description: data.description || null,
                 image_url: data.imageUrl || null,
+                allow_initials: data.allowInitials !== false,
                 sort_order: (globalData.merchandise || []).length
             });
             if (error) throw new Error(error.message);
@@ -8141,7 +8184,8 @@
             const { error } = await supabaseClient.from('merchandise_items').update({
                 name: data.name,
                 description: data.description || null,
-                image_url: data.imageUrl || null
+                image_url: data.imageUrl || null,
+                allow_initials: data.allowInitials !== false
             }).eq('id', id);
             if (error) throw new Error(error.message);
             return refreshAllData();
@@ -8264,6 +8308,7 @@
             document.getElementById('merchandiseItemImageUrl').value = '';
             document.getElementById('merchandiseItemImageFile').value = '';
             document.getElementById('merchandiseItemCurrentImage').innerHTML = '';
+            document.getElementById('merchandiseItemAllowInitials').checked = true;
             openModal('merchandiseItemEditModal');
         }
 
@@ -8279,6 +8324,7 @@
             document.getElementById('merchandiseItemImageFile').value = '';
             document.getElementById('merchandiseItemCurrentImage').innerHTML = item.imageUrl
                 ? `<img src="${item.imageUrl}" class="h-20 rounded-lg border mt-2 object-cover">` : '';
+            document.getElementById('merchandiseItemAllowInitials').checked = item.allowInitials !== false;
             openModal('merchandiseItemEditModal');
         }
 
@@ -8290,13 +8336,14 @@
             const pastedImageUrl = document.getElementById('merchandiseItemImageUrl').value.trim();
             const fileInput = document.getElementById('merchandiseItemImageFile');
             const file = fileInput.files && fileInput.files[0];
+            const allowInitials = document.getElementById('merchandiseItemAllowInitials').checked;
 
             const btn = document.getElementById('merchandiseItemSaveBtn');
             btn.disabled = true; btn.innerText = 'Saving...';
 
             (file ? uploadMerchandiseImage(file) : Promise.resolve(pastedImageUrl))
                 .then(finalImageUrl => {
-                    const data = { name, description, imageUrl: finalImageUrl };
+                    const data = { name, description, imageUrl: finalImageUrl, allowInitials };
                     return merchandiseItemEditTarget
                         ? updateMerchandiseItem(merchandiseItemEditTarget.id, data)
                         : addMerchandiseItem(data);
@@ -10655,6 +10702,13 @@
                     <p class="text-[9px] text-gray-500 normal-case mt-1">If you upload a file it's used instead of the URL above.</p>
                     <div id="merchandiseItemCurrentImage"></div>
                 </div>
+                <div class="flex items-center justify-between gap-3 bg-gray-50 border-2 border-gray-100 rounded-xl p-4">
+                    <div>
+                        <label for="merchandiseItemAllowInitials" class="block text-xs font-black uppercase tracking-widest cursor-pointer">✏️ Allow Initials</label>
+                        <p class="text-[10px] text-gray-400 font-bold normal-case mt-1">When on, members ordering this item can add their initials. Switch off if this garment can't be embroidered.</p>
+                    </div>
+                    <input type="checkbox" id="merchandiseItemAllowInitials" checked class="w-6 h-6 flex-shrink-0 accent-rose-600 cursor-pointer">
+                </div>
                 <button onclick="saveMerchandiseItem()" id="merchandiseItemSaveBtn" class="w-full btn-red py-4 rounded font-black uppercase tracking-widest shadow-lg">Save</button>
             </div>
         </div>
@@ -10738,7 +10792,7 @@
                     <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Size</label>
                     <select id="merchandiseOrderSize" onchange="updateMerchandiseOrderTotal()" class="input-field border-2 w-full"></select>
                 </div>
-                <div>
+                <div id="merchandiseOrderInitialsSection">
                     <label class="block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">✏️ Your Initials <span class="text-gray-300">(Optional)</span></label>
                     <input type="text" id="merchandiseOrderInitials" maxlength="2" placeholder="e.g. JS" oninput="this.value = this.value.toUpperCase();" class="input-field border-2 uppercase text-center text-xl tracking-widest" style="max-width: 120px;">
                     <p class="text-[10px] text-gray-400 font-bold mt-1">Optional and included at no extra cost if you'd like them - stitched on the bottom left or right of your garment. Leave blank for no initials.</p>
