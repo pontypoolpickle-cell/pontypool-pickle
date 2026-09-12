@@ -3102,6 +3102,35 @@
 				const session = await getLadderSessionRawById(sessionId);
 				if (!session) throw new Error('Ladder session not found.');
 
+            // Bug fix: nothing below this point was guarded against being run twice
+            // for the same round - e.g. two admins tapping "Confirm & End Round"
+            // within moments of each other on separate devices, or a slow/retried
+            // network request. Both calls would read the same current_round, both
+            // record every match result a second time (double-counting Elo), both
+            // run the promotion/relegation swap loop, and both insert a whole extra
+            // set of next-round games per court (5+5 = 10 games on every court
+            // instead of 5, which is exactly the "10 games after round 1" bug).
+            // Fixed with an optimistic-lock style update: atomically flip
+            // current_round (or status to Finished) FIRST, gated on current_round
+            // still matching what we just read AND status still being 'Active'. If
+            // zero rows come back, someone else already ended this round in the
+            // meantime, so bail out here instead of doing any of that work again.
+            const finished = Number(session.current_round) >= Number(session.total_rounds);
+            const { data: guardRows, error: guardErr } = await supabaseClient
+                .from('ladder_session')
+                .update(finished ? { status: 'Finished' } : { current_round: Number(session.current_round) + 1 })
+                .eq('id', session.id)
+                .eq('status', 'Active')
+                .eq('current_round', session.current_round)
+                .select('id');
+            if (guardErr) throw new Error(guardErr.message);
+            if (!guardRows || guardRows.length === 0) {
+                // Already ended by a concurrent call - nothing left to do here.
+                return finished
+                    ? { finished: true, promotions: [], relegations: [], sessionId: session.id, state: null }
+                    : { finished: false, promotions: [], relegations: [], sessionId: session.id, state: await getLadderStateForSession(session.id) };
+            }
+
             const [{ data: roundGames, error: gamesErr }, { data: courtRows, error: courtsErr }] = await Promise.all([
                 supabaseClient.from('ladder_games').select('*').eq('session_id', session.id).eq('round', session.current_round).order('court', { ascending: true }),
                 supabaseClient.from('ladder_courts').select('*').eq('session_id', session.id).order('court', { ascending: true })
@@ -3155,17 +3184,13 @@
                 await supabaseClient.from('ladder_courts').update({ court: lowerCourt }).eq('id', downCandidate.id);
             }
 
-            const finished = Number(session.current_round) >= Number(session.total_rounds);
-
             if (finished) {
-				await supabaseClient.from('ladder_session').update({ status: 'Finished' }).eq('id', session.id);
 				clearLeagueCache();
 				await refreshAllData();
 				return { finished: true, promotions, relegations, sessionId: session.id, state: null };
 			}
 
             const nextRound = Number(session.current_round) + 1;
-            await supabaseClient.from('ladder_session').update({ current_round: nextRound }).eq('id', session.id);
             await supabaseClient.from('ladder_courts').update({ round_points: 0, points_diff: 0 }).eq('session_id', session.id);
 
             const { data: nextCourtRows, error: nextCourtsErr } = await supabaseClient
