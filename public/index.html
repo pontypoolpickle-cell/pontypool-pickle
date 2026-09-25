@@ -2197,7 +2197,7 @@
             { question: "I don't live in Pontypool, is this a problem?", answer: `Not at all! Everyone is welcome at Pontypool Pickle. Whether you are coming from just down the road or further afield, we are simply glad to have you choose our club. Grab your paddle and come join us!` },
             { question: "I've never played, can I join in the fun?", answer: `<p>Absolutely! In fact, having no previous experience just means you don't have any bad habits to break!</p><p>As a new club, we are incredibly excited to welcome beginners. Come meet the gang, learn the ropes, and discover why this sport is growing so fast. Everyone is welcome, no matter your starting skill level.</p>` },
             { question: "I can't play every day because of other commitments—is that a problem?", answer: `Not at all! We know life gets busy, which is exactly why we do our best to organize sessions and events on different days of the week. Our schedule is designed to fit around various diaries and lifestyles, so you can just dip in and play whenever it suits you.` },
-            { question: "Can children play?", answer: `<p>Because the club is in its early development stages, we don't currently offer specific sessions or coaching for children. Ensuring the safety and proper safeguarding of young people is incredibly important to us, so establishing a dedicated junior section is something we plan to look into once the club is fully established.</p><p>To make this happen, we will need qualified volunteers and a solid safeguarding framework in place. If you'd like to help us get a youth programme off the ground, please visit our Contact Us page to express your interest. For the time being, our sessions are open exclusively to adults (ages 18 and over).</p>` },
+            { question: "Can children play?", answer: `<p>Yes! Members are now welcome to bring along juniors aged 13-17 to play. Ensuring the safety and proper safeguarding of young people is incredibly important to us, so a parent or guardian must complete our Junior Registration & Consent Form when signing a junior up, and must be physically present for an in-person verification check before the child's first session.</p><p>Head to the sign-up page and tick "I am under 18 years of age" to get started, or visit our Contact Us page if you have any questions about junior sessions.</p>` },
             { question: "Can I play against whoever I want?", answer: `<p>During our dedicated Ladder Sessions, unfortunately not. To keep things fair and competitive, the ladder system automatically pairs you with players of a similar or slightly higher skill level. This structure encourages consistent challenges on the court, helping you test your limits and steadily improve your game. It also ensures that everyone gets high-quality matches and that our court time is utilized as effectively as possible for the whole club.</p><p>However, we love social, relaxed play just as much as competitive matches! While our current focus is on the ladder league, we hope to host Open Sessions in the future where you can mix, match, and play against whoever you like just for fun, without the scores affecting your online club rating.</p>` },
             { question: "What if I'm simply not good enough to play?", answer: `<p>There is no such thing as "not good enough" at Pontypool Pickle—we've completely got you covered!</p><p>To help build your confidence, we use a ladder system. This ensures you are always paired with and playing against people of a similar skill level. Here is how it works:</p><p><strong>A Welcoming Start:</strong> If you are new to the club, you will automatically start with a base score of 1200.</p><p><strong>No Pressure:</strong> This starting score places you comfortably in our introductory rankings so you won't ever feel overwhelmed on court.</p><p><strong>Find Your Groove:</strong> The more games you play, the more accurate your rating becomes. As you win games and your confidence grows, you will "climb the ladder" to play on higher courts!</p>` },
             { question: "How does the rating system work?", answer: `<p>We use a dynamic rating system based on the traditional Elo method (similar to how global DUPR ratings operate) to ensure you are always playing against people of a similar skill level.</p><p><strong>Your Starting Block:</strong> When you create your account, you'll self-select your starting level based on your background or existing 4DR/DUPR rating (ranging from 1000 for beginners up to 1800 for Elite players). This ensures you land on the right court from day one.</p><p><strong>The Provisional Period:</strong> Your first 10 matches are "provisional." During this time, the system applies a boosted multiplier to your points so it can quickly find your natural level on the ladder.</p><p><strong>Every Point Counts:</strong> Once settled, your rating shifts after every match. Winning by a wide margin earns you more points than scraping a close 11-9 win. The same applies to losses.</p><p><strong>The Underdog Advantage:</strong> Beating a higher-rated player gives your ranking a massive boost! Flip side? If you lose to a heavily favoured, higher-ranked player, your score barely takes a hit.</p>` },
@@ -7202,29 +7202,25 @@
             document.getElementById('evtSpecialEventFields').classList.toggle('hidden', !checked);
         }
 
-        // Junior (under-18) sign-ups are temporarily switched off until the club
-        // is ready to launch its junior section. Ticking the box now just shows a
-        // "coming soon" message and locks the submit button, instead of opening
-        // the junior consent form flow.
         function toggleUnder18Fields() {
             const isUnder18 = document.getElementById('regUnder18').checked;
             const fields = document.getElementById('under18Fields');
             const submitBtn = document.getElementById('signupSubmitBtn');
             const under18Msg = document.getElementById('under18ComingSoonMsg');
 
-            fields.classList.add('hidden');
-            resetJuniorConsentSignupStatus();
-
             if (isUnder18) {
-                if (under18Msg) under18Msg.classList.remove('hidden');
-                submitBtn.disabled = true;
-                submitBtn.style.opacity = '0.4';
-                submitBtn.style.cursor = 'not-allowed';
-            } else {
-                if (under18Msg) under18Msg.classList.add('hidden');
+                fields.classList.remove('hidden');
                 submitBtn.disabled = false;
                 submitBtn.style.opacity = '1';
                 submitBtn.style.cursor = '';
+                if (under18Msg) under18Msg.classList.add('hidden');
+            } else {
+                fields.classList.add('hidden');
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                submitBtn.style.cursor = '';
+                if (under18Msg) under18Msg.classList.add('hidden');
+                resetJuniorConsentSignupStatus();
             }
         }
 
@@ -9521,13 +9517,10 @@
 
         function processSignup() {
             const isUnder18 = document.getElementById('regUnder18').checked;
+            const consentAck = document.getElementById('regConsentAck').value === 'true';
 
-            // Junior sign-ups are temporarily switched off (see toggleUnder18Fields).
-            // The submit button is disabled while the box is ticked, but this guard
-            // keeps the block in place even if the button is re-enabled some other way.
-            // When junior sign-ups are re-enabled, restore the consentAck check here.
-            if (isUnder18) {
-                return triggerError("Sorry, we can't currently accept sign-ups for juniors - this is coming soon!");
+            if (isUnder18 && !consentAck) {
+                return triggerError("Please complete and submit the Junior Consent Form below before continuing.");
             }
 
             const data = {
@@ -11455,7 +11448,7 @@
 
             <div id="under18ComingSoonMsg" class="hidden bg-gray-50 border-2 border-gray-200 rounded-xl p-4 text-center space-y-2">
                 <p class="text-2xl">🏓</p>
-                <p class="text-xs font-black uppercase text-gray-700 tracking-wide">Coming Soon! We're not yet able to accept junior sign-ups, but this is coming in the near future. Please check back later.</p>
+                <p class="text-xs font-black uppercase text-gray-700 tracking-wide">Sorry, we can't currently offer events for juniors but this is coming in the near future!</p>
             </div>
 
             <div id="under18Fields" class="hidden space-y-3 bg-rose-50 border border-rose-200 rounded-xl p-4">
