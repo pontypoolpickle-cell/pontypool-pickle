@@ -5579,7 +5579,7 @@
 
             const today = todayStr();
             const eligibleEvents = (globalData.events || [])
-                .filter(e => confirmedCountByEvent.get(e[0]) > 0 && e[2] >= today)
+                .filter(e => confirmedCountByEvent.get(e[0]) > 0 && e[2] >= today && (e[7] || '').toString().trim() !== 'Cancelled')
                 .sort((a, b) => new Date(a[2]) - new Date(b[2]));
 
             const previousValue = select.value;
@@ -6785,10 +6785,11 @@
             applyEventPlayersToLadderSetup(eventId);
         }
 
-        // Populates the Ladders page's own event picker with today-or-later events
-        // that have at least one confirmed signup, soonest first - lets an admin
-        // pull confirmed players in without needing to open that event's sign ups
-        // modal. Past events are excluded since there's nothing left to start.
+        // Populates the Ladders page's own event picker with today-or-later, non-
+        // cancelled events that have at least one confirmed signup, soonest first -
+        // lets an admin pull confirmed players in without needing to open that
+        // event's sign ups modal. Past and Cancelled events are excluded since
+        // there's nothing left to start.
         function populateLadderEventSelect() {
             const select = document.getElementById('ladderEventSelect');
             const box = document.getElementById('ladderEventLoadBox');
@@ -6806,7 +6807,7 @@
 
             const today = todayStr();
             const eligibleEvents = (globalData.events || [])
-                .filter(e => confirmedCountByEvent.get(e[0]) > 0 && e[2] >= today)
+                .filter(e => confirmedCountByEvent.get(e[0]) > 0 && e[2] >= today && (e[7] || '').toString().trim() !== 'Cancelled')
                 .sort((a, b) => new Date(a[2]) - new Date(b[2]));
 
             const previousValue = select.value;
