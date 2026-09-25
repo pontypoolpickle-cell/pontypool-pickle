@@ -5577,13 +5577,14 @@
                 confirmedCountByEvent.set(s[0], (confirmedCountByEvent.get(s[0]) || 0) + 1);
             });
 
+            const today = todayStr();
             const eligibleEvents = (globalData.events || [])
-                .filter(e => confirmedCountByEvent.get(e[0]) > 0)
-                .sort((a, b) => new Date(b[2]) - new Date(a[2]));
+                .filter(e => confirmedCountByEvent.get(e[0]) > 0 && e[2] >= today)
+                .sort((a, b) => new Date(a[2]) - new Date(b[2]));
 
             const previousValue = select.value;
             if (eligibleEvents.length === 0) {
-                select.innerHTML = `<option value="">No events with confirmed sign ups yet</option>`;
+                select.innerHTML = `<option value="">No upcoming events with confirmed sign ups yet</option>`;
                 select.disabled = true;
                 return;
             }
@@ -6784,9 +6785,10 @@
             applyEventPlayersToLadderSetup(eventId);
         }
 
-        // Populates the Ladders page's own event picker with events that have at
-        // least one confirmed signup, most recent first - lets an admin pull
-        // confirmed players in without needing to open that event's sign ups modal.
+        // Populates the Ladders page's own event picker with today-or-later events
+        // that have at least one confirmed signup, soonest first - lets an admin
+        // pull confirmed players in without needing to open that event's sign ups
+        // modal. Past events are excluded since there's nothing left to start.
         function populateLadderEventSelect() {
             const select = document.getElementById('ladderEventSelect');
             const box = document.getElementById('ladderEventLoadBox');
@@ -6802,13 +6804,14 @@
                 confirmedCountByEvent.set(s[0], (confirmedCountByEvent.get(s[0]) || 0) + 1);
             });
 
+            const today = todayStr();
             const eligibleEvents = (globalData.events || [])
-                .filter(e => confirmedCountByEvent.get(e[0]) > 0)
-                .sort((a, b) => new Date(b[2]) - new Date(a[2]));
+                .filter(e => confirmedCountByEvent.get(e[0]) > 0 && e[2] >= today)
+                .sort((a, b) => new Date(a[2]) - new Date(b[2]));
 
             const previousValue = select.value;
             if (eligibleEvents.length === 0) {
-                select.innerHTML = `<option value="">No events with confirmed sign ups yet</option>`;
+                select.innerHTML = `<option value="">No upcoming events with confirmed sign ups yet</option>`;
                 select.disabled = true;
                 return;
             }
