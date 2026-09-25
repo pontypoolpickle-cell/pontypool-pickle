@@ -684,8 +684,22 @@
             <div id="scrambleMainContent" class="hidden space-y-6">
                 <!-- STEP 1: Select Players -->
                 <div id="scrambleStep1" class="card p-6">
-                    <h3 class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players Present Today (4-12)</h3>
-                    <div id="scramblePlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
+                    <h3 class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players Present Today</h3>
+
+                    <!-- Pre-select players straight from an event's confirmed sign ups,
+                         instead of ticking everyone by hand - mirrors the same feature
+                         on the Ladders page. Scramble itself is unaffected: it still
+                         just randomly mixes people up and never records match history. -->
+                    <div id="scrambleEventLoadBox" class="hidden bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4 space-y-3">
+                        <p class="text-[10px] font-black uppercase text-blue-700 tracking-widest">🏓 Start From An Event's Sign Ups (optional)</p>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <select id="scrambleEventSelect" class="input-field border-2 flex-grow"></select>
+                            <button type="button" onclick="loadScramblePlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition whitespace-nowrap">Load Confirmed Players</button>
+                        </div>
+                    </div>
+
+                    <div id="scramblePlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3"></div>
+                    <p id="scrambleHeadcountMsg" class="text-xs font-bold uppercase mb-3"></p>
                     <button id="genScrambleBtn" onclick="generateScramble()" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg transition">Generate Rotation</button>
                 </div>
 
@@ -737,6 +751,18 @@
 				<!-- STEP 1: Setup -->
 				<div id="ladderStep1" class="card p-6">
 					<h3 id="ladderStep1Heading" class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players Present Today</h3>
+
+					<!-- Item #15's "Create Ladder From Confirmed Players" button (on an
+					     event's sign ups modal) only ever worked from inside that modal.
+					     This gives admins the same shortcut directly from the Ladders
+					     page itself - pick the event, pull its confirmed players in. -->
+					<div id="ladderEventLoadBox" class="hidden bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4 space-y-3">
+						<p class="text-[10px] font-black uppercase text-blue-700 tracking-widest">🏓 Start From An Event's Sign Ups (optional)</p>
+						<div class="flex flex-col sm:flex-row gap-2">
+							<select id="ladderEventSelect" class="input-field border-2 flex-grow"></select>
+							<button type="button" onclick="loadLadderPlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition whitespace-nowrap">Load Confirmed Players</button>
+						</div>
+					</div>
 
 					<label class="text-[10px] font-bold uppercase text-gray-400">Session Name</label>
 					<input type="text" id="ladderSessionName" placeholder="e.g. Mixed Ladder / Female Only Ladder" class="input-field border-2 mb-4">
@@ -5081,11 +5107,13 @@
             if (scContainer && data.names) {
                 scContainer.innerHTML = `<input type="text" id="scrambleSearch" oninput="filterScrambleNames()" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + data.names.map(n => `
                     <label class="flex items-center space-x-3 p-3 bg-white rounded border cursor-pointer hover:bg-rose-50 transition">
-                        <input type="checkbox" value="${n}" class="scramble-check w-5 h-5 accent-rose-600">
+                        <input type="checkbox" value="${n}" class="scramble-check w-5 h-5 accent-rose-600" onchange="validateScrambleHeadcount()">
                         <span class="font-bold text-xs uppercase">${n}</span>
                     </label>
                 `).join('');
+                validateScrambleHeadcount();
             }
+            populateScrambleEventSelect();
 
             // 4. Populate Admin Dropdowns
             document.querySelectorAll('.player-select').forEach(sel => {
@@ -5468,6 +5496,104 @@
 			});
 		}
 
+        // Mirrors validateLadderHeadcount() - the court splitting logic
+        // (splitCourtSizes()) is now shared between Scramble and Ladders, so the
+        // same headcount rules apply: need at least 4, and counts of 1, 2, 3, 6, 7
+        // or 11 can't be split evenly into courts of 4-5.
+        function validateScrambleHeadcount() {
+            const count = document.querySelectorAll('.scramble-check:checked').length;
+            const msg = document.getElementById('scrambleHeadcountMsg');
+            const btn = document.getElementById('genScrambleBtn');
+            if (!msg || !btn) return;
+
+            if (count === 0) {
+                msg.innerText = "";
+                btn.disabled = false;
+                return;
+            }
+            if (count < 4) {
+                msg.innerHTML = `<span class="text-gray-400">${count} selected — need at least 4</span>`;
+                btn.disabled = true;
+            } else if (INVALID_LADDER_COUNTS.includes(count)) {
+                msg.innerHTML = `<span class="text-rose-600">${count} selected — can't split evenly into courts of 4/5. Add or remove one player.</span>`;
+                btn.disabled = true;
+            } else {
+                msg.innerHTML = `<span class="text-green-600">${count} selected — ready to go!</span>`;
+                btn.disabled = false;
+            }
+        }
+
+        // Same idea as applyEventPlayersToLadderSetup() - pre-select an event's
+        // confirmed players instead of ticking everyone by hand. Scramble has no
+        // session name/female-only flag to set, so this is just the checkbox
+        // pre-fill.
+        function applyEventPlayersToScrambleSetup(eventId) {
+            const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+            if (!eventRow) return triggerError("Event not found.");
+
+            const confirmedNames = (globalData.signups || [])
+                .filter(s => s[0] === eventId && s[5] === 'Confirmed')
+                .map(s => s[1]);
+            if (confirmedNames.length < 4) return triggerError("Need at least 4 confirmed players to generate a scramble.");
+
+            let matched = 0;
+            const unmatched = [];
+            confirmedNames.forEach(name => {
+                const checkbox = Array.from(document.querySelectorAll('.scramble-check'))
+                    .find(cb => normalizeName(cb.value) === normalizeName(name));
+                if (checkbox) { checkbox.checked = true; matched++; }
+                else unmatched.push(name);
+            });
+            validateScrambleHeadcount();
+
+            if (unmatched.length > 0) {
+                triggerToast(`Pre-selected ${matched} player(s). Couldn't match: ${unmatched.join(', ')} - add manually if needed.`);
+            } else {
+                triggerToast(`Pre-selected ${matched} confirmed player(s) from "${eventRow[1]}" - review below, then generate the rotation.`);
+            }
+        }
+
+        function loadScramblePlayersFromEvent() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const select = document.getElementById('scrambleEventSelect');
+            const eventId = select ? select.value : '';
+            if (!eventId) return triggerError("Please select an event first.");
+            applyEventPlayersToScrambleSetup(eventId);
+        }
+
+        // Same event picker as populateLadderEventSelect(), for the Scramble page.
+        function populateScrambleEventSelect() {
+            const select = document.getElementById('scrambleEventSelect');
+            const box = document.getElementById('scrambleEventLoadBox');
+            if (!select || !box) return;
+
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            box.classList.toggle('hidden', !isAdmin);
+            if (!isAdmin) return;
+
+            const confirmedCountByEvent = new Map();
+            (globalData.signups || []).forEach(s => {
+                if (s[5] !== 'Confirmed') return;
+                confirmedCountByEvent.set(s[0], (confirmedCountByEvent.get(s[0]) || 0) + 1);
+            });
+
+            const eligibleEvents = (globalData.events || [])
+                .filter(e => confirmedCountByEvent.get(e[0]) > 0)
+                .sort((a, b) => new Date(b[2]) - new Date(a[2]));
+
+            const previousValue = select.value;
+            if (eligibleEvents.length === 0) {
+                select.innerHTML = `<option value="">No events with confirmed sign ups yet</option>`;
+                select.disabled = true;
+                return;
+            }
+            select.disabled = false;
+            select.innerHTML = `<option value="">Select an event...</option>` + eligibleEvents.map(e =>
+                `<option value="${e[0]}">${e[1]} — ${formatEventDate(e[2])} (${confirmedCountByEvent.get(e[0])} confirmed)</option>`
+            ).join('');
+            if (eligibleEvents.some(e => e[0] === previousValue)) select.value = previousValue;
+        }
+
         function generateScramble() {
             // 1. Get selected names from checkboxes (this is alphabetical)
             const selected = Array.from(document.querySelectorAll('.scramble-check:checked')).map(cb => cb.value);
@@ -5476,6 +5602,13 @@
             if(selected.length < 4) { 
                 document.getElementById('minPlayersModal').classList.remove('hidden'); 
                 return; 
+            }
+
+            // Court splitting is now identical to the Ladders page (splitCourtSizes())
+            // - courts of 4 or 5 only, so the same headcounts (1, 2, 3, 6, 7, 11) can't
+            // be split evenly and are rejected here too.
+            if (INVALID_LADDER_COUNTS.includes(selected.length)) {
+                return triggerError(`${selected.length} selected — can't split evenly into courts of 4/5, just like the Ladders page. Add or remove one player.`);
             }
             
             // 2. RANDOMIZE HERE
@@ -5488,39 +5621,21 @@
                 btn.style.opacity = "0.5";
             }
 
-            let c1Count, c2Count;
-            const totalCount = activeScramblePlayers.length; // Use the shuffled count
-
-            // 3. SPLIT LOGIC (Using the now-randomized activeScramblePlayers)
-            if (totalCount <= 7) { 
-                c1Count = totalCount; 
-                c2Count = 0; 
-            } else if (totalCount <= 10) { 
-                c1Count = Math.ceil(totalCount / 2); 
-                c2Count = totalCount - c1Count; 
-            } else { 
-                c1Count = 6; 
-                c2Count = totalCount - 6; 
-            }
-
-            const c1P = activeScramblePlayers.slice(0, c1Count);
-            const c2P = activeScramblePlayers.slice(c1Count);
-
+            // 3. SPLIT LOGIC - reuses the exact same court sizing as the Ladders page
+            // (courts of 4 or 5, extra players absorbed by the earlier courts), just
+            // applied to the shuffled/randomized order instead of by rating.
+            const sizes = splitCourtSizes(activeScramblePlayers.length);
             const plan = [];
-            // Build Court 1 Plan
-            const t1 = ROTATIONS[c1Count] || ROTATIONS[4];
-            t1.forEach((idx, r) => {
-                const ps = idx.map(i => c1P[i]);
-                plan.push({ round: r+1, court: 1, p1: ps[0], p2: ps[1]||"Singles", p3: ps[2]||"Singles", p4: ps[3]||"Singles" });
-            });
-            // Build Court 2 Plan
-            if (c2Count > 0) {
-                const t2 = ROTATIONS[c2Count] || ROTATIONS[4];
-                t2.forEach((idx, r) => {
-                    const ps = idx.map(i => c2P[i]);
-                    plan.push({ round: r+1, court: 2, p1: ps[0], p2: ps[1]||"Singles", p3: ps[2]||"Singles", p4: ps[3]||"Singles" });
+            let cursor = 0;
+            sizes.forEach((size, index) => {
+                const courtPlayers = activeScramblePlayers.slice(cursor, cursor + size);
+                cursor += size;
+                const rotation = ROTATIONS[size] || ROTATIONS[4];
+                rotation.forEach((idx, r) => {
+                    const ps = idx.map(i => courtPlayers[i]);
+                    plan.push({ round: r + 1, court: index + 1, p1: ps[0], p2: ps[1] || "Singles", p3: ps[2] || "Singles", p4: ps[3] || "Singles" });
                 });
-            }
+            });
 
             // 4. Send the randomized plan to Google
             startLiveScramble(plan)
@@ -6457,50 +6572,51 @@
         function renderLiveScrambleUI(rows) {
             const container = document.getElementById('scrambleRoundsContainer');
             container.innerHTML = "";
-            
-            const c1 = rows.filter(r => r[7] == 1);
-            const c2 = rows.filter(r => r[7] == 2);
+
+            // Court splitting now matches the Ladders page exactly, so a session can
+            // span any number of courts (not just 1-2) - render however many are
+            // actually present in the data instead of hardcoding courts 1 and 2.
+            const courtNumbers = [...new Set(rows.map(r => Number(r[7])))].sort((a, b) => a - b);
+            // Cycles for court 3+ - courts 1 and 2 keep their original black/rose look.
+            const COURT_STYLES = [
+                { header: 'background-color: #000000 !important;', border: 'border-black' },
+                { header: 'background-color: #e11d48 !important;', border: 'border-rose-600' },
+                { header: 'background-color: #2563eb !important;', border: 'border-blue-600' },
+                { header: 'background-color: #7c3aed !important;', border: 'border-purple-600' },
+                { header: 'background-color: #059669 !important;', border: 'border-emerald-600' }
+            ];
 
             const getRoster = (matches) => {
                 const names = matches.flatMap(r => [r[1], r[2], r[3], r[4]]);
                 return [...new Set(names)].filter(n => n !== "Singles" && n !== "");
             };
 
-            const c1Roster = getRoster(c1);
-            const c2Roster = getRoster(c2);
-
             // --- CENTERING LOGIC ---
-            // If Court 2 is empty, use 'flex justify-center' for Court 1
-            let containerClass = c2.length > 0 ? "grid md:grid-cols-2 gap-6 items-start" : "flex justify-center";
-            let widthClass = c2.length > 0 ? "w-full" : "max-w-2xl w-full"; 
+            // A single court is centered; two or more lay out in a responsive grid.
+            const containerClass = courtNumbers.length > 1 ? "grid md:grid-cols-2 gap-6 items-start" : "flex justify-center";
+            const widthClass = courtNumbers.length > 1 ? "w-full" : "max-w-2xl w-full";
 
-            let html = `<div class="${containerClass}">`;
-            
-            // Court 1
-            html += `<div class="space-y-4 ${widthClass}">
-                        <div class="bg-black text-white p-3 rounded-t-lg font-black text-center text-sm uppercase">Court 1</div>
-                        ${c1.map(r => generateLiveCard(r, 1, c1Roster)).join('')}
-                    </div>`;
-            
-            // Court 2 (Only displays if matches were assigned to it)
-            if (c2.length > 0) {
-                html += `<div class="space-y-4 ${widthClass}">
-                            <div style="background-color: #e11d48 !important;" class="text-white p-3 rounded-t-lg font-black text-center text-sm uppercase shadow-md">Court 2</div>
-                            ${c2.map(r => generateLiveCard(r, 2, c2Roster)).join('')}
+            const courtsHtml = courtNumbers.map((courtNum, i) => {
+                const courtRows = rows.filter(r => Number(r[7]) === courtNum);
+                const roster = getRoster(courtRows);
+                const style = COURT_STYLES[i % COURT_STYLES.length];
+                return `<div class="space-y-4 ${widthClass}">
+                            <div style="${style.header}" class="text-white p-3 rounded-t-lg font-black text-center text-sm uppercase shadow-md">Court ${courtNum}</div>
+                            ${courtRows.map(r => generateLiveCard(r, courtNum, roster, style.border)).join('')}
                         </div>`;
-            }
-            
-            html += `</div>`;
-            container.innerHTML = html;
+            }).join('');
+
+            container.innerHTML = `<div class="${containerClass}">${courtsHtml}</div>`;
         }
 
-        function generateLiveCard(r, courtNum, roster) {
+        function generateLiveCard(r, courtNum, roster, borderClass) {
             const isS = (r[2] === "Singles");
             const hasS = (r[5] !== "" || r[6] !== "");
             const boxStyle = 'width: 65px !important; height: 55px !important; font-size: 1.5rem !important; color: black !important; border: 1px solid #ddd !important;';
-            
+            const border = borderClass || (courtNum === 1 ? 'border-black' : 'border-rose-600');
+
             return `
-            <div class="card p-4 border-l-8 ${courtNum === 1 ? 'border-black' : 'border-rose-600'} mb-3 shadow-md" style="background-color: white !important; color: black !important;">
+            <div class="card p-4 border-l-8 ${border} mb-3 shadow-md" style="background-color: white !important; color: black !important;">
                 <div class="flex justify-between items-start mb-3">
                     <div>
                         <span style="color: #666 !important;" class="text-[10px] font-black block">Round ${r[8]}</span>
@@ -6598,9 +6714,13 @@
         // from confirmed players only (not reserves) - the admin still reviews and
         // can tick/untick anyone on the Ladders page before starting, e.g. to drop
         // someone who didn't actually show up.
-        function createLadderFromEvent() {
-            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
-            const eventId = document.getElementById('eventSignupsTitle').dataset.eventId;
+        //
+        // Shared by two entry points: the "Create Ladder From Confirmed Players"
+        // button on an event's sign ups modal (createLadderFromEvent(), which
+        // navigates here first) and the "Start From An Event's Sign Ups" picker on
+        // the Ladders page itself (loadLadderPlayersFromEvent()) - both just need to
+        // pre-fill the current (already-visible) setup form for a given event.
+        function applyEventPlayersToLadderSetup(eventId) {
             const eventRow = (globalData.events || []).find(e => e[0] === eventId);
             if (!eventRow) return triggerError("Event not found.");
 
@@ -6609,43 +6729,94 @@
                 .map(s => s[1]);
             if (confirmedNames.length < 4) return triggerError("Need at least 4 confirmed players to start a ladder.");
 
+            if (ladderSessionsState.find(s => s.session.id === activeLadderSessionId)) {
+                return triggerError('Please finish or reset the current ladder session before starting a new one from an event.');
+            }
+            document.getElementById('ladderSessionName').value = eventRow[1];
+
+            // Women's Rankings (item #1): a Female Only event naturally maps onto
+            // a Female Only ladder session - pre-tick it (and re-render the
+            // eligible player list) before matching confirmed names against it.
+            const femaleOnlyCheckbox = document.getElementById('ladderFemaleOnly');
+            if (femaleOnlyCheckbox) {
+                femaleOnlyCheckbox.checked = !!eventRow[15];
+                renderLadderCheckboxes();
+            }
+
+            let matched = 0;
+            const unmatched = [];
+            confirmedNames.forEach(name => {
+                const checkbox = Array.from(document.querySelectorAll('.ladder-check'))
+                    .find(cb => normalizeName(cb.value) === normalizeName(name));
+                if (checkbox) { checkbox.checked = true; matched++; }
+                else unmatched.push(name);
+            });
+            validateLadderHeadcount();
+
+            if (unmatched.length > 0) {
+                triggerToast(`Pre-selected ${matched} player(s). Couldn't match: ${unmatched.join(', ')} - add manually if needed.`);
+            } else {
+                triggerToast(`Pre-selected ${matched} confirmed player(s) from "${eventRow[1]}" - review below, then start the session.`);
+            }
+        }
+
+        function createLadderFromEvent() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const eventId = document.getElementById('eventSignupsTitle').dataset.eventId;
+
             closeEventSignupsModal();
             showTab('ladders-page');
 
             // showTab()/renderLadderSession() rebuild the checkboxes and reset the
             // session name field - wait a tick so our pre-fill runs after that, not
             // before it gets wiped out.
-            setTimeout(() => {
-                if (ladderSessionsState.find(s => s.session.id === activeLadderSessionId)) {
-                    return triggerError('Please finish or reset the current ladder session before starting a new one from an event.');
-                }
-                document.getElementById('ladderSessionName').value = eventRow[1];
+            setTimeout(() => applyEventPlayersToLadderSetup(eventId), 150);
+        }
 
-                // Women's Rankings (item #1): a Female Only event naturally maps onto
-                // a Female Only ladder session - pre-tick it (and re-render the
-                // eligible player list) before matching confirmed names against it.
-                const femaleOnlyCheckbox = document.getElementById('ladderFemaleOnly');
-                if (femaleOnlyCheckbox) {
-                    femaleOnlyCheckbox.checked = !!eventRow[15];
-                    renderLadderCheckboxes();
-                }
+        // Same pre-fill, triggered directly from the Ladders page's own event
+        // picker instead of via the event's sign ups modal - no navigation needed
+        // since we're already on the page.
+        function loadLadderPlayersFromEvent() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const select = document.getElementById('ladderEventSelect');
+            const eventId = select ? select.value : '';
+            if (!eventId) return triggerError("Please select an event first.");
+            applyEventPlayersToLadderSetup(eventId);
+        }
 
-                let matched = 0;
-                const unmatched = [];
-                confirmedNames.forEach(name => {
-                    const checkbox = Array.from(document.querySelectorAll('.ladder-check'))
-                        .find(cb => normalizeName(cb.value) === normalizeName(name));
-                    if (checkbox) { checkbox.checked = true; matched++; }
-                    else unmatched.push(name);
-                });
-                validateLadderHeadcount();
+        // Populates the Ladders page's own event picker with events that have at
+        // least one confirmed signup, most recent first - lets an admin pull
+        // confirmed players in without needing to open that event's sign ups modal.
+        function populateLadderEventSelect() {
+            const select = document.getElementById('ladderEventSelect');
+            const box = document.getElementById('ladderEventLoadBox');
+            if (!select || !box) return;
 
-                if (unmatched.length > 0) {
-                    triggerToast(`Pre-selected ${matched} player(s). Couldn't match: ${unmatched.join(', ')} - add manually if needed.`);
-                } else {
-                    triggerToast(`Pre-selected ${matched} confirmed player(s) from "${eventRow[1]}" - review below, then start the session.`);
-                }
-            }, 150);
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            box.classList.toggle('hidden', !isAdmin);
+            if (!isAdmin) return;
+
+            const confirmedCountByEvent = new Map();
+            (globalData.signups || []).forEach(s => {
+                if (s[5] !== 'Confirmed') return;
+                confirmedCountByEvent.set(s[0], (confirmedCountByEvent.get(s[0]) || 0) + 1);
+            });
+
+            const eligibleEvents = (globalData.events || [])
+                .filter(e => confirmedCountByEvent.get(e[0]) > 0)
+                .sort((a, b) => new Date(b[2]) - new Date(a[2]));
+
+            const previousValue = select.value;
+            if (eligibleEvents.length === 0) {
+                select.innerHTML = `<option value="">No events with confirmed sign ups yet</option>`;
+                select.disabled = true;
+                return;
+            }
+            select.disabled = false;
+            select.innerHTML = `<option value="">Select an event...</option>` + eligibleEvents.map(e =>
+                `<option value="${e[0]}">${e[1]} — ${formatEventDate(e[2])} (${confirmedCountByEvent.get(e[0])} confirmed)</option>`
+            ).join('');
+            if (eligibleEvents.some(e => e[0] === previousValue)) select.value = previousValue;
         }
 
         // Women's Rankings (item #1): when "Female Only Ladder" is ticked, only
@@ -6751,6 +6922,7 @@
 
         function renderLadderSession() {
 			renderLadderTabs();
+			populateLadderEventSelect();
 
 			const step1 = document.getElementById('ladderStep1');
 			const step2 = document.getElementById('ladderStep2');
