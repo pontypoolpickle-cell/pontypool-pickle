@@ -10452,8 +10452,11 @@
         }
 
         function resetJuniorConsentFormFields() {
-            ['jcTeenName', 'jcGuardianName', 'jcGuardianPhone', 'jcGuardianEmail', 'jcAltContactName', 'jcAltContactPhone',
-             'jcAltContact2Name', 'jcAltContact2Phone', 'jcAltContact3Name', 'jcAltContact3Phone', 'jcAltContact4Name', 'jcAltContact4Phone',
+            ['jcTeenName', 'jcGuardianName', 'jcGuardianRelationship', 'jcGuardianPhone', 'jcGuardianEmail',
+             'jcAltContactName', 'jcAltContactRelationship', 'jcAltContactPhone',
+             'jcAltContact2Name', 'jcAltContact2Relationship', 'jcAltContact2Phone',
+             'jcAltContact3Name', 'jcAltContact3Relationship', 'jcAltContact3Phone',
+             'jcAltContact4Name', 'jcAltContact4Relationship', 'jcAltContact4Phone',
              'jcMedicalConditionsDetails', 'jcMedicationDetails', 'jcParentSignName'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = "";
@@ -10476,9 +10479,11 @@
             const teenName = document.getElementById('jcTeenName').value.trim();
             const dob = document.getElementById('jcDOB').value;
             const guardianName = document.getElementById('jcGuardianName').value.trim();
+            const guardianRelationship = document.getElementById('jcGuardianRelationship').value.trim();
             const guardianPhone = document.getElementById('jcGuardianPhone').value.trim();
             const guardianEmail = document.getElementById('jcGuardianEmail').value.trim();
             const altContactName = document.getElementById('jcAltContactName').value.trim();
+            const altContactRelationship = document.getElementById('jcAltContactRelationship').value.trim();
             const altContactPhone = document.getElementById('jcAltContactPhone').value.trim();
             const medicalConditions = document.querySelector('input[name="jcMedicalConditions"]:checked');
             const medication = document.querySelector('input[name="jcMedication"]:checked');
@@ -10489,17 +10494,20 @@
             if (!teenName) return triggerError("Please enter the full name of the teenager.");
             if (!dob) return triggerError("Please enter the teenager's date of birth.");
             if (!guardianName) return triggerError("Please enter the full name of the parent/guardian.");
+            if (!guardianRelationship) return triggerError("Please enter the parent/guardian's relationship to the teenager.");
             if (!guardianPhone) return triggerError("Please enter the parent/guardian's primary contact number.");
             if (!guardianEmail) return triggerError("Please enter the parent/guardian's email address.");
             if (!altContactName) return triggerError("Please enter an alternative emergency contact name.");
+            if (!altContactRelationship) return triggerError("Please enter the alternative emergency contact's relationship to the teenager.");
             if (!altContactPhone) return triggerError("Please enter an alternative emergency contact number.");
 
-            let altContacts = [`${altContactName} — ${altContactPhone}`];
+            let altContacts = [`${altContactName} (${altContactRelationship}) — ${altContactPhone}`];
             for (let i = 2; i <= 4; i++) {
                 const name = document.getElementById(`jcAltContact${i}Name`).value.trim();
+                const relationship = document.getElementById(`jcAltContact${i}Relationship`).value.trim();
                 const phone = document.getElementById(`jcAltContact${i}Phone`).value.trim();
-                if (name || phone) {
-                    altContacts.push(`${name || 'Not provided'} — ${phone || 'Not provided'}`);
+                if (name || relationship || phone) {
+                    altContacts.push(`${name || 'Not provided'} (${relationship || 'Not provided'}) — ${phone || 'Not provided'}`);
                 }
             }
 
@@ -10546,7 +10554,8 @@
             if (!submissionDate) return triggerError("Please enter the date of submission.");
 
             const data = {
-                teenName, dob, guardianName, guardianPhone, guardianEmail, altContactName, altContactPhone,
+                teenName, dob, guardianName, guardianRelationship, guardianPhone, guardianEmail,
+                altContactName, altContactRelationship, altContactPhone,
                 altContacts: altContacts,
                 medicalConditions: medicalConditions.value,
                 medicalConditionsDetails: document.getElementById('jcMedicalConditionsDetails').value.trim() || "N/A",
@@ -12339,6 +12348,10 @@
                         <input type="text" id="jcGuardianName" placeholder="Full name of parent/guardian" class="input-field border-2">
                     </div>
                     <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Parent/Guardian Relationship to Teenager</label>
+                        <input type="text" id="jcGuardianRelationship" placeholder="e.g. Mother, Father, Grandparent, Guardian" class="input-field border-2">
+                    </div>
+                    <div class="space-y-1">
                         <label class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Parent/Guardian Primary Contact Number</label>
                         <input type="tel" id="jcGuardianPhone" placeholder="Must be reachable during session times" class="input-field border-2">
                     </div>
@@ -12351,29 +12364,33 @@
                         <p class="text-[10px] text-gray-400 font-bold">At least one alternative emergency contact is required. You may add a 2nd, 3rd and 4th if you wish.</p>
                         <div class="bg-gray-50 rounded-lg p-3 space-y-2">
                             <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 1 (Required)</p>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <input type="text" id="jcAltContactName" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcAltContactRelationship" placeholder="Relationship" class="input-field border-2">
                                 <input type="tel" id="jcAltContactPhone" placeholder="Mobile number" class="input-field border-2">
                             </div>
                         </div>
                         <div class="bg-gray-50 rounded-lg p-3 space-y-2">
                             <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 2 (Optional)</p>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <input type="text" id="jcAltContact2Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcAltContact2Relationship" placeholder="Relationship" class="input-field border-2">
                                 <input type="tel" id="jcAltContact2Phone" placeholder="Mobile number" class="input-field border-2">
                             </div>
                         </div>
                         <div class="bg-gray-50 rounded-lg p-3 space-y-2">
                             <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 3 (Optional)</p>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <input type="text" id="jcAltContact3Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcAltContact3Relationship" placeholder="Relationship" class="input-field border-2">
                                 <input type="tel" id="jcAltContact3Phone" placeholder="Mobile number" class="input-field border-2">
                             </div>
                         </div>
                         <div class="bg-gray-50 rounded-lg p-3 space-y-2">
                             <p class="text-[10px] font-black uppercase text-gray-400 tracking-widest">Alternative Emergency Contact 4 (Optional)</p>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <input type="text" id="jcAltContact4Name" placeholder="Name" class="input-field border-2">
+                                <input type="text" id="jcAltContact4Relationship" placeholder="Relationship" class="input-field border-2">
                                 <input type="tel" id="jcAltContact4Phone" placeholder="Mobile number" class="input-field border-2">
                             </div>
                         </div>
@@ -12518,7 +12535,7 @@
                     </label>
                     <label class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
                         <input type="checkbox" id="jcPhotoPolicyAck" class="w-5 h-5 accent-blue-600 mt-1 flex-shrink-0">
-                        <span class="font-bold text-xs uppercase text-gray-600">Photography & Media Policy: I understand that Pontypool Pickleball Club prohibits parents/guardians from capturing, storing, or distributing images of children other than their own without explicit, prior consent. To photograph or film my child alongside another junior, I will first obtain clear (verbal or written) consent from that junior's parent/guardian. I may photograph or film my own child without additional consent only if they are standing or playing entirely on their own, with no other juniors visible in the frame. I understand coaches or club officials may request the immediate deletion of any media if consent cannot be verified, or if the activity is deemed disruptive to the session.</span>
+                        <span class="font-bold text-xs uppercase text-gray-600">Photography & Media Policy: Photographs and videos may be taken during our events and sessions for promotional purposes by Pontypool Pickleball Club, as well as when attending external events run by other clubs and organizations. If you do not wish for your child to appear in photos or videos, please notify the organisers in advance by emailing pontypoolpickle@gmail.com. We will make all reasonable efforts to respect opt-out requests.</span>
                     </label>
                 </div>
 

@@ -169,7 +169,7 @@ serve(async (req) => {
         const under18Warning = data.isUnder18 ? `
           <div style="background-color:#fff1f2;border:2px solid #e11d48;border-radius:10px;padding:14px 18px;margin:0 0 20px;">
             <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;font-weight:900;color:#e11d48;text-transform:uppercase;">⚠️ Under 18 Application</p>
-            <p style="margin:6px 0 0;font-family:Arial,sans-serif;font-size:13px;color:#374151;">This applicant is under 18. A signed parental consent form must be received before this account is approved.</p>
+            <p style="margin:6px 0 0;font-family:Arial,sans-serif;font-size:13px;color:#374151;">This applicant is under 18. Check your inbox for the separate "Junior Consent Form" email with the parent/guardian's completed details before approving this account.</p>
           </div>
         ` : '';
         const body = `
@@ -179,7 +179,7 @@ serve(async (req) => {
             ${detailRow('Full Name', `${data.firstName} ${data.surname}`)}
             ${detailRow('Username', data.username)}
             ${detailRow('Email', data.email || 'Not provided')}
-            ${detailRow('Under 18?', data.isUnder18 ? 'YES — Consent form required' : 'No')}
+            ${detailRow('Under 18?', data.isUnder18 ? 'YES — see Junior Consent Form email' : 'No')}
           </table>
           <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:13px;color:#374151;">Log in to the club portal and visit the <strong>Admin</strong> panel to approve or reject this application.</p>
           <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#9ca3af;">If you were not expecting this application, you can safely ignore this email.</p>
@@ -210,26 +210,18 @@ serve(async (req) => {
       case "application_received_u18": {
         const body = `
           <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.firstName},</p>
-          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Thanks for applying to join <strong>Pontypool Pickle Club</strong>! Because you are under 18, we need a completed consent form from your parent or guardian before we can approve your account.</p>
+          <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">Thanks for applying to join <strong>Pontypool Pickle Club</strong>! We've received your application along with the completed Junior Consent Form, and an admin will review it shortly.</p>
           <div style="background-color:#fff1f2;border:2px solid #e11d48;border-radius:10px;padding:16px 20px;margin:0 0 24px;">
             <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:13px;font-weight:900;color:#e11d48;text-transform:uppercase;">⚠️ Action Required — Parent / Guardian</p>
-            <p style="margin:0 0 12px;font-family:Arial,sans-serif;font-size:13px;color:#374151;">Please download the consent form, fill it in, sign it, and email it back to <strong>pontypoolpickle@gmail.com</strong>.</p>
-            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#374151;">Once received we will review the application and activate the account.</p>
-          </div>
-          <div style="text-align:center;margin:0 0 24px;">
-            <a href="https://docs.google.com/document/d/1sb0TP4FzpGzsuSja_sj4BZhYhNrKydjv_6ZOhfMrvl8/export?format=pdf" style="display:inline-block;background-color:#000000;color:#ffffff;font-family:Arial,sans-serif;font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:1px;text-decoration:none;padding:16px 32px;border-radius:99px;">Download Consent Form (PDF) ↓</a>
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#374151;">A parent or guardian must accompany the applicant to the start of their first session for an in-person, face-to-face verification check (photographic ID may be requested) before they may step onto the court.</p>
           </div>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;margin:0 0 24px;">
             ${detailRow('Applicant Name', `${data.firstName} ${data.surname}`)}
             ${detailRow('Username', data.username)}
-            ${detailRow('Return Form To', 'pontypoolpickle@gmail.com')}
           </table>
-          <div style="background-color:#f9fafb;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
-            <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#374151;font-weight:700;">📧 Subject line: <span style="color:#e11d48;">Consent Form — ${data.firstName} ${data.surname}</span></p>
-          </div>
-          <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">We look forward to welcoming ${data.firstName} to the club!<br><strong>Pontypool Pickle Club</strong></p>
+          <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#374151;">You'll receive another email as soon as the account has been approved. We look forward to welcoming ${data.firstName} to the club!<br><strong>Pontypool Pickle Club</strong></p>
         `;
-        await sendEmail(data.email, `🏓 Application Received — Consent Form Required`, buildEmailHtml("Application Received", body));
+        await sendEmail(data.email, `🏓 Application Received — Pontypool Pickle Club`, buildEmailHtml("Application Received", body));
         break;
       }
 
@@ -542,7 +534,7 @@ serve(async (req) => {
           : detailRow('Nominated Persons', 'N/A — Independent travel selected');
         const altContactsHtml = (data.altContacts && data.altContacts.length > 0)
           ? (data.altContacts as string[]).map((c: string, i: number) => detailRow(`Alternative Emergency Contact ${i + 1}`, c)).join('')
-          : `${detailRow('Alternative Emergency Contact Name', data.altContactName)}${detailRow('Alternative Emergency Contact Number', data.altContactPhone)}`;
+          : `${detailRow('Alternative Emergency Contact Name', data.altContactName)}${detailRow('Alternative Emergency Contact Relationship', data.altContactRelationship)}${detailRow('Alternative Emergency Contact Number', data.altContactPhone)}`;
         const body = `
           <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">A parent/guardian has completed the Junior Player Registration &amp; Consent Form via the club website. Please review the details below and verify face-to-face with the family at the start of the junior's first session before activating their account.</p>
           <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#e11d48;">1. Player &amp; Guardian Details</p>
@@ -550,6 +542,7 @@ serve(async (req) => {
             ${detailRow('Full Name of Teenager', data.teenName)}
             ${detailRow('Date of Birth', data.dob)}
             ${detailRow('Full Name of Parent/Guardian', data.guardianName)}
+            ${detailRow('Guardian Relationship to Teenager', data.guardianRelationship)}
             ${detailRow('Guardian Primary Contact Number', data.guardianPhone)}
             ${detailRow('Guardian Email Address', `<a href="mailto:${data.guardianEmail}" style="color:#e11d48;font-weight:900;">${data.guardianEmail}</a>`)}
             ${altContactsHtml}
