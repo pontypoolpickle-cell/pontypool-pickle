@@ -5272,8 +5272,11 @@
             const gamesKey = isWomen ? 'femaleTotalGames' : 'totalGames';
             const hiddenKey = isWomen ? 'femaleIsHidden' : 'isHidden';
 
+            // Juniors are included on the ratings boards just like adults (they're
+            // simply hidden/shown by the same activity-based isHidden rule as
+            // everyone else) - see toPlayerView()/isBoardVisible().
             const pool = isWomen ? (globalData.standings || []).filter(p => p.gender === 'Female') : (globalData.standings || []);
-            const filtered = pool.filter(p => p.name !== "Singles" && !p[hiddenKey] && !p.isUnder18 && (!search || p.name.toLowerCase().includes(search)));
+            const filtered = pool.filter(p => p.name !== "Singles" && !p[hiddenKey] && (!search || p.name.toLowerCase().includes(search)));
 
             // See computeRecentEloChanges() - a real trailing 7-day total per
             // player, computed fresh from match history rather than the
@@ -6306,11 +6309,12 @@
 
             // 1. Calculate Rating Rank (mixed board) - must mirror the exact
             // same filtering renderStandings() applies before assigning rank
-            // numbers on the actual leaderboard (excluding "Singles", hidden
-            // players and under-18s), otherwise a player's profile rank won't
-            // match the number they see on the board itself.
+            // numbers on the actual leaderboard (excluding "Singles" and hidden
+            // players - juniors are included just like everyone else), otherwise
+            // a player's profile rank won't match the number they see on the
+            // board itself.
             const ratingSorted = [...globalData.standings]
-                .filter(x => x.name !== "Singles" && !x.isHidden && !x.isUnder18)
+                .filter(x => x.name !== "Singles" && !x.isHidden)
                 .sort((a,b) => b.elo - a.elo);
             const skillRank = ratingSorted.findIndex(x => x.name === playerName) + 1;
 
@@ -6409,10 +6413,10 @@
             let femaleSectionHtml = '';
             if (isFemale) {
                 // Same filtering renderStandings() applies for the Women's
-                // Rankings board (name !== "Singles", not femaleIsHidden, not
-                // under-18) so this matches the rank shown on the board.
+                // Rankings board (name !== "Singles", not femaleIsHidden -
+                // juniors included) so this matches the rank shown on the board.
                 const femaleRankSorted = [...globalData.standings]
-                    .filter(x => x.gender === 'Female' && x.name !== "Singles" && !x.femaleIsHidden && !x.isUnder18)
+                    .filter(x => x.gender === 'Female' && x.name !== "Singles" && !x.femaleIsHidden)
                     .sort((a,b) => b.femaleElo - a.femaleElo);
                 const femaleRank = femaleRankSorted.findIndex(x => x.name === playerName) + 1;
                 const femaleStats = computeProfileStats(femaleHistory);
