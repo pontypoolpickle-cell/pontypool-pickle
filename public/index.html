@@ -7478,7 +7478,6 @@
 				setDateInputValue('evtMemberDate', event[5] || "");
 				setDateInputValue('evtPublicDate', event[6] || "");
 				document.getElementById('evtDuration').value = event[10] ?? "";
-				document.getElementById('evtUnder18Only').checked = !!event[14];
 				document.getElementById('evtFemaleOnly').checked = !!event[15];
 				document.getElementById('evtAllAges').checked = !!event[16];
 				document.getElementById('evtSpecialEvent').checked = !!event[17];
@@ -7501,7 +7500,6 @@
 				setDateInputToday('evtPublicDate');
 				const evtDuration = document.getElementById('evtDuration');
 				if (evtDuration) evtDuration.value = "";
-				document.getElementById('evtUnder18Only').checked = false;
 				document.getElementById('evtFemaleOnly').checked = false;
 				document.getElementById('evtAllAges').checked = false;
 				document.getElementById('evtSpecialEvent').checked = false;
@@ -7553,6 +7551,13 @@
         async function submitNewEvent() {
 			if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
 
+			// "Teens Only" (exclusive junior-only sessions) is no longer creatable
+			// from this form - "Juniors Welcome" (allAges) is the only junior
+			// flag admins can set now. Editing an older event that still has
+			// under18_only set from before this change just carries that value
+			// through unchanged rather than silently clearing it.
+			const editingEvent = editingEventId ? (globalData.events || []).find(e => e[0] === editingEventId) : null;
+
 			const data = {
 				title: document.getElementById('evtTitle').value,
 				date: document.getElementById('evtDate').value,
@@ -7562,7 +7567,7 @@
 				memberDate: document.getElementById('evtMemberDate').value,
 				publicDate: document.getElementById('evtPublicDate').value,
 				duration: document.getElementById('evtDuration').value,
-				under18Only: document.getElementById('evtUnder18Only').checked,
+				under18Only: editingEvent ? !!editingEvent[14] : false,
 				femaleOnly: document.getElementById('evtFemaleOnly').checked,
 				allAges: document.getElementById('evtAllAges').checked,
 				isSpecialEvent: document.getElementById('evtSpecialEvent').checked,
@@ -11562,14 +11567,10 @@
                     <input type="checkbox" id="evtNewcomersOnly" onchange="toggleNewcomersOnlyFields()" class="w-5 h-5 accent-rose-600">
                     <span class="text-xs font-bold text-left uppercase">Newcomers Only (Free "Come and Try" Event)</span>
                 </label>-->
-                <label class="flex items-center gap-3 bg-green-50 p-4 rounded-xl mt-2 cursor-pointer border border-green-200">
-                    <input type="checkbox" id="evtUnder18Only" onchange="toggleNewcomersOnlyFields()" class="w-5 h-5 accent-green-600">
-                    <span class="text-xs font-bold text-left uppercase text-green-700">Teens Only (Junior Session)</span>
-                </label>
 				<label class="flex items-center gap-3 bg-indigo-50 p-4 rounded-xl mt-2 cursor-pointer border border-indigo-200">
 					<input type="checkbox" id="evtAllAges" class="w-5 h-5 accent-indigo-600">
 					<span class="text-xs font-bold text-left uppercase text-indigo-700">👦 Juniors Welcome (All Ages)</span>
-					<span class="text-[9px] font-bold text-indigo-400 normal-case block">Tick this to let juniors sign up alongside adults for this event. Without it, juniors can't sign up at all (unless "Teens Only" below is used instead for a standalone junior session). Don't combine with "Teens Only".</span>
+					<span class="text-[9px] font-bold text-indigo-400 normal-case block">Tick this to let juniors sign up alongside adults for this event. Without it, juniors can't sign up at all.</span>
 				</label>
 				<label class="flex items-center gap-3 bg-purple-50 p-4 rounded-xl mt-2 cursor-pointer border border-purple-200">
 					<input type="checkbox" id="evtFemaleOnly" class="w-5 h-5 accent-purple-600">
