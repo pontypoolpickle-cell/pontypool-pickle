@@ -1357,7 +1357,7 @@
           email text,
           role text default 'Non-Member',
           gender text,
-          starting_elo integer default 1200,
+          starting_elo integer default 1800, -- new sign-ups all start at 1800 now; see NEW_SIGNUP_STARTING_ELO
           is_under18 boolean default false,
           consent_verified boolean default false,
           status text default 'Pending',
@@ -1755,9 +1755,16 @@
         const CACHE_TTL_MS = 5 * 60 * 1000;
         const DEFAULT_ELO = 1200;
         // Women's Rankings always start everyone at a flat 1200, regardless of
-        // the self-selected `starting_elo` they picked for the mixed ladder at
-        // signup - see the schema comment above `female_elo` for why.
+        // where they start on the mixed ladder - see the schema comment above
+        // `female_elo` for why.
         const FEMALE_STARTING_ELO = 1200;
+        // Every new sign-up starts on the mixed ladder at a flat 1800 (top
+        // court) rather than self-selecting a skill level. Starting everyone
+        // high means genuine beginners simply work their way down through the
+        // ladder as they lose matches, instead of starting at the bottom and
+        // never getting a chance to climb up and test themselves against
+        // stronger players. See registerUser() below.
+        const NEW_SIGNUP_STARTING_ELO = 1800;
         let liveScrambleIdMap = {};
         let ladderGameIdMap = {};
 		
@@ -2225,8 +2232,8 @@
             { question: "I can't play every day because of other commitments—is that a problem?", answer: `Not at all! We know life gets busy, which is exactly why we do our best to organize sessions and events on different days of the week. Our schedule is designed to fit around various diaries and lifestyles, so you can just dip in and play whenever it suits you.` },
             { question: "Can children play?", answer: `<p>Yes! Members are now welcome to bring along juniors aged 13-17 to play. Ensuring the safety and proper safeguarding of young people is incredibly important to us, so a parent or guardian must complete our Junior Registration & Consent Form when signing a junior up, and must be physically present for an in-person verification check before the child's first session.</p><p>Head to the sign-up page and tick "I am under 18 years of age" to get started, or visit our Contact Us page if you have any questions about junior sessions.</p>` },
             { question: "Can I play against whoever I want?", answer: `<p>During our dedicated Ladder Sessions, unfortunately not. To keep things fair and competitive, the ladder system automatically pairs you with players of a similar or slightly higher skill level. This structure encourages consistent challenges on the court, helping you test your limits and steadily improve your game. It also ensures that everyone gets high-quality matches and that our court time is utilized as effectively as possible for the whole club.</p><p>However, we love social, relaxed play just as much as competitive matches! While our current focus is on the ladder league, we hope to host Open Sessions in the future where you can mix, match, and play against whoever you like just for fun, without the scores affecting your online club rating.</p>` },
-            { question: "What if I'm simply not good enough to play?", answer: `<p>There is no such thing as "not good enough" at Pontypool Pickle—we've completely got you covered!</p><p>To help build your confidence, we use a ladder system. This ensures you are always paired with and playing against people of a similar skill level. Here is how it works:</p><p><strong>A Welcoming Start:</strong> If you are new to the club, you will automatically start with a base score of 1200.</p><p><strong>No Pressure:</strong> This starting score places you comfortably in our introductory rankings so you won't ever feel overwhelmed on court.</p><p><strong>Find Your Groove:</strong> The more games you play, the more accurate your rating becomes. As you win games and your confidence grows, you will "climb the ladder" to play on higher courts!</p>` },
-            { question: "How does the rating system work?", answer: `<p>We use a dynamic rating system based on the traditional Elo method (similar to how global DUPR ratings operate) to ensure you are always playing against people of a similar skill level.</p><p><strong>Your Starting Block:</strong> When you create your account, you'll self-select your starting level based on your background or existing 4DR/DUPR rating (ranging from 1000 for beginners up to 1800 for Elite players). This ensures you land on the right court from day one.</p><p><strong>The Provisional Period:</strong> Your first 10 matches are "provisional." During this time, the system applies a boosted multiplier to your points so it can quickly find your natural level on the ladder.</p><p><strong>Every Point Counts:</strong> Once settled, your rating shifts after every match. Winning by a wide margin earns you more points than scraping a close 11-9 win. The same applies to losses.</p><p><strong>The Underdog Advantage:</strong> Beating a higher-rated player gives your ranking a massive boost! Flip side? If you lose to a heavily favoured, higher-ranked player, your score barely takes a hit.</p>` },
+            { question: "What if I'm simply not good enough to play?", answer: `<p>There is no such thing as "not good enough" at Pontypool Pickle—we've completely got you covered!</p><p>To help build your confidence, we use a ladder system. This ensures you are always paired with and playing against people of a similar skill level. Here is how it works:</p><p><strong>A Welcoming Start:</strong> Every new sign-up starts on the top court with a base score of 1800.</p><p><strong>Find Your Level:</strong> If that's higher than your current standard, don't worry - your first few results will naturally settle you onto the right court as you play, rather than leaving you stuck at the bottom with no way to prove yourself against stronger players.</p><p><strong>Find Your Groove:</strong> The more games you play, the more accurate your rating becomes. As you find your level, you'll move up or down the ladder to play on the courts that suit you!</p>` },
+            { question: "How does the rating system work?", answer: `<p>We use a dynamic rating system based on the traditional Elo method (similar to how global DUPR ratings operate) to ensure you are always playing against people of a similar skill level.</p><p><strong>Your Starting Block:</strong> Every new account starts on the top court with a flat rating of 1800 - there's no self-assessment to fill in. If that's above your current level, your results will naturally settle you onto the right court as you play, rather than starting at the bottom with no way to work your way up.</p><p><strong>The Provisional Period:</strong> Your first 10 matches are "provisional." During this time, the system applies a boosted multiplier to your points so it can quickly find your natural level on the ladder.</p><p><strong>Every Point Counts:</strong> Once settled, your rating shifts after every match. Winning by a wide margin earns you more points than scraping a close 11-9 win. The same applies to losses.</p><p><strong>The Underdog Advantage:</strong> Beating a higher-rated player gives your ranking a massive boost! Flip side? If you lose to a heavily favoured, higher-ranked player, your score barely takes a hit.</p>` },
             { question: "Why has my name disappeared from the leaderboard?", answer: `<p>Our leaderboard is designed to stay fresh and only show genuinely active players - so unlike some rating systems, we don't gradually "decay" or reduce anyone's points for taking a break.</p><p>Instead, once you've played your first match, you stay visible on the leaderboard for <strong>28 days</strong> after your most recent game. If you haven't played again within that window, your name is simply hidden (not deleted!) until you next play - at which point you'll reappear instantly with your rating exactly as it was, and the 28-day clock restarts from your new match date.</p><p>This keeps the standings clean and current for our regulars without ever penalising anyone's hard-earned rating just for taking time off.</p>` },
             { question: "I just registered - why can't I see myself on the leaderboard?", answer: `<p>New accounts stay visible on the leaderboard for the first <strong>7 days</strong> after registering. If you haven't played a game at the club within those 7 days, your name is automatically hidden from the public rankings so the leaderboard stays accurate and uncluttered for active players.</p><p>Your account isn't affected in any other way, and your name will <strong>instantly reappear</strong> the moment your first match is recorded - there's nothing you need to do to fix it, just get out on the courts!</p>` },
             { question: "How do the Women's Rankings work?", answer: `<p>Alongside our normal mixed rating, we run a completely separate <strong>Women's Rankings</strong> board for our female-only ladder sessions. Because playing against men tends to skew ratings downward for women (and vice versa), we wanted a fairer, standalone way to track progress against other female players specifically.</p><p>Every female player starts on the Women's Rankings at the same base score of <strong>1200</strong>, and it only ever changes when you play in a session flagged as Female Only - your rating from mixed sessions is completely unaffected, and playing mixed sessions never changes your Women's Ranking either. You can switch between the two boards using the toggle at the top of the Ratings page, and if you're a female player, your profile shows both ratings side by side.</p>` },
@@ -4667,7 +4674,10 @@
                 email: email,
                 role: 'Non-Member',
                 gender: data.gender || null,
-                starting_elo: Number(data.startingElo || DEFAULT_ELO),
+                // Everyone - juniors and adults alike - now starts at a flat
+                // NEW_SIGNUP_STARTING_ELO rather than self-selecting a skill
+                // level at signup (see the comment on that constant for why).
+                starting_elo: NEW_SIGNUP_STARTING_ELO,
                 is_under18: !!data.isUnder18,
                 consent_verified: false,
                 status: 'Pending'
@@ -9718,7 +9728,6 @@
                 username: document.getElementById('regUser').value.trim(),
                 password: document.getElementById('regPass').value.trim(),
                 gender: document.getElementById('regGender').value,
-                startingElo: document.getElementById('regSkillLevel').value,
                 isUnder18: isUnder18
                 };
 
@@ -11615,14 +11624,6 @@
             <option value="Male">Male</option>
             <option value="Female">Female</option>
             <option value="Everyone">Prefer not to say</option>
-        </select>
-        <select id="regSkillLevel" class="input-field border-2">
-            <option value="" disabled selected>Select Your Skill Level</option>
-            <option value="1000">Beginner — New to pickleball and racquet sports</option>
-            <option value="1200">Improver — New to pickleball but have a sports background</option>
-            <option value="1400">Intermediate — Play regularly, understand strategy and positioning</option>
-            <option value="1600">Advanced — Play in leagues or tournaments, reliable third-shot drop</option>
-            <option value="1800">Elite — Tournament-level competitor, elite strategy and consistency</option>
         </select>
             <input type="email" id="regEmail" placeholder="Email Address (required - used to log in)" class="input-field border-2" required>
 
