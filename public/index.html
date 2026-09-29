@@ -8993,6 +8993,10 @@
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide bg-amber-500 text-white">
                                     🏆 Special Event
                                 </span>` : ''}
+                                ${event[16] ? `
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide bg-indigo-500 text-white">
+                                    👦 Juniors Welcome
+                                </span>` : ''}
                                 <span style="${quickStatus.style}" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide">
                                     ${quickStatus.label}
                                 </span>
@@ -9122,6 +9126,8 @@
 					const isSpecialEvent = !!ev[17];
 					const under18Only = !!ev[14];
 					const femaleOnly = !!ev[15];
+					const allAges = !!ev[16];
+					const pillTitle = ev[1] + (allAges ? ' (👦 Juniors Welcome)' : under18Only ? ' (👦 Junior Session)' : '');
 
 					let markerHtml;
 					if (isPastEvent) {
@@ -9138,7 +9144,7 @@
 
 					pillsHtml += `
 						<div onclick="event.stopPropagation(); openCalendarEventModal('${ev[0]}')"
-							title="${ev[1]}"
+							title="${pillTitle}"
 							style="cursor:pointer; margin-top:3px; display:flex; align-items:center; justify-content:center;">
 							${markerHtml}
 						</div>`;
@@ -11389,8 +11395,8 @@
                 </label>
 				<label class="flex items-center gap-3 bg-indigo-50 p-4 rounded-xl mt-2 cursor-pointer border border-indigo-200">
 					<input type="checkbox" id="evtAllAges" class="w-5 h-5 accent-indigo-600">
-					<span class="text-xs font-bold text-left uppercase text-indigo-700">All Ages (Adults & Teens Together)</span>
-					<span class="text-[9px] font-bold text-indigo-400 normal-case block">e.g. parent/teen sessions — don't combine with "Teens Only"</span>
+					<span class="text-xs font-bold text-left uppercase text-indigo-700">👦 Juniors Welcome (All Ages)</span>
+					<span class="text-[9px] font-bold text-indigo-400 normal-case block">Tick this to let juniors sign up alongside adults for this event. Without it, juniors can't sign up at all (unless "Teens Only" below is used instead for a standalone junior session). Don't combine with "Teens Only".</span>
 				</label>
 				<label class="flex items-center gap-3 bg-purple-50 p-4 rounded-xl mt-2 cursor-pointer border border-purple-200">
 					<input type="checkbox" id="evtFemaleOnly" class="w-5 h-5 accent-purple-600">
