@@ -1610,25 +1610,29 @@
         alter table players add column if not exists female_last_match_date date;
 
         -- Account "Reset Rating" (admin-only, Manage Players -> a player's
-        -- profile). Instantly returns a player to the same flat defaults a
+        -- profile). Instantly returns a player to the same flat default a
         -- brand-new sign-up gets (1800 mixed / 1200 Women's Rankings, 0
-        -- wins/losses/games on both), while leaving every match they've ever
-        -- played completely untouched in the `matches` table - their full
-        -- history, partners/opponents stats and match log on their profile
-        -- all stay exactly as they were.
+        -- wins/losses/games on that board), while leaving every match they've
+        -- ever played completely untouched in the `matches` table - their
+        -- full history, partners/opponents stats and match log on their
+        -- profile all stay exactly as they were. The mixed rating and Women's
+        -- Rankings are reset completely independently (two separate buttons,
+        -- two separate timestamp columns below) since a player's standing on
+        -- one board has nothing to do with the other.
         --
-        -- The tricky part this column solves: "Recalculate All ELOs" (see
+        -- The tricky part these columns solve: "Recalculate All ELOs" (see
         -- recalculateAllEloFromScratch() in this file) replays a player's
         -- entire match history from their signup starting_elo every time it
         -- runs - which would otherwise silently undo a reset the next time an
         -- admin uses that tool to fix an unrelated data mistake. Instead,
-        -- recalculateAllEloFromScratch() replays matches BEFORE this
+        -- recalculateAllEloFromScratch() replays matches BEFORE the relevant
         -- timestamp exactly as before (so it doesn't change what anyone else
         -- earned/lost playing against this player historically), then snaps
-        -- this player back to the fresh default the moment it reaches their
-        -- first match on/after this timestamp (or immediately, if they simply
-        -- haven't played since) - so the reset always sticks.
+        -- that board back to its fresh default the moment it reaches this
+        -- player's first match on/after this timestamp (or immediately, if
+        -- they simply haven't played since) - so the reset always sticks.
         alter table players add column if not exists rating_reset_at timestamptz;
+        alter table players add column if not exists female_rating_reset_at timestamptz;
 
         -- Ladder courts table
         create table ladder_courts (
@@ -1955,6 +1959,7 @@
                 femaleIsHidden: isHidden,
                 isUnder18: !!row.is_under18,
                 ratingResetAt: row.rating_reset_at || null,
+                femaleRatingResetAt: row.female_rating_reset_at || null,
                 isActiveMember: isMembershipActive(membershipUser),
                 membershipEndDate: membershipUser ? membershipUser.membership_end_date : null
             };
@@ -2708,16 +2713,17 @@
 			(players || []).forEach(p => {
 				const startElo = startingEloMap.get(normalizeName(p.name)) || DEFAULT_ELO;
 				// A player who's had their rating reset (admin "Reset Rating",
-				// see resetPlayerRatingToDefault() and the rating_reset_at
-				// schema comment) keeps their real pre-reset trajectory for any
-				// match before that timestamp - so this replay doesn't change
-				// what anyone else earned/lost playing against them back then -
-				// but must land back on the fresh default from that point on,
-				// even when replayed from scratch. `resetApplied` tracks
-				// whether that snap-back has happened yet as matches are
-				// walked in date order below; the "hasn't played since
-				// resetting" case is handled once the loop finishes.
-				const resetAt = p.rating_reset_at ? new Date(p.rating_reset_at) : null;
+				// see resetPlayerRatingToDefault() and the rating_reset_at /
+				// female_rating_reset_at schema comment) keeps their real
+				// pre-reset trajectory for any match before that timestamp -
+				// so this replay doesn't change what anyone else earned/lost
+				// playing against them back then - but must land back on the
+				// fresh default from that point on, even when replayed from
+				// scratch. `resetApplied` tracks whether that snap-back has
+				// happened yet as matches are walked in date order below; the
+				// "hasn't played since resetting" case is handled once the
+				// loop finishes. The mixed and Women's Rankings resets are
+				// completely independent, so each pool reads its own column.
 				stats.set(normalizeName(p.name), {
 					name: p.name,
 					elo: startElo,
@@ -2726,7 +2732,7 @@
 					totalGames: 0,
 					weeklySum: 0,
 					lastMatchDate: null,
-					resetAt,
+					resetAt: p.rating_reset_at ? new Date(p.rating_reset_at) : null,
 					resetApplied: false
 				});
 				// Women's Rankings always recalculate from a flat 1200 start,
@@ -2738,7 +2744,7 @@
 					losses: 0,
 					totalGames: 0,
 					lastMatchDate: null,
-					resetAt,
+					resetAt: p.female_rating_reset_at ? new Date(p.female_rating_reset_at) : null,
 					resetApplied: false
 				});
 			});
@@ -4906,26 +4912,34 @@
         }
 
         // Admin "Reset Rating" action (item: account resets). Instantly returns
-        // a player to a brand-new-signup baseline - see the schema comment
-        // above `alter table players add column if not exists rating_reset_at`
-        // for the full reasoning, and the reset-awareness added to
-        // recalculateAllEloFromScratch() below that makes this stick even after
-        // a future "Recalculate All ELOs" run.
-        async function resetPlayerRatingToDefault(playerName) {
-            const { error } = await supabaseClient.from('players').update({
-                elo: NEW_SIGNUP_STARTING_ELO,
-                wins: 0,
-                losses: 0,
-                total_games: 0,
-                weekly_sum: 0,
-                last_match_date: null,
-                female_elo: FEMALE_STARTING_ELO,
-                female_wins: 0,
-                female_losses: 0,
-                female_total_games: 0,
-                female_last_match_date: null,
-                rating_reset_at: serverNow().toISOString()
-            }).eq('name', playerName);
+        // a player to a brand-new-signup baseline on ONE board only - the
+        // mixed rating and Women's Rankings are reset completely independently
+        // via separate buttons, since a player's standing on one has nothing
+        // to do with the other. See the schema comment above
+        // `alter table players add column if not exists rating_reset_at` for
+        // the full reasoning, and the reset-awareness added to
+        // recalculateAllEloFromScratch() below that makes this stick even
+        // after a future "Recalculate All ELOs" run.
+        async function resetPlayerRatingToDefault(playerName, pool) {
+            const fields = pool === 'female'
+                ? {
+                    female_elo: FEMALE_STARTING_ELO,
+                    female_wins: 0,
+                    female_losses: 0,
+                    female_total_games: 0,
+                    female_last_match_date: null,
+                    female_rating_reset_at: serverNow().toISOString()
+                }
+                : {
+                    elo: NEW_SIGNUP_STARTING_ELO,
+                    wins: 0,
+                    losses: 0,
+                    total_games: 0,
+                    weekly_sum: 0,
+                    last_match_date: null,
+                    rating_reset_at: serverNow().toISOString()
+                };
+            const { error } = await supabaseClient.from('players').update(fields).eq('name', playerName);
             if (error) throw new Error(error.message);
             return refreshAllData();
         }
@@ -6151,16 +6165,18 @@
             document.getElementById('playerProfileBalanceAdjustNote').value = '';
             document.getElementById('playerProfileBalance').innerText = '...';
 
+            const formatResetInfo = (resetAt) => resetAt
+                ? `Last reset ${new Date(resetAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                : 'Never reset';
+
             const ratingSection = document.getElementById('playerProfileRatingSection');
             if (ratingSection) {
                 if (standing) {
                     ratingSection.classList.remove('hidden');
                     document.getElementById('playerProfileCurrentRating').innerText = standing.elo;
                     document.getElementById('playerProfileCurrentFemaleRating').innerText = standing.femaleElo;
-                    const resetInfo = document.getElementById('playerProfileRatingResetInfo');
-                    resetInfo.innerText = standing.ratingResetAt
-                        ? `Last reset ${new Date(standing.ratingResetAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                        : 'Never reset';
+                    document.getElementById('playerProfileRatingResetInfo').innerText = formatResetInfo(standing.ratingResetAt);
+                    document.getElementById('playerProfileFemaleRatingResetInfo').innerText = formatResetInfo(standing.femaleRatingResetAt);
                 } else {
                     // No `players` row yet (e.g. still Pending approval) - nothing to reset.
                     ratingSection.classList.add('hidden');
@@ -6232,10 +6248,20 @@
             openModal('deletePlayerModal');
         }
 
-        function confirmResetPlayerRating() {
+        // Which board ('mixed' or 'female') the open confirm modal is about to
+        // reset - the mixed rating and Women's Rankings each get their own
+        // button/confirmation so resetting one never touches the other.
+        let resetPlayerRatingPool = 'mixed';
+
+        function confirmResetPlayerRating(pool) {
             if (!currentAdminPlayerProfile) return;
             if (!currentAdminPlayerProfile.hasStanding) return triggerError("This player doesn't have a rating yet.");
+            resetPlayerRatingPool = pool === 'female' ? 'female' : 'mixed';
+            const isFemale = resetPlayerRatingPool === 'female';
             document.getElementById('resetPlayerRatingName').innerText = currentAdminPlayerProfile.name;
+            document.getElementById('resetPlayerRatingBoardLabel').innerText = isFemale ? "Women's Rankings" : 'Mixed Rating';
+            document.getElementById('resetPlayerRatingBoardLabel2').innerText = isFemale ? "Women's Rankings" : 'mixed rating';
+            document.getElementById('resetPlayerRatingTarget').innerText = isFemale ? '1200' : '1800';
             openModal('resetPlayerRatingModal');
         }
 
@@ -6246,10 +6272,11 @@
             const btn = document.getElementById('resetPlayerRatingFinalBtn');
             btn.disabled = true; btn.innerText = "Resetting...";
 
-            resetPlayerRatingToDefault(currentAdminPlayerProfile.name)
+            resetPlayerRatingToDefault(currentAdminPlayerProfile.name, resetPlayerRatingPool)
                 .then(r => {
                     render(r);
-                    triggerToast(`"${currentAdminPlayerProfile.name}"'s rating has been reset.`);
+                    const boardLabel = resetPlayerRatingPool === 'female' ? "Women's Rankings" : 'mixed rating';
+                    triggerToast(`"${currentAdminPlayerProfile.name}"'s ${boardLabel} has been reset.`);
                     closeModal('resetPlayerRatingModal');
                     openAdminPlayerProfile(currentAdminPlayerProfile.username);
                 })
@@ -7478,7 +7505,6 @@
 				setDateInputValue('evtMemberDate', event[5] || "");
 				setDateInputValue('evtPublicDate', event[6] || "");
 				document.getElementById('evtDuration').value = event[10] ?? "";
-				document.getElementById('evtUnder18Only').checked = !!event[14];
 				document.getElementById('evtFemaleOnly').checked = !!event[15];
 				document.getElementById('evtAllAges').checked = !!event[16];
 				document.getElementById('evtSpecialEvent').checked = !!event[17];
@@ -7501,7 +7527,6 @@
 				setDateInputToday('evtPublicDate');
 				const evtDuration = document.getElementById('evtDuration');
 				if (evtDuration) evtDuration.value = "";
-				document.getElementById('evtUnder18Only').checked = false;
 				document.getElementById('evtFemaleOnly').checked = false;
 				document.getElementById('evtAllAges').checked = false;
 				document.getElementById('evtSpecialEvent').checked = false;
@@ -7553,6 +7578,13 @@
         async function submitNewEvent() {
 			if (!currentUser || currentUser.role !== 'Admin') return alert("Admin access required.");
 
+			// "Teens Only" (exclusive junior-only sessions) is no longer creatable
+			// from this form - "Juniors Welcome" (allAges) is the only junior
+			// flag admins can set now. Editing an older event that still has
+			// under18_only set from before this change just carries that value
+			// through unchanged rather than silently clearing it.
+			const editingEvent = editingEventId ? (globalData.events || []).find(e => e[0] === editingEventId) : null;
+
 			const data = {
 				title: document.getElementById('evtTitle').value,
 				date: document.getElementById('evtDate').value,
@@ -7562,7 +7594,7 @@
 				memberDate: document.getElementById('evtMemberDate').value,
 				publicDate: document.getElementById('evtPublicDate').value,
 				duration: document.getElementById('evtDuration').value,
-				under18Only: document.getElementById('evtUnder18Only').checked,
+				under18Only: editingEvent ? !!editingEvent[14] : false,
 				femaleOnly: document.getElementById('evtFemaleOnly').checked,
 				allAges: document.getElementById('evtAllAges').checked,
 				isSpecialEvent: document.getElementById('evtSpecialEvent').checked,
@@ -11258,23 +11290,24 @@
                     <input type="text" id="playerProfileBalanceAdjustNote" placeholder="Reason (e.g. bank transfer refund processed)" class="input-field border-2 mt-2">
                     <p class="text-[10px] text-gray-400 font-bold mt-2">Use a positive amount to credit (e.g. a refund you processed manually by bank transfer) or a negative amount to correct a mistaken credit. Every change is logged.</p>
                 </div>
-                <div id="playerProfileRatingSection" class="bg-indigo-50 rounded-xl p-4 border border-indigo-100 hidden">
-                    <p class="text-[9px] font-bold text-indigo-400 uppercase mb-2">Rating</p>
-                    <div class="grid grid-cols-2 gap-3 mb-2">
-                        <div>
-                            <p class="text-[9px] font-bold text-gray-400 uppercase">Mixed Rating</p>
-                            <p id="playerProfileCurrentRating" class="font-black text-xl"></p>
-                        </div>
-                        <div>
-                            <p class="text-[9px] font-bold text-gray-400 uppercase">Women's Rankings</p>
-                            <p id="playerProfileCurrentFemaleRating" class="font-black text-xl"></p>
-                        </div>
+                <div id="playerProfileRatingSection" class="grid grid-cols-1 sm:grid-cols-2 gap-3 hidden">
+                    <div class="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                        <p class="text-[9px] font-bold text-indigo-400 uppercase mb-2">Mixed Rating</p>
+                        <p id="playerProfileCurrentRating" class="font-black text-xl mb-1"></p>
+                        <p id="playerProfileRatingResetInfo" class="text-[10px] text-gray-400 font-bold mb-2"></p>
+                        <button onclick="confirmResetPlayerRating('mixed')" class="w-full bg-white text-indigo-600 border-2 border-indigo-600 py-2.5 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-600 hover:text-white transition">
+                            ↺ Reset to 1800
+                        </button>
                     </div>
-                    <p id="playerProfileRatingResetInfo" class="text-[10px] text-gray-400 font-bold mb-2"></p>
-                    <button onclick="confirmResetPlayerRating()" class="w-full bg-white text-indigo-600 border-2 border-indigo-600 py-2.5 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-600 hover:text-white transition">
-                        ↺ Reset Rating to Default
-                    </button>
-                    <p class="text-[10px] text-gray-400 font-bold mt-2">Instantly returns this player to the same fresh 1800 mixed / 1200 Women's Rankings rating a brand-new sign-up gets, with 0 wins/losses. Their full match history is kept and stays visible on their profile - only their current rating and career W/L are reset.</p>
+                    <div class="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                        <p class="text-[9px] font-bold text-purple-400 uppercase mb-2">Women's Rankings</p>
+                        <p id="playerProfileCurrentFemaleRating" class="font-black text-xl mb-1"></p>
+                        <p id="playerProfileFemaleRatingResetInfo" class="text-[10px] text-gray-400 font-bold mb-2"></p>
+                        <button onclick="confirmResetPlayerRating('female')" class="w-full bg-white text-purple-600 border-2 border-purple-600 py-2.5 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-purple-600 hover:text-white transition">
+                            ↺ Reset to 1200
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-gray-400 font-bold sm:col-span-2">Each reset only affects that one board and instantly returns it to the same fresh rating a brand-new sign-up gets, with 0 wins/losses on that board. Full match history is kept and stays visible on the profile either way - only the current rating and career W/L on the reset board are affected.</p>
                 </div>
                 <div class="bg-rose-50 rounded-xl p-4 border border-rose-100">
                     <p class="text-[9px] font-bold text-rose-400 uppercase mb-2">Membership Number</p>
@@ -11324,9 +11357,9 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
                 </div>
-                <h3 class="text-xl font-black uppercase italic mb-1">Reset This Player's Rating?</h3>
+                <h3 class="text-xl font-black uppercase italic mb-1">Reset <span id="resetPlayerRatingBoardLabel"></span>?</h3>
                 <p id="resetPlayerRatingName" class="text-xl font-black text-indigo-600 uppercase mb-4"></p>
-                <p class="text-gray-600 mb-6 text-sm font-bold">This instantly sets them back to 1800 (mixed) / 1200 (Women's Rankings) with 0 wins/losses/games, just like a brand-new sign-up. Their full match history is kept and still shows on their profile - it just won't count towards their current rating any more, even if you use "Recalculate All ELOs" later.</p>
+                <p class="text-gray-600 mb-6 text-sm font-bold">This instantly sets their <span id="resetPlayerRatingBoardLabel2"></span> back to <span id="resetPlayerRatingTarget"></span> with 0 wins/losses/games on that board, just like a brand-new sign-up. Their other rating is untouched, and their full match history is kept and still shows on their profile - it just won't count towards this rating any more, even if you use "Recalculate All ELOs" later.</p>
                 <div class="flex flex-col gap-3">
                     <button onclick="executeResetPlayerRating()" id="resetPlayerRatingFinalBtn"
                             class="w-full bg-indigo-600 text-white py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-indigo-700 transition">
@@ -11562,14 +11595,10 @@
                     <input type="checkbox" id="evtNewcomersOnly" onchange="toggleNewcomersOnlyFields()" class="w-5 h-5 accent-rose-600">
                     <span class="text-xs font-bold text-left uppercase">Newcomers Only (Free "Come and Try" Event)</span>
                 </label>-->
-                <label class="flex items-center gap-3 bg-green-50 p-4 rounded-xl mt-2 cursor-pointer border border-green-200">
-                    <input type="checkbox" id="evtUnder18Only" onchange="toggleNewcomersOnlyFields()" class="w-5 h-5 accent-green-600">
-                    <span class="text-xs font-bold text-left uppercase text-green-700">Teens Only (Junior Session)</span>
-                </label>
 				<label class="flex items-center gap-3 bg-indigo-50 p-4 rounded-xl mt-2 cursor-pointer border border-indigo-200">
 					<input type="checkbox" id="evtAllAges" class="w-5 h-5 accent-indigo-600">
 					<span class="text-xs font-bold text-left uppercase text-indigo-700">👦 Juniors Welcome (All Ages)</span>
-					<span class="text-[9px] font-bold text-indigo-400 normal-case block">Tick this to let juniors sign up alongside adults for this event. Without it, juniors can't sign up at all (unless "Teens Only" below is used instead for a standalone junior session). Don't combine with "Teens Only".</span>
+					<span class="text-[9px] font-bold text-indigo-400 normal-case block">Tick this to let juniors sign up alongside adults for this event. Without it, juniors can't sign up at all.</span>
 				</label>
 				<label class="flex items-center gap-3 bg-purple-50 p-4 rounded-xl mt-2 cursor-pointer border border-purple-200">
 					<input type="checkbox" id="evtFemaleOnly" class="w-5 h-5 accent-purple-600">
