@@ -15,6 +15,16 @@
 // no-show, or cancelling a whole event) - those still use the existing
 // client-side path with no automatic refund; see supabase/functions/README.md.
 //
+// Bug fix: this function used to only withdraw the signup and process the
+// refund - it never promoted the next reserve, unlike the client-side
+// cancelSignup() path (used for admin removals). Since self-service
+// cancellation is how most people actually drop out of an event, this meant
+// a freed-up Confirmed/Pending Payment spot would just sit empty until an
+// admin happened to edit the event (which also triggers promotion) or
+// someone else's browser ran the opportunistic expireStalePendingReservations()
+// sweep. This now promotes the next reserve (and emails them) itself,
+// mirroring promoteReservesForEvent() in public/index.html exactly.
+//
 // Required secrets: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (auto-injected)
 // Deploy: `supabase functions deploy cancel-event-signup`
 
@@ -26,6 +36,117 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const REFUND_CUTOFF_HOURS = 24;
+
+// Item #14: a 'Pending Payment' hold occupies a real seat exactly like
+// 'Confirmed' does - mirrors holdsSpot() in public/index.html.
+function holdsSpot(status: string): boolean {
+  return status === "Confirmed" || status === "Pending Payment";
+}
+
+// Mirrors isEventPriceFree() in public/index.html exactly.
+function isEventPriceFree(eventRow: { newcomers_only?: boolean; member_price?: number; non_member_price?: number }): boolean {
+  return !!eventRow.newcomers_only || (!Number(eventRow.member_price) && !Number(eventRow.non_member_price));
+}
+
+// Mirrors RESERVE_PROMOTION_PAYMENT_WINDOW_HOURS in public/index.html exactly.
+const RESERVE_PROMOTION_PAYMENT_WINDOW_HOURS = 48;
+
+// Best-effort reserve-promoted email, reusing the existing send-email
+// function/template infrastructure. Never throws - a failed notification
+// must never undo (or appear to undo) a promotion that already succeeded.
+async function sendReservePromotedEmail(data: Record<string, unknown>) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY
+      },
+      body: JSON.stringify({ type: "reserve_promoted", data })
+    });
+  } catch (err) {
+    console.warn("reserve_promoted email failed:", (err as Error).message);
+  }
+}
+
+// Server-side mirror of promoteReservesForEvent() in public/index.html -
+// promotes the earliest-queued reserve(s) (Members/Admins first) into the
+// spot(s) freed up by this cancellation, straight to 'Confirmed' for a free
+// event or into the same 'Pending Payment' hold (with a 48h - or
+// time-till-event, whichever is sooner - deadline to pay) a fresh paid
+// signup uses, then emails them. Kept in sync with the client-side copy
+// deliberately rather than factored out, since there's no shared module
+// between the Deno Edge Functions and the browser bundle.
+async function promoteReservesForEvent(eventRow: {
+  id: string;
+  title: string;
+  event_date: string;
+  event_time: string | null;
+  location: string;
+  max_players: number | null;
+  member_price: number | null;
+  non_member_price: number | null;
+  newcomers_only?: boolean;
+}) {
+  const maxPlayers = Number(eventRow.max_players || 0);
+  if (!maxPlayers) return;
+
+  const { data: allSignups, error } = await supabase
+    .from("signups")
+    .select("*")
+    .eq("event_id", eventRow.id)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const confirmedCount = (allSignups || []).filter((s: { status: string }) => holdsSpot(s.status)).length;
+  const spotsOpen = maxPlayers - confirmedCount;
+  if (spotsOpen <= 0) return;
+
+  // Members/Admins get priority; within the same priority tier, earliest
+  // reserved wins (Array.prototype.sort is stable, and allSignups is
+  // already ordered by created_at ascending).
+  const reserves = (allSignups || [])
+    .filter((s: { status: string }) => s.status === "Reserve")
+    .sort((a: { player_type: string | null }, b: { player_type: string | null }) => {
+      const aPriority = (a.player_type === "Member" || a.player_type === "Admin") ? 0 : 1;
+      const bPriority = (b.player_type === "Member" || b.player_type === "Admin") ? 0 : 1;
+      return aPriority - bPriority;
+    });
+
+  const toPromote = reserves.slice(0, spotsOpen);
+  if (toPromote.length === 0) return;
+
+  const isFree = isEventPriceFree(eventRow);
+  let reservedUntil: string | null = null;
+  if (!isFree) {
+    const defaultDeadline = Date.now() + RESERVE_PROMOTION_PAYMENT_WINDOW_HOURS * 3600000;
+    const eventStart = eventRow.event_date
+      ? new Date(`${eventRow.event_date}T${eventRow.event_time || "23:59:59"}`).getTime()
+      : null;
+    reservedUntil = new Date(eventStart ? Math.min(defaultDeadline, eventStart) : defaultDeadline).toISOString();
+  }
+
+  for (const signup of toPromote) {
+    const { error: updateErr } = await supabase
+      .from("signups")
+      .update({ status: isFree ? "Confirmed" : "Pending Payment", reserved_until: reservedUntil })
+      .eq("id", signup.id);
+    if (updateErr) throw new Error(updateErr.message);
+
+    if (signup.email && String(signup.email).indexOf("@") !== -1) {
+      await sendReservePromotedEmail({
+        name: signup.player_name,
+        email: signup.email,
+        eventTitle: eventRow.title,
+        eventDate: eventRow.event_date,
+        eventTime: eventRow.event_time,
+        eventLocation: eventRow.location,
+        paymentRequired: !isFree
+      });
+    }
+  }
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -103,6 +224,19 @@ serve(async (req) => {
       .update({ status: "Withdrawn", withdrawn_at: now.toISOString() })
       .eq("id", signup.id);
     if (withdrawErr) throw new Error(withdrawErr.message);
+
+    // Only promote a reserve when a real seat was actually vacated - either a
+    // Confirmed player, or a Pending Payment hold being cancelled - not when
+    // someone merely leaves the reserve list (no seat freed up there). This
+    // is wrapped so a (very unlikely) promotion failure never undoes - or
+    // reports as a failure - the cancellation that already succeeded above.
+    if (holdsSpot(signup.status)) {
+      try {
+        await promoteReservesForEvent(eventRow);
+      } catch (err) {
+        console.error("promoteReservesForEvent error:", (err as Error).message);
+      }
+    }
 
     let refundedAmount = 0;
     if (eligibleForRefund) {
