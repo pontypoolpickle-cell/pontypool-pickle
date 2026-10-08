@@ -8921,10 +8921,19 @@
         // Special Event takes priority over the demographic categories below - it's
         // the club's headline/tournament flag, and should always stand out in gold
         // regardless of whether the event is also Female/Junior only.
+        //
+        // Bug fix: junior-eligible events are now flagged via `all_ages`
+        // (event[16], "Juniors Welcome") rather than the old, no-longer-
+        // creatable `under18_only` (event[14], "Teens Only") - see
+        // "Make junior-eligible events clearly visible when browsing" and
+        // "Remove the 'Teens Only' checkbox from the event form". This still
+        // checks event[14] too (OR'd in) purely so older events created
+        // before that change - which may still have under18_only set and
+        // all_ages unset - keep showing up under the Junior filter chip.
         function getEventTypeKey(event) {
             if (!!event[17]) return 'special';
             if (!!event[15]) return 'female';
-            if (!!event[14]) return 'junior';
+            if (!!event[16] || !!event[14]) return 'junior';
             return 'mixed';
         }
 
