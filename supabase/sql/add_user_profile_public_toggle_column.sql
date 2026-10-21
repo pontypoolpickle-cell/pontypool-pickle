@@ -1,0 +1,23 @@
+-- ============================================================================
+-- ADD USER PROFILE_PUBLIC TOGGLE COLUMN (public photo/bio preview opt-in)
+-- ============================================================================
+-- Run this once in the Supabase SQL Editor if it hasn't been run already.
+-- Safe to re-run (uses "if not exists").
+--
+-- What this is for: by default, a player's profile picture and bio are only
+-- ever shown to logged-in active members (and admins) - a logged-out visitor
+-- or a non-member clicking "View Profile" (e.g. from the homepage's Climber
+-- of the Week card) just sees a "Members Only" message, same as before this
+-- feature existed.
+--
+-- This column lets an individual player opt into a limited public preview
+-- instead: when true, openProfile() shows that player's photo and bio (but
+-- still NOT their match stats/rating, which stay members-only) to anyone,
+-- logged in or not. See the "Let non-members see my photo & bio" toggle on
+-- the Profile tab (renderProfilePage()/saveOwnProfileVisibility()).
+--
+-- Defaults to false, so nothing changes for anyone until they explicitly
+-- opt in themselves.
+-- ============================================================================
+
+alter table users add column if not exists profile_public boolean not null default false;

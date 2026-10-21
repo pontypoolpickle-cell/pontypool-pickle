@@ -686,6 +686,13 @@
             <div id="profileMainContent" class="hidden space-y-6">
                 <h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">My Profile</h2>
 
+                <!-- Profile completion nudge (Item #9) - only shown while a
+                     photo and/or bio are missing, see renderProfilePage(). -->
+                <div id="profileCompletionBanner" class="hidden card p-4 bg-rose-50 border-2 border-rose-200 flex items-center gap-3">
+                    <span class="text-2xl flex-shrink-0">👋</span>
+                    <p id="profileCompletionBannerText" class="text-xs font-bold text-rose-700 uppercase tracking-wide"></p>
+                </div>
+
                 <!-- Avatar + name -->
                 <div class="card p-6 md:p-8 flex flex-col sm:flex-row items-center gap-6 border-t-8 border-black">
                     <div class="relative flex-shrink-0">
@@ -714,6 +721,13 @@
                         <p class="text-[10px] font-bold text-gray-400 uppercase"><span id="profileBioCharCount">0</span>/280</p>
                         <button onclick="handleSaveOwnBio()" id="profileBioSaveBtn" class="bg-black text-white px-5 py-2.5 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition">Save Bio</button>
                     </div>
+                    <!-- Item #10: opt photo/bio into a limited public preview for
+                         logged-out/non-member visitors - see openProfile()/
+                         saveOwnProfileVisibility(). Off (Members Only) by default. -->
+                    <label class="flex items-center gap-3 pt-2 border-t border-gray-100 cursor-pointer">
+                        <input type="checkbox" id="profilePublicToggle" onchange="handleToggleProfilePublic(this)" class="w-5 h-5 accent-rose-600 flex-shrink-0">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase leading-relaxed">Let non-members see my photo &amp; bio (your match stats always stay members-only)</span>
+                    </label>
                 </div>
 
                 <!-- Stats (shared with the "View Profile" popup - see buildProfileView()) -->
@@ -1173,6 +1187,16 @@
 		return `${days[date.getDay()]} ${day}${suffix} ${months[date.getMonth()]} ${date.getFullYear()}`;
 	}
 
+	// Compact "21 Oct" form used in the profile's Match History list - the
+	// full formatEventDate() above is too long for a dense, scrollable list.
+	function formatShortMatchDate(dateStr) {
+		if (!dateStr) return '';
+		const date = new Date(dateStr + 'T00:00:00');
+		if (isNaN(date.getTime())) return dateStr;
+		const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+		return `${date.getDate()} ${months[date.getMonth()]}`;
+	}
+
 	// Formats a raw timestamp (e.g. "2026-07-13T20:42:42.666457+00:00") into "2026-07-13 20:42"
 	function formatSignupTimestamp(timestampStr) {
 		if (!timestampStr) return '';
@@ -1473,6 +1497,16 @@
         -- wallet/membership columns.
         alter table users add column if not exists bio text;
         alter table users add column if not exists avatar_url text;
+
+        -- Profile improvements: lets a player opt their photo & bio into a
+        -- limited public preview for logged-out/non-member visitors (e.g.
+        -- clicking "View Profile" on the homepage's Climber of the Week card)
+        -- instead of the usual "Members Only" block - their full match stats
+        -- stay members-only either way. See openProfile()/
+        -- saveOwnProfileVisibility()/the "Let non-members see my photo & bio"
+        -- toggle on the Profile tab. Defaults to false (today's behaviour)
+        -- until a player explicitly opts in.
+        alter table users add column if not exists profile_public boolean not null default false;
 
         -- Site settings (item #9) - simple key/value store for singleton
         -- admin-managed values (currently just the Rules PDF link) so future
@@ -1967,6 +2001,64 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // Profile improvements: shared helpers for showing a player's avatar
+        // thumbnail and a clickable link into their "View Profile" popup
+        // (openProfile()) wherever a player's name appears - Ladders rosters/
+        // courts, Scramble live cards, Match History, and the admin's Manage
+        // Players list - not just the Ratings table, which used to be the only
+        // place you could get into someone's profile.
+        function getPlayerAvatarUrl(name) {
+            const rec = (globalData.members || []).find(m => normalizeName(m.name) === normalizeName(name || ''));
+            return rec && rec.avatarUrl ? rec.avatarUrl : '';
+        }
+
+        function avatarThumbHtml(name, sizeClass) {
+            if (!name || name === 'Singles') return '';
+            const cls = sizeClass || 'w-6 h-6';
+            const url = getPlayerAvatarUrl(name);
+            const initial = name.trim().charAt(0).toUpperCase() || '?';
+            return url
+                ? `<img src="${url}" alt="${escapeHtml(name)}" class="${cls} rounded-full object-cover flex-shrink-0 border border-gray-200">`
+                : `<div class="${cls} rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 font-black text-gray-500" style="font-size: 9px;">${escapeHtml(initial)}</div>`;
+        }
+
+        // "Singles"/blank just render as plain text (nothing to open a profile
+        // for). Inline styles reset button chrome so this drops into existing
+        // markup without inheriting browser default button styling.
+        function nameLinkHtml(name, labelHtml) {
+            const label = labelHtml != null ? labelHtml : escapeHtml(name || '');
+            if (!name || name === 'Singles') return label;
+            return `<button type="button" onclick="openProfile('${name}')" class="hover:text-rose-600 hover:underline transition" style="background:none;border:none;padding:0;margin:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;">${label}</button>`;
+        }
+
+        // Profile improvements: a dependency-free inline SVG sparkline (no
+        // charting library in this app) for the "Rating Trend" card on a
+        // player's profile - just a simple line + a highlighted dot on the
+        // most recent value, scaled to fit whatever range of values it's given.
+        function buildSparklineSvg(values, opts) {
+            opts = opts || {};
+            const width = opts.width || 280;
+            const height = opts.height || 56;
+            const color = opts.color || '#e11d48';
+            if (!values || values.length < 2) return '';
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const range = (max - min) || 1;
+            const pad = 4;
+            const toXY = (v, i) => {
+                const x = (i / (values.length - 1)) * width;
+                const y = height - pad - ((v - min) / range) * (height - pad * 2);
+                return [x, y];
+            };
+            const points = values.map((v, i) => toXY(v, i).map(n => n.toFixed(1)).join(',')).join(' ');
+            const [lastX, lastY] = toXY(values[values.length - 1], values.length - 1);
+            return `
+            <svg viewBox="0 0 ${width} ${height}" class="w-full" style="height: ${height}px; display: block;" preserveAspectRatio="none">
+                <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+                <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3.5" fill="${color}" />
+            </svg>`;
+        }
+
         // Item #14: a temporary 'Pending Payment' hold occupies a real seat (that's
         // the point of the 15-minute reservation window), so anywhere that counts
         // "how many seats are taken" needs to treat it the same as 'Confirmed'.
@@ -2135,7 +2227,14 @@
                 // has been run, since `u.bio`/`u.avatar_url` would then simply be
                 // undefined from the select rather than throwing anywhere.
                 bio: u.bio || '',
-                avatarUrl: u.avatar_url || ''
+                avatarUrl: u.avatar_url || '',
+                // Item #10 (profile improvements): lets a player opt their photo
+                // & bio into a limited public preview for logged-out/non-member
+                // visitors (e.g. clicking "View Profile" from the homepage's
+                // Climber of the Week card) - see openProfile()/
+                // saveOwnProfileVisibility(). Defaults to false (today's
+                // behaviour: Members Only) until a player explicitly opts in.
+                profilePublic: !!u.profile_public
             };
         }
 
@@ -2624,7 +2723,7 @@
                 supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
                 supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
                 supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true }),
-                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url').eq('status', 'Approved').order('first_name', { ascending: true }),
+                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url, profile_public').eq('status', 'Approved').order('first_name', { ascending: true }),
                 // Fetched separately (not merged into the query above) so that sites
                 // which haven't yet run the membership_number/created_at migration
                 // comment near the top of this file don't lose the existing Manage
@@ -4589,6 +4688,18 @@
             }
         }
 
+        // Profile improvements: lets a player opt their photo/bio into a public
+        // preview for logged-out/non-member visitors - see the schema comment
+        // above `alter table users add column if not exists profile_public` and
+        // the toggle on the Profile tab (renderProfilePage()).
+        async function saveOwnProfileVisibility(isPublic) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const { error } = await supabaseClient.from('users').update({ profile_public: !!isPublic }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            patchOwnProfileExtrasInGlobalData({ profilePublic: !!isPublic });
+            return !!isPublic;
+        }
+
         // Wallet system: paying for an event is now an automatic, near-instant step
         // right after signing up (see payForEventSignupNow()) rather than something
         // a member has 15 minutes to go and do separately via bank transfer. This
@@ -5566,7 +5677,8 @@
                             </span>
                             <span style="color: ${accentColor} !important; font-size: 1.5rem; font-weight: 900;">+${p.recentChange}</span>
                         </div>
-                        <h4 style="color: #ffffff !important; font-family: 'Oswald', sans-serif !important; font-size: 1.8rem; font-weight: 900; font-style: italic; text-transform: uppercase; margin-top: 1rem;">
+                        <h4 style="color: #ffffff !important; font-family: 'Oswald', sans-serif !important; font-size: 1.8rem; font-weight: 900; font-style: italic; text-transform: uppercase; margin-top: 1rem; display: flex; align-items: center; gap: 10px;">
+                            ${avatarThumbHtml(p.name, 'w-9 h-9')}
                             ${p.name}
                         </h4>
                         <div style="margin-top: 1rem; display: flex; justify-between; align-items: center;">
@@ -5692,6 +5804,7 @@
                                 <span class="inline-flex items-center justify-center flex-shrink-0" style="width: 28px;">
                                     ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge-lg" title="Active Member">` : ''}
                                 </span>
+                                ${avatarThumbHtml(p.name, 'w-7 h-7')}
                                 <button onclick="openProfile('${p.name}')" class="font-black text-left text-xs md:text-lg hover:text-rose-600 transition underline decoration-rose-200 underline-offset-4">
                                     ${p.name}
                                 </button>
@@ -5730,7 +5843,7 @@
         function renderAdminHistory() {
             const adminBody = document.getElementById('adminHistoryBody');
             if (adminBody) {
-                adminBody.innerHTML = globalData.history.slice(0, adminMatchesVisible).map(m => `<tr><td class="py-3 font-bold text-gray-400 text-xs">${m.date}</td><td class="py-3 text-sm"><span class="font-black text-rose-600">${m.w1}/${m.w2}</span> <span class="mx-1 italic">vs</span> <span class="font-bold text-gray-600">${m.l1}/${m.l2}</span></td><td class="py-3 text-right"><button onclick='confirmDeleteMatch(${JSON.stringify(m)})' class="p-2 text-gray-300 hover:text-rose-600"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></td></tr>`).join('');
+                adminBody.innerHTML = globalData.history.slice(0, adminMatchesVisible).map(m => `<tr><td class="py-3 font-bold text-gray-400 text-xs">${m.date}</td><td class="py-3 text-sm"><span class="font-black text-rose-600">${nameLinkHtml(m.w1)}/${nameLinkHtml(m.w2)}</span> <span class="mx-1 italic">vs</span> <span class="font-bold text-gray-600">${nameLinkHtml(m.l1)}/${nameLinkHtml(m.l2)}</span></td><td class="py-3 text-right"><button onclick='confirmDeleteMatch(${JSON.stringify(m)})' class="p-2 text-gray-300 hover:text-rose-600"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></td></tr>`).join('');
                 const smBtn = document.getElementById('adminShowMoreContainer');
                 if (globalData.history.length > adminMatchesVisible) smBtn.classList.remove('hidden'); else smBtn.classList.add('hidden');
             }
@@ -5758,21 +5871,21 @@
                     <td class="p-2 md:p-4 font-bold text-gray-400 text-[10px] md:text-sm border-r">${m.date}</td>
                     <td class="p-2 md:p-4">
                         <div class="text-[10px] md:text-sm font-black text-rose-600 uppercase leading-tight">
-                            ${m.w1} <span style="color: ${getPointColor(m.c1)} !important;" class="text-[9px]">(${m.c1})</span>
+                            ${nameLinkHtml(m.w1)} <span style="color: ${getPointColor(m.c1)} !important;" class="text-[9px]">(${m.c1})</span>
                         </div>
                         ${m.w2 !== 'Singles' ? `
                         <div class="text-[10px] md:text-sm font-black text-rose-600 uppercase leading-tight mt-1">
-                            ${m.w2} <span style="color: ${getPointColor(m.c2)} !important;" class="text-[9px]">(${m.c2})</span>
+                            ${nameLinkHtml(m.w2)} <span style="color: ${getPointColor(m.c2)} !important;" class="text-[9px]">(${m.c2})</span>
                         </div>` : ''}
                         <div class="mt-1 font-bold text-[9px] text-gray-400 uppercase">Score: ${m.sW}</div>
                     </td>
                     <td class="p-2 md:p-4">
                         <div class="text-[10px] md:text-sm font-bold text-gray-800 uppercase leading-tight">
-                            ${m.l1} <span style="color: ${getPointColor(m.c3)} !important;" class="text-[9px]">(${m.c3})</span>
+                            ${nameLinkHtml(m.l1)} <span style="color: ${getPointColor(m.c3)} !important;" class="text-[9px]">(${m.c3})</span>
                         </div>
                         ${m.l2 !== 'Singles' ? `
                         <div class="text-[10px] md:text-sm font-bold text-gray-800 uppercase leading-tight mt-1">
-                            ${m.l2} <span style="color: ${getPointColor(m.c4)} !important;" class="text-[9px]">(${m.c4})</span>
+                            ${nameLinkHtml(m.l2)} <span style="color: ${getPointColor(m.c4)} !important;" class="text-[9px]">(${m.c4})</span>
                         </div>` : ''}
                         <div class="mt-1 font-bold text-[9px] text-gray-400 uppercase">Score: ${m.sL}</div>
                     </td>
@@ -6756,12 +6869,23 @@
             // Recent Form, also total up the actual rating points gained/lost
             // across those same last 5 games, so a member can see at a glance
             // whether they're trending up or down in points, not just wins.
+            // Profile improvements: also used to build the "Match History" list
+            // and the rating trend sparkline on the profile - capped at 20 games
+            // so the list/graph stays a manageable length. recentForm above is
+            // just the first 5 entries of the same data, kept as its own
+            // variable rather than derived from matchLog so existing behaviour
+            // (and the Women's Rankings section below, which reuses this same
+            // function) is untouched.
+            const MATCH_LOG_LIMIT = 20;
+
             function computeProfileStats(historyList) {
                 let partners = {}, nemeses = {}, victims = {};
                 let recentForm = [];
                 let recentPointTotal = 0;
                 let currentStreak = 0;
                 let streakBroken = false;
+                let longestStreak = 0, runningWinRun = 0;
+                let matchLog = [];
 
                 // Matches are already reversed: newest first.
                 historyList.forEach(m => {
@@ -6774,21 +6898,52 @@
                     const isLoser = (ml1 === pKey || ml2 === pKey);
 
                     if (isWinner || isLoser) {
+                        let pointChange = 0;
+                        if (mw1 === pKey) pointChange = m.c1;
+                        else if (mw2 === pKey) pointChange = m.c2;
+                        else if (ml1 === pKey) pointChange = m.c3;
+                        else if (ml2 === pKey) pointChange = m.c4;
+                        pointChange = Number(pointChange || 0);
+
                         // Build Recent Form (Last 5) plus the matching points total
                         if (recentForm.length < 5) {
                             recentForm.push(isWinner ? 'W' : 'L');
-                            let pointChange = 0;
-                            if (mw1 === pKey) pointChange = m.c1;
-                            else if (mw2 === pKey) pointChange = m.c2;
-                            else if (ml1 === pKey) pointChange = m.c3;
-                            else if (ml2 === pKey) pointChange = m.c4;
-                            recentPointTotal += Number(pointChange || 0);
+                            recentPointTotal += pointChange;
+                        }
+
+                        // Full match-by-match log (newest first, capped) - the
+                        // raw data behind the "Match History" list and rating
+                        // trend sparkline below.
+                        if (matchLog.length < MATCH_LOG_LIMIT) {
+                            const partner = isWinner
+                                ? (mw1 === pKey ? m.w2 : m.w1)
+                                : (ml1 === pKey ? m.l2 : m.l1);
+                            const opponents = (isWinner ? [m.l1, m.l2] : [m.w1, m.w2]).filter(o => o && o !== 'Singles');
+                            matchLog.push({
+                                date: m.date,
+                                result: isWinner ? 'W' : 'L',
+                                partner: (partner && partner !== 'Singles') ? partner : null,
+                                opponents,
+                                score: isWinner ? `${m.sW}-${m.sL}` : `${m.sL}-${m.sW}`,
+                                pointChange
+                            });
                         }
 
                         // Calculate Current Unbeaten Streak
                         if (!streakBroken) {
                             if (isWinner) currentStreak++;
                             else streakBroken = true;
+                        }
+
+                        // Longest win streak ever (order-independent - a run of
+                        // consecutive wins is a run regardless of which
+                        // direction you scan the list in) - used for the
+                        // "Hot Streak"/"Unstoppable" achievement badges below.
+                        if (isWinner) {
+                            runningWinRun++;
+                            longestStreak = Math.max(longestStreak, runningWinRun);
+                        } else {
+                            runningWinRun = 0;
                         }
 
                         // Partner and Opponent Insights
@@ -6810,12 +6965,87 @@
                     favoriteOpponent: getTop(victims),
                     recentForm,
                     recentPointTotal,
-                    currentStreak
+                    currentStreak,
+                    longestStreak,
+                    matchLog
                 };
             }
 
             const mixedStats = computeProfileStats(mixedHistory);
-            const { dreamPartner, nemesis, favoriteOpponent, recentForm, recentPointTotal, currentStreak } = mixedStats;
+            const { dreamPartner, nemesis, favoriteOpponent, recentForm, recentPointTotal, currentStreak, longestStreak, matchLog } = mixedStats;
+
+            // Profile improvements: reconstruct the mixed rating immediately
+            // before/after each of the last MATCH_LOG_LIMIT games from p.elo
+            // (the current rating) and each game's point change - there's no
+            // "rating after this match" column stored anywhere, but working
+            // backwards from the current value using matchLog's pointChange
+            // (already in newest-first order) rebuilds it exactly. Powers the
+            // "Rating Trend" sparkline below.
+            const ratingSeries = (() => {
+                const series = [p.elo];
+                let running = p.elo;
+                matchLog.forEach(entry => { running -= entry.pointChange; series.push(running); });
+                return series.reverse();
+            })();
+
+            // Profile improvements: "Your Head-to-Head" card, shown when a
+            // logged-in member views someone else's profile (never their own) -
+            // counts every match (mixed and female-only alike) where the two of
+            // them were on opposing teams. Hidden entirely if they've never
+            // played each other.
+            let headToHeadHtml = '';
+            const viewerName = currentUser ? currentUserFullName() : '';
+            if (viewerName && normalizeName(viewerName) !== normalizeName(playerName)) {
+                const keyViewer = viewerName.toLowerCase().replace(/\s+/g, '');
+                const keyTarget = pKey;
+                let viewerWins = 0, targetWins = 0;
+                (globalData.history || []).forEach(m => {
+                    const mw1 = m.w1.toLowerCase().replace(/\s+/g, '');
+                    const mw2 = m.w2.toLowerCase().replace(/\s+/g, '');
+                    const ml1 = m.l1.toLowerCase().replace(/\s+/g, '');
+                    const ml2 = m.l2.toLowerCase().replace(/\s+/g, '');
+                    const viewerWon = mw1 === keyViewer || mw2 === keyViewer;
+                    const viewerLost = ml1 === keyViewer || ml2 === keyViewer;
+                    const targetWon = mw1 === keyTarget || mw2 === keyTarget;
+                    const targetLost = ml1 === keyTarget || ml2 === keyTarget;
+                    if (viewerWon && targetLost) viewerWins++;
+                    else if (viewerLost && targetWon) targetWins++;
+                });
+                if (viewerWins + targetWins > 0) {
+                    headToHeadHtml = `
+                    <div class="bg-black rounded-xl p-4 flex items-center justify-between gap-3" style="border: 2px solid var(--ponty-gold) !important;">
+                        <div class="min-w-0">
+                            <p class="text-[9px] font-black uppercase tracking-widest" style="color: var(--ponty-gold) !important;">Your Head-to-Head</p>
+                            <p class="text-sm font-bold text-white truncate">You vs ${p.name}</p>
+                        </div>
+                        <p class="text-2xl font-black text-white flex-shrink-0">${viewerWins} - ${targetWins}</p>
+                    </div>`;
+                }
+            }
+
+            // Profile improvements: achievement badges for hitting milestones -
+            // purely cosmetic (no gameplay effect), just something to work
+            // towards beyond the raw rating number. "Most Improved" is
+            // recomputed fresh every time (same 30-day trailing window logic as
+            // computeRecentEloChanges()), not stored, so it always reflects
+            // whoever's actually trending hardest right now.
+            const achievementBadges = [];
+            if (p.totalGames >= 250) achievementBadges.push({ icon: '🏅', label: 'Iron Paddle · 250+ Games' });
+            else if (p.totalGames >= 100) achievementBadges.push({ icon: '💯', label: 'Century Club · 100+ Games' });
+            else if (p.totalGames >= 50) achievementBadges.push({ icon: '🎾', label: 'Seasoned Player · 50+ Games' });
+
+            if (longestStreak >= 10) achievementBadges.push({ icon: '🔥🔥', label: 'Unstoppable · 10+ Win Streak' });
+            else if (longestStreak >= 5) achievementBadges.push({ icon: '🔥', label: 'Hot Streak · 5+ Win Streak' });
+
+            if (skillRank === 1) achievementBadges.push({ icon: '🏆', label: 'Club Champion · #1 Rated' });
+
+            const monthlyChanges = computeRecentEloChanges(mixedHistory, 30);
+            let topImprovedName = null, topImprovedChange = 0;
+            (globalData.standings || []).filter(x => x.name !== 'Singles' && !x.isHidden).forEach(x => {
+                const change = monthlyChanges.get(x.name) || 0;
+                if (change > topImprovedChange) { topImprovedChange = change; topImprovedName = x.name; }
+            });
+            if (topImprovedName === p.name) achievementBadges.push({ icon: '📈', label: 'Most Improved · Last 30 Days' });
 
             // 3. Leaderboard visibility status (replaces the old "decay" system -
             // ratings never reduce for inactivity any more, see isBoardVisible()).
@@ -6918,15 +7148,75 @@
                             <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank || '—'}</span>
                             ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
                             ${membershipNumberBadge}
+                            ${currentStreak >= 3 ? `<span class="bg-orange-500 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">🔥 ${currentStreak} Win Streak</span>` : ''}
                         </div>
                         <h2 class="text-3xl font-black italic tracking-tight uppercase text-white truncate">${p.name}</h2>
                     </div>
                 </div>
             `;
 
+            // Profile improvements: "Rating Trend" sparkline, built from
+            // ratingSeries above - hidden until there are at least 2 games to
+            // draw a line between.
+            const ratingTrendHtml = ratingSeries.length >= 3 ? (() => {
+                const trendUp = ratingSeries[ratingSeries.length - 1] >= ratingSeries[0];
+                const trendColor = trendUp ? '#16a34a' : '#e11d48';
+                const trendDiff = Math.abs(ratingSeries[ratingSeries.length - 1] - ratingSeries[0]);
+                return `
+                <div class="stat-card border-l-4 border-black p-3 bg-gray-50 rounded-xl">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-[10px] font-bold text-gray-400 uppercase">Rating Trend <span class="normal-case font-normal">(Last ${matchLog.length} Games)</span></p>
+                        <p class="text-xs font-black" style="color: ${trendColor} !important;">${trendUp ? '▲' : '▼'} ${trendDiff}</p>
+                    </div>
+                    ${buildSparklineSvg(ratingSeries, { color: trendColor })}
+                </div>`;
+            })() : '';
+
+            // Profile improvements: achievement badge pills - see
+            // achievementBadges above. Hidden entirely once there are none yet,
+            // rather than showing an empty/negative "no achievements" state.
+            const achievementsHtml = achievementBadges.length > 0 ? `
+                <div class="space-y-3">
+                    <h4 class="font-black italic uppercase border-b-2 border-gray-100 pb-1 text-xs text-gray-400">Achievements</h4>
+                    <div class="flex flex-wrap gap-2">
+                        ${achievementBadges.map(b => `
+                            <span class="inline-flex items-center gap-1.5 bg-gray-900 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide">
+                                <span>${b.icon}</span> ${escapeHtml(b.label)}
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>` : '';
+
+            // Profile improvements: a real match-by-match history list (date,
+            // partner, opponent(s), score, points) instead of just the
+            // aggregate Recent Form/Win Rate/etc. stats above. Capped to
+            // matchLog's MATCH_LOG_LIMIT (20) most recent mixed matches.
+            const matchHistoryHtml = matchLog.length > 0 ? `
+                <div class="space-y-3">
+                    <h4 class="font-black italic uppercase border-b-2 border-gray-100 pb-1 text-xs text-gray-400">Match History</h4>
+                    <div class="space-y-2 overflow-y-auto pr-1" style="max-height: 320px;">
+                        ${matchLog.map(m => `
+                            <div class="flex items-center justify-between gap-2 p-3 rounded-xl border ${m.result === 'W' ? 'bg-green-50 border-green-100' : 'bg-rose-50 border-rose-100'}">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white ${m.result === 'W' ? 'bg-green-600' : 'bg-rose-600'}">${m.result}</span>
+                                    <div class="min-w-0">
+                                        <p class="text-[9px] font-bold text-gray-400 uppercase truncate">${formatShortMatchDate(m.date)}${m.partner ? ' &bull; w/ ' + escapeHtml(m.partner) : ''}</p>
+                                        <p class="text-xs font-bold text-black truncate">vs ${m.opponents.length ? m.opponents.map(o => nameLinkHtml(o)).join(' &amp; ') : 'Singles'}</p>
+                                    </div>
+                                </div>
+                                <div class="text-right flex-shrink-0">
+                                    <p class="font-black text-xs">${m.score}</p>
+                                    <p class="text-[9px] font-bold ${m.pointChange > 0 ? 'text-green-600' : m.pointChange < 0 ? 'text-rose-600' : 'text-gray-400'}">${m.pointChange > 0 ? '+' : ''}${m.pointChange} pts</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>` : '';
+
             // 6. Build Body
             const bodyHtml = `
                 ${bioHtml}
+                ${headToHeadHtml}
                 <div class="grid grid-cols-2 gap-4">
                     <div class="stat-card border-l-4 border-black p-3 text-left bg-gray-50 rounded-xl">
                         <p class="text-[10px] font-bold text-gray-400 uppercase">Skill Rating</p>
@@ -6958,11 +7248,14 @@
                         <p class="text-[9px] font-bold text-gray-400 uppercase">Total Games</p>
                         <p class="text-xl font-black text-black">${p.totalGames}</p>
                     </div>
-                    <div class="py-3 bg-black rounded-xl text-center border-b-4 border-rose-600 shadow-lg">
-                        <p class="text-[9px] font-black uppercase tracking-tighter" style="color: #e11d48 !important;">Current Streak</p>
+                    <div class="py-3 rounded-xl text-center border-b-4 shadow-lg ${currentStreak >= 3 ? 'border-orange-400' : 'border-rose-600 bg-black'}" ${currentStreak >= 3 ? 'style="background: linear-gradient(135deg, #e11d48, #f97316) !important;"' : ''}>
+                        <p class="text-[9px] font-black uppercase tracking-tighter" style="color: ${currentStreak >= 3 ? '#fff7ed' : '#e11d48'} !important;">Current Streak</p>
                         <p class="text-xl font-black italic" style="color: #ffffff !important;">${currentStreak > 0 ? '🔥 ' + currentStreak : '—'}</p>
                     </div>
                 </div>
+
+                ${ratingTrendHtml}
+                ${achievementsHtml}
 
                 <div class="space-y-3">
                     <h4 class="font-black italic uppercase border-b-2 border-gray-100 pb-1 text-xs text-gray-400">Player Relationships</h4>
@@ -6981,6 +7274,7 @@
                         </div>
                     </div>
                 </div>
+                ${matchHistoryHtml}
                 ${femaleSectionHtml}
                 <div class="h-20"></div>
             `;
@@ -6993,6 +7287,41 @@
         // dedicated "Profile" tab instead (see renderProfilePage()).
         function openProfile(playerName) {
             if (!currentUser || (currentUser.role !== 'Member' && currentUser.role !== 'Admin')) {
+                // Item #10: a player can opt their photo/bio into a limited
+                // public preview (see profile_public/saveOwnProfileVisibility())
+                // - show that instead of the usual "Members Only" block when
+                // they have, since there's something real to show. Their match
+                // stats/rating still stay members-only either way.
+                const previewTarget = globalData.standings.find(x => x.name === playerName);
+                const previewMember = previewTarget && (globalData.members || []).find(m => normalizeName(m.name) === normalizeName(previewTarget.name));
+                if (previewMember && previewMember.profilePublic && (previewMember.bio || previewMember.avatarUrl)) {
+                    const previewAvatarUrl = previewMember.avatarUrl || '';
+                    const previewInitial = (previewTarget.name || '?').trim().charAt(0).toUpperCase() || '?';
+                    const previewAvatarHtml = previewAvatarUrl
+                        ? `<img src="${previewAvatarUrl}" alt="${escapeHtml(previewTarget.name)}" class="w-16 h-16 rounded-full object-cover border-2 flex-shrink-0" style="border-color: var(--ponty-gold) !important;">`
+                        : `<div class="w-16 h-16 rounded-full bg-white bg-opacity-10 border-2 flex items-center justify-center flex-shrink-0 text-2xl font-black text-white" style="border-color: var(--ponty-gold) !important;">${escapeHtml(previewInitial)}</div>`;
+                    document.getElementById('profileHeaderTitle').innerHTML = `
+                        <div class="flex items-center gap-3">
+                            ${previewAvatarHtml}
+                            <h2 class="text-3xl font-black italic tracking-tight uppercase text-white truncate">${escapeHtml(previewTarget.name)}</h2>
+                        </div>
+                    `;
+                    document.getElementById('profileContent').innerHTML = `
+                        ${previewMember.bio ? `<div class="bg-gray-50 border-l-4 border-gray-200 rounded-xl p-4">
+                            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Bio</p>
+                            <p class="text-sm font-bold text-gray-700 whitespace-pre-wrap break-words">${escapeHtml(previewMember.bio)}</p>
+                        </div>` : ''}
+                        <div class="text-center py-6 space-y-4">
+                            <p class="text-5xl">🔒</p>
+                            <p class="font-bold text-gray-600 max-w-sm mx-auto">Log in and activate your membership to see ${escapeHtml(previewTarget.name)}'s full match stats, win streaks, and more.</p>
+                            <button onclick="closeProfile(); showTab('membership-page');" class="btn-gold px-6 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">⭐ Activate Your Membership</button>
+                        </div>
+                    `;
+                    document.getElementById('profileModal').style.display = 'flex';
+                    document.body.classList.add('modal-open');
+                    return;
+                }
+
 				document.getElementById('profileHeaderTitle').innerHTML = `
 					<h2 class="text-3xl font-black italic tracking-tight uppercase text-white">Members Only</h2>
 				`;
@@ -7061,6 +7390,35 @@
             }
             updateProfileBioCharCount();
 
+            // Item #10: reflects whether this player has opted their photo/bio
+            // into the public preview - see handleToggleProfilePublic()/
+            // saveOwnProfileVisibility(). Not guarded by document.activeElement
+            // like the bio textarea above since a checkbox toggle saves
+            // instantly (no draft text to lose on a background re-render).
+            const publicToggle = document.getElementById('profilePublicToggle');
+            if (publicToggle) publicToggle.checked = !!(memberRecord && memberRecord.profilePublic);
+
+            // Item #9: nudge players who haven't set a photo and/or bio yet -
+            // hidden automatically once both are filled in.
+            const completionBanner = document.getElementById('profileCompletionBanner');
+            const completionText = document.getElementById('profileCompletionBannerText');
+            if (completionBanner && completionText) {
+                const missingAvatar = !avatarUrl;
+                const missingBio = !(memberRecord && memberRecord.bio);
+                if (missingAvatar && missingBio) {
+                    completionText.innerText = "Add a profile picture and bio so other players get to know you!";
+                    completionBanner.classList.remove('hidden');
+                } else if (missingAvatar) {
+                    completionText.innerText = "Add a profile picture to finish setting up your profile!";
+                    completionBanner.classList.remove('hidden');
+                } else if (missingBio) {
+                    completionText.innerText = "Add a short bio so other players get to know you!";
+                    completionBanner.classList.remove('hidden');
+                } else {
+                    completionBanner.classList.add('hidden');
+                }
+            }
+
             const badgesContainer = document.getElementById('profileNameHeaderBadges');
             const statsContainer = document.getElementById('profileStatsBody');
             if (!badgesContainer || !statsContainer) return;
@@ -7120,6 +7478,23 @@
                     btn.disabled = false;
                     btn.innerText = "Save Bio";
                 });
+        }
+
+        // Item #10: instantly saves the "Let non-members see my photo & bio"
+        // toggle - unlike the bio textarea there's no draft to lose, so this
+        // just fires straight off on change rather than needing a Save button.
+        function handleToggleProfilePublic(checkbox) {
+            const isPublic = checkbox.checked;
+            checkbox.disabled = true;
+            saveOwnProfileVisibility(isPublic)
+                .then(() => {
+                    triggerToast(isPublic ? "Your photo & bio are now visible to everyone." : "Your photo & bio are members-only again.");
+                })
+                .catch(err => {
+                    checkbox.checked = !isPublic;
+                    triggerError(err.message);
+                })
+                .finally(() => { checkbox.disabled = false; });
         }
 
         function handleOwnAvatarUpload(input) {
@@ -7239,8 +7614,8 @@
                 <div class="flex items-center gap-3 mb-2">
                     <input type="number" id="liveA_${r[0]}" value="${r[5]}" placeholder="0" class="sc-score-A rounded text-center font-black bg-white" style="${boxStyle}">
                     <div class="flex-grow font-bold text-xs leading-tight text-black">
-                        <span class="pn1">${r[1]}</span> 
-                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn2">' + r[2] + '</span>' : '<span class="pn2 hidden">Singles</span>'}
+                        <span class="pn1">${nameLinkHtml(r[1])}</span> 
+                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn2">' + nameLinkHtml(r[2]) + '</span>' : '<span class="pn2 hidden">Singles</span>'}
                     </div>
                 </div>
 
@@ -7249,8 +7624,8 @@
                 <!-- TEAM B -->
                 <div class="flex items-center gap-3 mt-2">
                     <div class="flex-grow font-bold text-xs text-right leading-tight text-black">
-                        <span class="pn3">${r[3]}</span> 
-                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn4">' + r[4] + '</span>' : '<span class="pn4 hidden">Singles</span>'}
+                        <span class="pn3">${nameLinkHtml(r[3])}</span> 
+                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn4">' + nameLinkHtml(r[4]) + '</span>' : '<span class="pn4 hidden">Singles</span>'}
                     </div>
                     <input type="number" id="liveB_${r[0]}" value="${r[6]}" placeholder="0" class="sc-score-B rounded text-center font-black bg-white" style="${boxStyle}">
                 </div>
@@ -7666,7 +8041,7 @@
 
 				const playersHtml = players.map((p, i) => `
 					<div class="flex justify-between items-center py-2 ${i < players.length - 1 ? 'border-b border-gray-100' : ''}">
-						<span class="font-bold text-sm uppercase">${i + 1}. ${p.playerName}</span>
+						<span class="font-bold text-sm uppercase flex items-center gap-2">${i + 1}. ${avatarThumbHtml(p.playerName, 'w-5 h-5')} ${nameLinkHtml(p.playerName)}</span>
 						<span class="font-black text-rose-600">${p.roundPoints} pts <span class="text-gray-400 font-bold">(${p.pointsDiff > 0 ? '+' : ''}${p.pointsDiff})</span></span>
 					</div>
 				`).join('');
@@ -7689,8 +8064,8 @@
             // Item #6: show who's actually filling a slot vs. whose ladder points
             // it is, so a substitution stays obvious at a glance (e.g. on court).
             const nameLabel = (name, original) => original
-                ? `${name} <span style="color:#999; font-weight:700;">(sub for ${original})</span>`
-                : name;
+                ? `${nameLinkHtml(name)} <span style="color:#999; font-weight:700;">(sub for ${original})</span>`
+                : nameLinkHtml(name);
 
             return `
             <div class="border-2 border-gray-100 rounded-xl p-4">
@@ -8272,7 +8647,7 @@
             <div id="membershipAllPlayersList" class="overflow-y-auto space-y-2 divide-y" style="max-height: 340px;">
                 ${players.map(p => `
                     <div class="flex justify-between items-center py-3 gap-3 membership-all-player-row" data-name="${p.name.toLowerCase()}">
-                        <span class="font-bold text-sm uppercase flex-grow">${p.name} ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}</span>
+                        <span class="font-bold text-sm uppercase flex-grow flex items-center gap-2">${avatarThumbHtml(p.name, 'w-7 h-7')} ${nameLinkHtml(p.name)} ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}</span>
                         ${memberNames.has(normalizeName(p.name)) ? `
                         <button onclick='openMembershipGiftModal(${JSON.stringify({ name: p.name, endDate: p.membershipEndDate })})'
                                 class="btn-gold px-3 py-2 rounded-full text-[9px] font-black uppercase flex-shrink-0" title="Give 1 month of membership for free">🎁 Free Month</button>
