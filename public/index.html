@@ -5253,14 +5253,23 @@
 			}
 
             // 3. Populate Checkboxes (Selection Screen)
+            // Item #2 fix: render(data) runs after every background data refresh
+            // (not just when the player actually navigates here), so rebuilding
+            // this from scratch every time used to silently wipe out whatever
+            // someone had already ticked (or typed in the search box) mid-way
+            // through selecting players - the same bug reported on the Ladders
+            // page. Preserve both across the rebuild.
             const scContainer = document.getElementById('scramblePlayerCheckboxes');
             if (scContainer && data.names) {
-                scContainer.innerHTML = `<input type="text" id="scrambleSearch" oninput="filterScrambleNames()" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + data.names.map(n => `
+                const previouslyCheckedScramble = new Set(Array.from(document.querySelectorAll('.scramble-check:checked')).map(cb => cb.value));
+                const previousScrambleSearch = document.getElementById('scrambleSearch')?.value || "";
+                scContainer.innerHTML = `<input type="text" id="scrambleSearch" oninput="filterScrambleNames()" value="${previousScrambleSearch.replace(/"/g, '&quot;')}" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + data.names.map(n => `
                     <label class="flex items-center space-x-3 p-3 bg-white rounded border cursor-pointer hover:bg-rose-50 transition">
-                        <input type="checkbox" value="${n}" class="scramble-check w-5 h-5 accent-rose-600" onchange="validateScrambleHeadcount()">
+                        <input type="checkbox" value="${n}" class="scramble-check w-5 h-5 accent-rose-600" ${previouslyCheckedScramble.has(n) ? 'checked' : ''} onchange="validateScrambleHeadcount()">
                         <span class="font-bold text-xs uppercase">${n}</span>
                     </label>
                 `).join('');
+                if (previousScrambleSearch) filterScrambleNames();
                 validateScrambleHeadcount();
             }
             populateScrambleEventSelect();
@@ -7037,9 +7046,25 @@
         // female-only session with the wrong roster (the Elo engine itself
         // doesn't care about gender, it only cares about the flag, but this
         // keeps the UI honest about who the session is meant for).
+        // Item #2 fix: this rebuilds the whole checkbox list from scratch, which
+        // used to silently wipe out whatever someone had already ticked (and
+        // whatever they'd typed in the search box) every time it ran - and it
+        // doesn't only run when the player list genuinely changes. A routine
+        // background data refresh (e.g. the 2-minute membership check set up in
+        // window.onload - see refreshCurrentUserMembership()) re-renders
+        // whichever tab is open, and if that's the Ladders setup screen, this
+        // got called again with nobody having changed anything - which looked
+        // like the page was "randomly" clearing a half-finished selection.
+        // Preserving the currently-checked names and
+        // search text across a rebuild means re-renders are harmless, while an
+        // intentional reset (starting a fresh session, finishing/ending one,
+        // explicitly switching to "+ New Session") still gets a clean slate via
+        // resetLadderSetupForm().
         function renderLadderCheckboxes() {
             const container = document.getElementById('ladderPlayerCheckboxes');
             if (!container || !globalData.names) return;
+            const previouslyChecked = new Set(Array.from(document.querySelectorAll('.ladder-check:checked')).map(cb => cb.value));
+            const previousSearch = document.getElementById('ladderSearch')?.value || "";
             const femaleOnly = !!document.getElementById('ladderFemaleOnly')?.checked;
             const eligibleNames = femaleOnly
                 ? globalData.names.filter(n => {
@@ -7047,16 +7072,36 @@
                     return p && p.gender === 'Female';
                 })
                 : globalData.names;
-            container.innerHTML = `<input type="text" id="ladderSearch" oninput="filterLadderNames()" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + eligibleNames.map(n => `
+            const searchValueAttr = previousSearch.replace(/"/g, '&quot;');
+            container.innerHTML = `<input type="text" id="ladderSearch" oninput="filterLadderNames()" value="${searchValueAttr}" placeholder="Search player..." class="input-field border-2 mb-3" style="grid-column: 1 / -1;">` + eligibleNames.map(n => `
                 <label class="flex items-center space-x-3 p-3 bg-white rounded border cursor-pointer hover:bg-rose-50 transition">
-                    <input type="checkbox" value="${n}" class="ladder-check w-5 h-5 accent-rose-600" onchange="validateLadderHeadcount()">
+                    <input type="checkbox" value="${n}" class="ladder-check w-5 h-5 accent-rose-600" ${previouslyChecked.has(n) ? 'checked' : ''} onchange="validateLadderHeadcount()">
                     <span class="font-bold text-xs uppercase">${n}</span>
                 </label>
             `).join('');
             if (femaleOnly && eligibleNames.length === 0) {
                 container.innerHTML += `<p class="text-xs font-bold text-gray-400 italic" style="grid-column: 1 / -1;">No players are marked as Female yet - check player profiles/registration.</p>`;
             }
+            if (previousSearch) filterLadderNames();
             validateLadderHeadcount();
+        }
+
+        // Explicitly clears the Step 1 setup form (session name, female-only
+        // toggle, player selection, search box) - used for genuine "start fresh"
+        // moments (a session just finished/was ended early, or the player
+        // deliberately switches to the "+ New Session" tab), as opposed to
+        // renderLadderCheckboxes()/renderLadderSession() re-running harmlessly
+        // during a routine background data refresh. See the comment on
+        // renderLadderCheckboxes() above for the bug this split fixes.
+        function resetLadderSetupForm() {
+            const nameInput = document.getElementById('ladderSessionName');
+            if (nameInput) nameInput.value = "";
+            const femaleOnlyCheckbox = document.getElementById('ladderFemaleOnly');
+            if (femaleOnlyCheckbox) femaleOnlyCheckbox.checked = false;
+            document.querySelectorAll('.ladder-check').forEach(cb => cb.checked = false);
+            const search = document.getElementById('ladderSearch');
+            if (search) search.value = "";
+            renderLadderCheckboxes();
         }
 
         function onLadderFemaleOnlyToggle() {
@@ -7146,9 +7191,15 @@
 				step1.classList.remove('hidden');
 				step2.classList.add('hidden');
 				document.getElementById('ladderStep1Heading').innerText = "1. Select Players Present Today";
-				document.getElementById('ladderSessionName').value = "";
-				const femaleOnlyCheckbox = document.getElementById('ladderFemaleOnly');
-				if (femaleOnlyCheckbox) femaleOnlyCheckbox.checked = false;
+				// Item #2 fix: this branch is reached not just when someone's
+				// genuinely starting fresh, but also on routine background data
+				// refreshes (e.g. the 2-minute membership check) while they're
+				// still mid-way through naming a session or ticking players.
+				// Don't force the session name/female-only toggle back to
+				// blank here - anything that needs a real reset (ending a
+				// session, finishing one, explicitly clicking "+ New Session")
+				// calls resetLadderSetupForm() itself. renderLadderCheckboxes()
+				// already preserves whatever's currently ticked/typed.
 				renderLadderCheckboxes();
 				return;
 			}
@@ -7194,6 +7245,14 @@
 		}
 
 		function switchLadderTab(sessionId) {
+			// Only clear the setup form when actually arriving at "+ New Session"
+			// from a different, already-active session tab - not when someone's
+			// already sat on the setup screen (activeLadderSessionId already
+			// null) and this fires again regardless, which would otherwise wipe
+			// an in-progress selection for no reason (see resetLadderSetupForm()).
+			if (sessionId === null && activeLadderSessionId !== null) {
+				resetLadderSetupForm();
+			}
 			activeLadderSessionId = sessionId;
 			renderLadderSession();
 		}
@@ -7429,8 +7488,7 @@
 				ladderSessionsState = ladderSessionsState.filter(s => s.session.id !== res.sessionId);
 				activeLadderSessionId = null;
 				triggerToast("Ladder Session Finished!");
-				document.querySelectorAll('.ladder-check').forEach(cb => cb.checked = false);
-				validateLadderHeadcount();
+				resetLadderSetupForm();
 			} else {
 				const idx = ladderSessionsState.findIndex(s => s.session.id === res.sessionId);
 				if (idx !== -1) ladderSessionsState[idx] = res.state; else ladderSessionsState.push(res.state);
@@ -7456,6 +7514,7 @@
 				.then(() => {
 					ladderSessionsState = ladderSessionsState.filter(s => s.session.id !== sessionIdToEnd);
 					activeLadderSessionId = null;
+					resetLadderSetupForm();
 					renderLadderSession();
 					closeModal('ladderResetModal');
 					triggerToast("Session Ended.");
