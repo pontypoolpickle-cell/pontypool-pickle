@@ -1664,6 +1664,16 @@
           score_b integer
         );
 
+        -- Item #1 fix: stamps the moment a game's score is first confirmed, so
+        -- endLadderRound() can insert that round's matches into `matches` in the
+        -- order they were actually played instead of whatever arbitrary order
+        -- Postgres happens to return the rows in (a plain `select` with no
+        -- matching ORDER BY column isn't guaranteed to come back in insertion
+        -- order, especially once a few rows have been UPDATEd with scores) -
+        -- which is what made win streaks look scrambled. See updateLadderScore()/
+        -- endLadderRound() in this file.
+        alter table ladder_games add column if not exists scored_at timestamptz;
+
         -- Substitute tracking (fix: subbed-out players were losing their ladder
         -- points for that game). p{N}_original records who was originally in that
         -- slot (i.e. whose `ladder_courts` row this game's round_points belong to)
@@ -3072,9 +3082,19 @@
 
             const scoreA = Number(payload.scoreA);
             const scoreB = Number(payload.scoreB);
+            const update = { score_a: scoreA, score_b: scoreB };
+            // Item #1: stamp the moment this game was first confirmed so
+            // endLadderRound() can later record matches in the order they were
+            // actually played, not whatever order Postgres happens to hand rows
+            // back in. Only set this the first time a game is scored - editing
+            // an already-confirmed score (unlock -> fix a typo -> re-confirm)
+            // must not move it to the back of the queue.
+            if (!game.scored_at) {
+                update.scored_at = serverNow().toISOString();
+            }
             const { error } = await supabaseClient
                 .from('ladder_games')
-                .update({ score_a: scoreA, score_b: scoreB })
+                .update(update)
                 .eq('id', gameUuid);
             if (error) throw new Error(error.message);
 
@@ -3279,7 +3299,24 @@
             if (gamesErr) throw new Error(gamesErr.message);
             if (courtsErr) throw new Error(courtsErr.message);
 
-            const scoredGames = (roundGames || []).filter(g => g.score_a !== null && g.score_b !== null);
+            // Item #1: a single round plays several games per court (players
+            // rotate partners within the round), scored one at a time as each
+            // finishes. Sort by scored_at (stamped the moment each game was first
+            // confirmed - see updateLadderScore()) before recording them, so
+            // they're inserted into `matches` in the order they were actually
+            // played rather than whatever order the query happens to return rows
+            // in - that's what previously made win streaks look scrambled.
+            // Anything scored before that column existed has no scored_at, so
+            // falls back to its existing court-based position, after everything
+            // with a real timestamp.
+            const scoredGames = (roundGames || [])
+                .filter(g => g.score_a !== null && g.score_b !== null)
+                .sort((a, b) => {
+                    if (a.scored_at && b.scored_at) return new Date(a.scored_at) - new Date(b.scored_at);
+                    if (a.scored_at) return -1;
+                    if (b.scored_at) return 1;
+                    return 0;
+                });
             for (const g of scoredGames) {
                 const matchRow = {
                     match_date: todayStr(),
