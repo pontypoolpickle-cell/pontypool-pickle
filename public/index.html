@@ -686,6 +686,13 @@
             <div id="profileMainContent" class="hidden space-y-6">
                 <h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">My Profile</h2>
 
+                <!-- Profile completion nudge (Item #9) - only shown while a
+                     photo and/or bio are missing, see renderProfilePage(). -->
+                <div id="profileCompletionBanner" class="hidden card p-4 bg-rose-50 border-2 border-rose-200 flex items-center gap-3">
+                    <span class="text-2xl flex-shrink-0">👋</span>
+                    <p id="profileCompletionBannerText" class="text-xs font-bold text-rose-700 uppercase tracking-wide"></p>
+                </div>
+
                 <!-- Avatar + name -->
                 <div class="card p-6 md:p-8 flex flex-col sm:flex-row items-center gap-6 border-t-8 border-black">
                     <div class="relative flex-shrink-0">
@@ -714,6 +721,13 @@
                         <p class="text-[10px] font-bold text-gray-400 uppercase"><span id="profileBioCharCount">0</span>/280</p>
                         <button onclick="handleSaveOwnBio()" id="profileBioSaveBtn" class="bg-black text-white px-5 py-2.5 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition">Save Bio</button>
                     </div>
+                    <!-- Item #10: opt photo/bio into a limited public preview for
+                         logged-out/non-member visitors - see openProfile()/
+                         saveOwnProfileVisibility(). Off (Members Only) by default. -->
+                    <label class="flex items-center gap-3 pt-2 border-t border-gray-100 cursor-pointer">
+                        <input type="checkbox" id="profilePublicToggle" onchange="handleToggleProfilePublic(this)" class="w-5 h-5 accent-rose-600 flex-shrink-0">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase leading-relaxed">Let non-members see my photo &amp; bio (your match stats always stay members-only)</span>
+                    </label>
                 </div>
 
                 <!-- Stats (shared with the "View Profile" popup - see buildProfileView()) -->
@@ -1484,6 +1498,16 @@
         alter table users add column if not exists bio text;
         alter table users add column if not exists avatar_url text;
 
+        -- Profile improvements: lets a player opt their photo & bio into a
+        -- limited public preview for logged-out/non-member visitors (e.g.
+        -- clicking "View Profile" on the homepage's Climber of the Week card)
+        -- instead of the usual "Members Only" block - their full match stats
+        -- stay members-only either way. See openProfile()/
+        -- saveOwnProfileVisibility()/the "Let non-members see my photo & bio"
+        -- toggle on the Profile tab. Defaults to false (today's behaviour)
+        -- until a player explicitly opts in.
+        alter table users add column if not exists profile_public boolean not null default false;
+
         -- Site settings (item #9) - simple key/value store for singleton
         -- admin-managed values (currently just the Rules PDF link) so future
         -- one-off settings don't each need their own dedicated column/table.
@@ -2203,7 +2227,14 @@
                 // has been run, since `u.bio`/`u.avatar_url` would then simply be
                 // undefined from the select rather than throwing anywhere.
                 bio: u.bio || '',
-                avatarUrl: u.avatar_url || ''
+                avatarUrl: u.avatar_url || '',
+                // Item #10 (profile improvements): lets a player opt their photo
+                // & bio into a limited public preview for logged-out/non-member
+                // visitors (e.g. clicking "View Profile" from the homepage's
+                // Climber of the Week card) - see openProfile()/
+                // saveOwnProfileVisibility(). Defaults to false (today's
+                // behaviour: Members Only) until a player explicitly opts in.
+                profilePublic: !!u.profile_public
             };
         }
 
@@ -2692,7 +2723,7 @@
                 supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
                 supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
                 supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true }),
-                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url').eq('status', 'Approved').order('first_name', { ascending: true }),
+                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url, profile_public').eq('status', 'Approved').order('first_name', { ascending: true }),
                 // Fetched separately (not merged into the query above) so that sites
                 // which haven't yet run the membership_number/created_at migration
                 // comment near the top of this file don't lose the existing Manage
@@ -4655,6 +4686,18 @@
             if (idx !== -1) {
                 members[idx] = Object.assign({}, members[idx], fields);
             }
+        }
+
+        // Profile improvements: lets a player opt their photo/bio into a public
+        // preview for logged-out/non-member visitors - see the schema comment
+        // above `alter table users add column if not exists profile_public` and
+        // the toggle on the Profile tab (renderProfilePage()).
+        async function saveOwnProfileVisibility(isPublic) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const { error } = await supabaseClient.from('users').update({ profile_public: !!isPublic }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            patchOwnProfileExtrasInGlobalData({ profilePublic: !!isPublic });
+            return !!isPublic;
         }
 
         // Wallet system: paying for an event is now an automatic, near-instant step
@@ -7244,6 +7287,41 @@
         // dedicated "Profile" tab instead (see renderProfilePage()).
         function openProfile(playerName) {
             if (!currentUser || (currentUser.role !== 'Member' && currentUser.role !== 'Admin')) {
+                // Item #10: a player can opt their photo/bio into a limited
+                // public preview (see profile_public/saveOwnProfileVisibility())
+                // - show that instead of the usual "Members Only" block when
+                // they have, since there's something real to show. Their match
+                // stats/rating still stay members-only either way.
+                const previewTarget = globalData.standings.find(x => x.name === playerName);
+                const previewMember = previewTarget && (globalData.members || []).find(m => normalizeName(m.name) === normalizeName(previewTarget.name));
+                if (previewMember && previewMember.profilePublic && (previewMember.bio || previewMember.avatarUrl)) {
+                    const previewAvatarUrl = previewMember.avatarUrl || '';
+                    const previewInitial = (previewTarget.name || '?').trim().charAt(0).toUpperCase() || '?';
+                    const previewAvatarHtml = previewAvatarUrl
+                        ? `<img src="${previewAvatarUrl}" alt="${escapeHtml(previewTarget.name)}" class="w-16 h-16 rounded-full object-cover border-2 flex-shrink-0" style="border-color: var(--ponty-gold) !important;">`
+                        : `<div class="w-16 h-16 rounded-full bg-white bg-opacity-10 border-2 flex items-center justify-center flex-shrink-0 text-2xl font-black text-white" style="border-color: var(--ponty-gold) !important;">${escapeHtml(previewInitial)}</div>`;
+                    document.getElementById('profileHeaderTitle').innerHTML = `
+                        <div class="flex items-center gap-3">
+                            ${previewAvatarHtml}
+                            <h2 class="text-3xl font-black italic tracking-tight uppercase text-white truncate">${escapeHtml(previewTarget.name)}</h2>
+                        </div>
+                    `;
+                    document.getElementById('profileContent').innerHTML = `
+                        ${previewMember.bio ? `<div class="bg-gray-50 border-l-4 border-gray-200 rounded-xl p-4">
+                            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Bio</p>
+                            <p class="text-sm font-bold text-gray-700 whitespace-pre-wrap break-words">${escapeHtml(previewMember.bio)}</p>
+                        </div>` : ''}
+                        <div class="text-center py-6 space-y-4">
+                            <p class="text-5xl">🔒</p>
+                            <p class="font-bold text-gray-600 max-w-sm mx-auto">Log in and activate your membership to see ${escapeHtml(previewTarget.name)}'s full match stats, win streaks, and more.</p>
+                            <button onclick="closeProfile(); showTab('membership-page');" class="btn-gold px-6 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">⭐ Activate Your Membership</button>
+                        </div>
+                    `;
+                    document.getElementById('profileModal').style.display = 'flex';
+                    document.body.classList.add('modal-open');
+                    return;
+                }
+
 				document.getElementById('profileHeaderTitle').innerHTML = `
 					<h2 class="text-3xl font-black italic tracking-tight uppercase text-white">Members Only</h2>
 				`;
@@ -7312,6 +7390,35 @@
             }
             updateProfileBioCharCount();
 
+            // Item #10: reflects whether this player has opted their photo/bio
+            // into the public preview - see handleToggleProfilePublic()/
+            // saveOwnProfileVisibility(). Not guarded by document.activeElement
+            // like the bio textarea above since a checkbox toggle saves
+            // instantly (no draft text to lose on a background re-render).
+            const publicToggle = document.getElementById('profilePublicToggle');
+            if (publicToggle) publicToggle.checked = !!(memberRecord && memberRecord.profilePublic);
+
+            // Item #9: nudge players who haven't set a photo and/or bio yet -
+            // hidden automatically once both are filled in.
+            const completionBanner = document.getElementById('profileCompletionBanner');
+            const completionText = document.getElementById('profileCompletionBannerText');
+            if (completionBanner && completionText) {
+                const missingAvatar = !avatarUrl;
+                const missingBio = !(memberRecord && memberRecord.bio);
+                if (missingAvatar && missingBio) {
+                    completionText.innerText = "Add a profile picture and bio so other players get to know you!";
+                    completionBanner.classList.remove('hidden');
+                } else if (missingAvatar) {
+                    completionText.innerText = "Add a profile picture to finish setting up your profile!";
+                    completionBanner.classList.remove('hidden');
+                } else if (missingBio) {
+                    completionText.innerText = "Add a short bio so other players get to know you!";
+                    completionBanner.classList.remove('hidden');
+                } else {
+                    completionBanner.classList.add('hidden');
+                }
+            }
+
             const badgesContainer = document.getElementById('profileNameHeaderBadges');
             const statsContainer = document.getElementById('profileStatsBody');
             if (!badgesContainer || !statsContainer) return;
@@ -7371,6 +7478,23 @@
                     btn.disabled = false;
                     btn.innerText = "Save Bio";
                 });
+        }
+
+        // Item #10: instantly saves the "Let non-members see my photo & bio"
+        // toggle - unlike the bio textarea there's no draft to lose, so this
+        // just fires straight off on change rather than needing a Save button.
+        function handleToggleProfilePublic(checkbox) {
+            const isPublic = checkbox.checked;
+            checkbox.disabled = true;
+            saveOwnProfileVisibility(isPublic)
+                .then(() => {
+                    triggerToast(isPublic ? "Your photo & bio are now visible to everyone." : "Your photo & bio are members-only again.");
+                })
+                .catch(err => {
+                    checkbox.checked = !isPublic;
+                    triggerError(err.message);
+                })
+                .finally(() => { checkbox.disabled = false; });
         }
 
         function handleOwnAvatarUpload(input) {
