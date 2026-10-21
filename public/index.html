@@ -1702,21 +1702,55 @@
 
         const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_qFG6VEHtM9eMy_6WR86QxQ_fi7Wzed8';
+
+        // Item #3 one-time migration: logins used to live in sessionStorage (wiped
+        // when the tab/browser closed) and now live in localStorage (persist
+        // across restarts, like most other sites). Without this, everyone who
+        // already had a session open in sessionStorage the moment this shipped
+        // would get silently logged out the next time they loaded the site,
+        // rather than just getting the improved "stay logged in" behaviour going
+        // forward. Copies the Supabase Auth token (key format varies by project,
+        // hence the prefix match) and the app's own `pickleUser` cache over, then
+        // clears the old sessionStorage copies so this only ever runs once.
+        (function migrateSessionLoginToPersistent() {
+            try {
+                for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                    const key = sessionStorage.key(i);
+                    if (!key || !key.startsWith('sb-') || !key.endsWith('-auth-token')) continue;
+                    if (localStorage.getItem(key) === null) {
+                        localStorage.setItem(key, sessionStorage.getItem(key));
+                    }
+                    sessionStorage.removeItem(key);
+                }
+                const savedUser = sessionStorage.getItem('pickleUser');
+                if (savedUser !== null) {
+                    if (localStorage.getItem('pickleUser') === null) {
+                        localStorage.setItem('pickleUser', savedUser);
+                    }
+                    sessionStorage.removeItem('pickleUser');
+                }
+            } catch (e) { /* storage unavailable (e.g. private browsing) - non-fatal, just means no migration to do */ }
+        })();
+
         // Force every request to bypass any HTTP cache so reads (e.g. password
         // reset code verification) always see the very latest database state.
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             global: {
                 fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' })
             },
-            // Store the Supabase Auth session in sessionStorage rather than the
-            // default localStorage, so it has exactly the same lifetime as the
-            // app's own `pickleUser` session cache (survives a refresh, cleared
-            // when the tab/browser closes) - this app has never persisted logins
-            // across browser restarts, and login now controls real access to
-            // wallet balance, so it shouldn't start doing so silently just because
-            // Supabase Auth's default differs from this app's existing behaviour.
+            // Item #3: keep people logged in across browser restarts, like most
+            // other sites (Facebook/Instagram etc.), instead of signing them out
+            // every time the tab/browser is closed. Supabase Auth's own default
+            // storage is localStorage - this now matches that default (it used to
+            // deliberately use sessionStorage instead, to mirror the app's own
+            // `pickleUser` cache below, which is also now persisted the same way).
+            // Logging out (logoutUser()) clears both this and `pickleUser`, and
+            // still ends the real Supabase Auth session server-side via
+            // supabaseClient.auth.signOut(), so "Logout" still fully logs out a
+            // shared/public device - it's just that closing the tab on your own
+            // device no longer does that for you.
             auth: {
-                storage: window.sessionStorage,
+                storage: window.localStorage,
                 persistSession: true,
                 autoRefreshToken: true
             }
@@ -4331,7 +4365,7 @@
                 membershipEndDate: userRow.membership_end_date || null,
                 membershipPaymentRef: userRow.membership_payment_ref || ''
             });
-            sessionStorage.setItem('pickleUser', JSON.stringify(currentUser));
+            localStorage.setItem('pickleUser', JSON.stringify(currentUser));
             updateUIForLogin();
             renderMembershipPage();
             renderWalletWidget();
@@ -10069,7 +10103,7 @@
             loginUser({ username: user, password: pass })
                 .then(userData => {
                 currentUser = userData;
-                sessionStorage.setItem('pickleUser', JSON.stringify(userData));
+                localStorage.setItem('pickleUser', JSON.stringify(userData));
                 updateUIForLogin();
                 // Item #2: immediately re-evaluate whatever tab is currently open, so a
                 // login-gated (or member-gated) page unlocks right away instead of only
@@ -10094,7 +10128,7 @@
 
         function logoutUser() {
             currentUser = null;
-            sessionStorage.removeItem('pickleUser');
+            localStorage.removeItem('pickleUser');
             if (adminTimeout) clearTimeout(adminTimeout);
             closeModal('logoutModal');
             updateUIForLogin();
@@ -10916,7 +10950,7 @@
             // and to bound how stale the offset can get on a long-lived tab.
             setInterval(syncServerTime, 5 * 60 * 1000);
 
-            const saved = sessionStorage.getItem('pickleUser');
+            const saved = localStorage.getItem('pickleUser');
             if (saved) {
                 currentUser = JSON.parse(saved);
                 startAdminSession();
