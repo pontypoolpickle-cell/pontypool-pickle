@@ -1173,6 +1173,16 @@
 		return `${days[date.getDay()]} ${day}${suffix} ${months[date.getMonth()]} ${date.getFullYear()}`;
 	}
 
+	// Compact "21 Oct" form used in the profile's Match History list - the
+	// full formatEventDate() above is too long for a dense, scrollable list.
+	function formatShortMatchDate(dateStr) {
+		if (!dateStr) return '';
+		const date = new Date(dateStr + 'T00:00:00');
+		if (isNaN(date.getTime())) return dateStr;
+		const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+		return `${date.getDate()} ${months[date.getMonth()]}`;
+	}
+
 	// Formats a raw timestamp (e.g. "2026-07-13T20:42:42.666457+00:00") into "2026-07-13 20:42"
 	function formatSignupTimestamp(timestampStr) {
 		if (!timestampStr) return '';
@@ -6816,12 +6826,23 @@
             // Recent Form, also total up the actual rating points gained/lost
             // across those same last 5 games, so a member can see at a glance
             // whether they're trending up or down in points, not just wins.
+            // Profile improvements: also used to build the "Match History" list
+            // and the rating trend sparkline on the profile - capped at 20 games
+            // so the list/graph stays a manageable length. recentForm above is
+            // just the first 5 entries of the same data, kept as its own
+            // variable rather than derived from matchLog so existing behaviour
+            // (and the Women's Rankings section below, which reuses this same
+            // function) is untouched.
+            const MATCH_LOG_LIMIT = 20;
+
             function computeProfileStats(historyList) {
                 let partners = {}, nemeses = {}, victims = {};
                 let recentForm = [];
                 let recentPointTotal = 0;
                 let currentStreak = 0;
                 let streakBroken = false;
+                let longestStreak = 0, runningWinRun = 0;
+                let matchLog = [];
 
                 // Matches are already reversed: newest first.
                 historyList.forEach(m => {
@@ -6834,21 +6855,52 @@
                     const isLoser = (ml1 === pKey || ml2 === pKey);
 
                     if (isWinner || isLoser) {
+                        let pointChange = 0;
+                        if (mw1 === pKey) pointChange = m.c1;
+                        else if (mw2 === pKey) pointChange = m.c2;
+                        else if (ml1 === pKey) pointChange = m.c3;
+                        else if (ml2 === pKey) pointChange = m.c4;
+                        pointChange = Number(pointChange || 0);
+
                         // Build Recent Form (Last 5) plus the matching points total
                         if (recentForm.length < 5) {
                             recentForm.push(isWinner ? 'W' : 'L');
-                            let pointChange = 0;
-                            if (mw1 === pKey) pointChange = m.c1;
-                            else if (mw2 === pKey) pointChange = m.c2;
-                            else if (ml1 === pKey) pointChange = m.c3;
-                            else if (ml2 === pKey) pointChange = m.c4;
-                            recentPointTotal += Number(pointChange || 0);
+                            recentPointTotal += pointChange;
+                        }
+
+                        // Full match-by-match log (newest first, capped) - the
+                        // raw data behind the "Match History" list and rating
+                        // trend sparkline below.
+                        if (matchLog.length < MATCH_LOG_LIMIT) {
+                            const partner = isWinner
+                                ? (mw1 === pKey ? m.w2 : m.w1)
+                                : (ml1 === pKey ? m.l2 : m.l1);
+                            const opponents = (isWinner ? [m.l1, m.l2] : [m.w1, m.w2]).filter(o => o && o !== 'Singles');
+                            matchLog.push({
+                                date: m.date,
+                                result: isWinner ? 'W' : 'L',
+                                partner: (partner && partner !== 'Singles') ? partner : null,
+                                opponents,
+                                score: isWinner ? `${m.sW}-${m.sL}` : `${m.sL}-${m.sW}`,
+                                pointChange
+                            });
                         }
 
                         // Calculate Current Unbeaten Streak
                         if (!streakBroken) {
                             if (isWinner) currentStreak++;
                             else streakBroken = true;
+                        }
+
+                        // Longest win streak ever (order-independent - a run of
+                        // consecutive wins is a run regardless of which
+                        // direction you scan the list in) - used for the
+                        // "Hot Streak"/"Unstoppable" achievement badges below.
+                        if (isWinner) {
+                            runningWinRun++;
+                            longestStreak = Math.max(longestStreak, runningWinRun);
+                        } else {
+                            runningWinRun = 0;
                         }
 
                         // Partner and Opponent Insights
@@ -6870,12 +6922,87 @@
                     favoriteOpponent: getTop(victims),
                     recentForm,
                     recentPointTotal,
-                    currentStreak
+                    currentStreak,
+                    longestStreak,
+                    matchLog
                 };
             }
 
             const mixedStats = computeProfileStats(mixedHistory);
-            const { dreamPartner, nemesis, favoriteOpponent, recentForm, recentPointTotal, currentStreak } = mixedStats;
+            const { dreamPartner, nemesis, favoriteOpponent, recentForm, recentPointTotal, currentStreak, longestStreak, matchLog } = mixedStats;
+
+            // Profile improvements: reconstruct the mixed rating immediately
+            // before/after each of the last MATCH_LOG_LIMIT games from p.elo
+            // (the current rating) and each game's point change - there's no
+            // "rating after this match" column stored anywhere, but working
+            // backwards from the current value using matchLog's pointChange
+            // (already in newest-first order) rebuilds it exactly. Powers the
+            // "Rating Trend" sparkline below.
+            const ratingSeries = (() => {
+                const series = [p.elo];
+                let running = p.elo;
+                matchLog.forEach(entry => { running -= entry.pointChange; series.push(running); });
+                return series.reverse();
+            })();
+
+            // Profile improvements: "Your Head-to-Head" card, shown when a
+            // logged-in member views someone else's profile (never their own) -
+            // counts every match (mixed and female-only alike) where the two of
+            // them were on opposing teams. Hidden entirely if they've never
+            // played each other.
+            let headToHeadHtml = '';
+            const viewerName = currentUser ? currentUserFullName() : '';
+            if (viewerName && normalizeName(viewerName) !== normalizeName(playerName)) {
+                const keyViewer = viewerName.toLowerCase().replace(/\s+/g, '');
+                const keyTarget = pKey;
+                let viewerWins = 0, targetWins = 0;
+                (globalData.history || []).forEach(m => {
+                    const mw1 = m.w1.toLowerCase().replace(/\s+/g, '');
+                    const mw2 = m.w2.toLowerCase().replace(/\s+/g, '');
+                    const ml1 = m.l1.toLowerCase().replace(/\s+/g, '');
+                    const ml2 = m.l2.toLowerCase().replace(/\s+/g, '');
+                    const viewerWon = mw1 === keyViewer || mw2 === keyViewer;
+                    const viewerLost = ml1 === keyViewer || ml2 === keyViewer;
+                    const targetWon = mw1 === keyTarget || mw2 === keyTarget;
+                    const targetLost = ml1 === keyTarget || ml2 === keyTarget;
+                    if (viewerWon && targetLost) viewerWins++;
+                    else if (viewerLost && targetWon) targetWins++;
+                });
+                if (viewerWins + targetWins > 0) {
+                    headToHeadHtml = `
+                    <div class="bg-black rounded-xl p-4 flex items-center justify-between gap-3" style="border: 2px solid var(--ponty-gold) !important;">
+                        <div class="min-w-0">
+                            <p class="text-[9px] font-black uppercase tracking-widest" style="color: var(--ponty-gold) !important;">Your Head-to-Head</p>
+                            <p class="text-sm font-bold text-white truncate">You vs ${p.name}</p>
+                        </div>
+                        <p class="text-2xl font-black text-white flex-shrink-0">${viewerWins} - ${targetWins}</p>
+                    </div>`;
+                }
+            }
+
+            // Profile improvements: achievement badges for hitting milestones -
+            // purely cosmetic (no gameplay effect), just something to work
+            // towards beyond the raw rating number. "Most Improved" is
+            // recomputed fresh every time (same 30-day trailing window logic as
+            // computeRecentEloChanges()), not stored, so it always reflects
+            // whoever's actually trending hardest right now.
+            const achievementBadges = [];
+            if (p.totalGames >= 250) achievementBadges.push({ icon: '🏅', label: 'Iron Paddle · 250+ Games' });
+            else if (p.totalGames >= 100) achievementBadges.push({ icon: '💯', label: 'Century Club · 100+ Games' });
+            else if (p.totalGames >= 50) achievementBadges.push({ icon: '🎾', label: 'Seasoned Player · 50+ Games' });
+
+            if (longestStreak >= 10) achievementBadges.push({ icon: '🔥🔥', label: 'Unstoppable · 10+ Win Streak' });
+            else if (longestStreak >= 5) achievementBadges.push({ icon: '🔥', label: 'Hot Streak · 5+ Win Streak' });
+
+            if (skillRank === 1) achievementBadges.push({ icon: '🏆', label: 'Club Champion · #1 Rated' });
+
+            const monthlyChanges = computeRecentEloChanges(mixedHistory, 30);
+            let topImprovedName = null, topImprovedChange = 0;
+            (globalData.standings || []).filter(x => x.name !== 'Singles' && !x.isHidden).forEach(x => {
+                const change = monthlyChanges.get(x.name) || 0;
+                if (change > topImprovedChange) { topImprovedChange = change; topImprovedName = x.name; }
+            });
+            if (topImprovedName === p.name) achievementBadges.push({ icon: '📈', label: 'Most Improved · Last 30 Days' });
 
             // 3. Leaderboard visibility status (replaces the old "decay" system -
             // ratings never reduce for inactivity any more, see isBoardVisible()).
@@ -6978,15 +7105,75 @@
                             <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank || '—'}</span>
                             ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
                             ${membershipNumberBadge}
+                            ${currentStreak >= 3 ? `<span class="bg-orange-500 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">🔥 ${currentStreak} Win Streak</span>` : ''}
                         </div>
                         <h2 class="text-3xl font-black italic tracking-tight uppercase text-white truncate">${p.name}</h2>
                     </div>
                 </div>
             `;
 
+            // Profile improvements: "Rating Trend" sparkline, built from
+            // ratingSeries above - hidden until there are at least 2 games to
+            // draw a line between.
+            const ratingTrendHtml = ratingSeries.length >= 3 ? (() => {
+                const trendUp = ratingSeries[ratingSeries.length - 1] >= ratingSeries[0];
+                const trendColor = trendUp ? '#16a34a' : '#e11d48';
+                const trendDiff = Math.abs(ratingSeries[ratingSeries.length - 1] - ratingSeries[0]);
+                return `
+                <div class="stat-card border-l-4 border-black p-3 bg-gray-50 rounded-xl">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-[10px] font-bold text-gray-400 uppercase">Rating Trend <span class="normal-case font-normal">(Last ${matchLog.length} Games)</span></p>
+                        <p class="text-xs font-black" style="color: ${trendColor} !important;">${trendUp ? '▲' : '▼'} ${trendDiff}</p>
+                    </div>
+                    ${buildSparklineSvg(ratingSeries, { color: trendColor })}
+                </div>`;
+            })() : '';
+
+            // Profile improvements: achievement badge pills - see
+            // achievementBadges above. Hidden entirely once there are none yet,
+            // rather than showing an empty/negative "no achievements" state.
+            const achievementsHtml = achievementBadges.length > 0 ? `
+                <div class="space-y-3">
+                    <h4 class="font-black italic uppercase border-b-2 border-gray-100 pb-1 text-xs text-gray-400">Achievements</h4>
+                    <div class="flex flex-wrap gap-2">
+                        ${achievementBadges.map(b => `
+                            <span class="inline-flex items-center gap-1.5 bg-gray-900 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide">
+                                <span>${b.icon}</span> ${escapeHtml(b.label)}
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>` : '';
+
+            // Profile improvements: a real match-by-match history list (date,
+            // partner, opponent(s), score, points) instead of just the
+            // aggregate Recent Form/Win Rate/etc. stats above. Capped to
+            // matchLog's MATCH_LOG_LIMIT (20) most recent mixed matches.
+            const matchHistoryHtml = matchLog.length > 0 ? `
+                <div class="space-y-3">
+                    <h4 class="font-black italic uppercase border-b-2 border-gray-100 pb-1 text-xs text-gray-400">Match History</h4>
+                    <div class="space-y-2 overflow-y-auto pr-1" style="max-height: 320px;">
+                        ${matchLog.map(m => `
+                            <div class="flex items-center justify-between gap-2 p-3 rounded-xl border ${m.result === 'W' ? 'bg-green-50 border-green-100' : 'bg-rose-50 border-rose-100'}">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white ${m.result === 'W' ? 'bg-green-600' : 'bg-rose-600'}">${m.result}</span>
+                                    <div class="min-w-0">
+                                        <p class="text-[9px] font-bold text-gray-400 uppercase truncate">${formatShortMatchDate(m.date)}${m.partner ? ' &bull; w/ ' + escapeHtml(m.partner) : ''}</p>
+                                        <p class="text-xs font-bold text-black truncate">vs ${m.opponents.length ? m.opponents.map(o => nameLinkHtml(o)).join(' &amp; ') : 'Singles'}</p>
+                                    </div>
+                                </div>
+                                <div class="text-right flex-shrink-0">
+                                    <p class="font-black text-xs">${m.score}</p>
+                                    <p class="text-[9px] font-bold ${m.pointChange > 0 ? 'text-green-600' : m.pointChange < 0 ? 'text-rose-600' : 'text-gray-400'}">${m.pointChange > 0 ? '+' : ''}${m.pointChange} pts</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>` : '';
+
             // 6. Build Body
             const bodyHtml = `
                 ${bioHtml}
+                ${headToHeadHtml}
                 <div class="grid grid-cols-2 gap-4">
                     <div class="stat-card border-l-4 border-black p-3 text-left bg-gray-50 rounded-xl">
                         <p class="text-[10px] font-bold text-gray-400 uppercase">Skill Rating</p>
@@ -7018,11 +7205,14 @@
                         <p class="text-[9px] font-bold text-gray-400 uppercase">Total Games</p>
                         <p class="text-xl font-black text-black">${p.totalGames}</p>
                     </div>
-                    <div class="py-3 bg-black rounded-xl text-center border-b-4 border-rose-600 shadow-lg">
-                        <p class="text-[9px] font-black uppercase tracking-tighter" style="color: #e11d48 !important;">Current Streak</p>
+                    <div class="py-3 rounded-xl text-center border-b-4 shadow-lg ${currentStreak >= 3 ? 'border-orange-400' : 'border-rose-600 bg-black'}" ${currentStreak >= 3 ? 'style="background: linear-gradient(135deg, #e11d48, #f97316) !important;"' : ''}>
+                        <p class="text-[9px] font-black uppercase tracking-tighter" style="color: ${currentStreak >= 3 ? '#fff7ed' : '#e11d48'} !important;">Current Streak</p>
                         <p class="text-xl font-black italic" style="color: #ffffff !important;">${currentStreak > 0 ? '🔥 ' + currentStreak : '—'}</p>
                     </div>
                 </div>
+
+                ${ratingTrendHtml}
+                ${achievementsHtml}
 
                 <div class="space-y-3">
                     <h4 class="font-black italic uppercase border-b-2 border-gray-100 pb-1 text-xs text-gray-400">Player Relationships</h4>
@@ -7041,6 +7231,7 @@
                         </div>
                     </div>
                 </div>
+                ${matchHistoryHtml}
                 ${femaleSectionHtml}
                 <div class="h-20"></div>
             `;
