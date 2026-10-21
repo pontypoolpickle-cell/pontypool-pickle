@@ -1,0 +1,26 @@
+-- ============================================================================
+-- ADD LADDER GAMES "SCORED_AT" COLUMN (fixes matches recording in random order)
+-- ============================================================================
+-- Run this once in the Supabase SQL Editor if it hasn't been run already.
+-- Safe to re-run (uses "if not exists").
+--
+-- What this is for: each ladder "round" actually plays several games per
+-- court (players rotate partners within the round - see
+-- generateCourtRoundGames() in public/index.html), and those games used to
+-- be fetched with no explicit order guaranteeing they come back in the
+-- sequence they were confirmed in. Postgres doesn't promise row order for a
+-- plain SELECT unless you ORDER BY something that captures it, and once a
+-- few of a round's games have been UPDATEd with scores, the order they're
+-- returned in can shuffle - so endLadderRound() ended up inserting that
+-- round's results into the `matches` table in an effectively random order,
+-- which made win streaks (and anything else that reads match history in
+-- order) look wrong.
+--
+-- This column is stamped with the current time the first time a game's score
+-- is confirmed (see updateLadderScore() in public/index.html) and left alone
+-- on later edits, so endLadderRound() can sort that round's games by
+-- scored_at before recording them - preserving the real order they were
+-- actually played in.
+-- ============================================================================
+
+alter table ladder_games add column if not exists scored_at timestamptz;
