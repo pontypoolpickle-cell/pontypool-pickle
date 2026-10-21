@@ -1967,6 +1967,64 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // Profile improvements: shared helpers for showing a player's avatar
+        // thumbnail and a clickable link into their "View Profile" popup
+        // (openProfile()) wherever a player's name appears - Ladders rosters/
+        // courts, Scramble live cards, Match History, and the admin's Manage
+        // Players list - not just the Ratings table, which used to be the only
+        // place you could get into someone's profile.
+        function getPlayerAvatarUrl(name) {
+            const rec = (globalData.members || []).find(m => normalizeName(m.name) === normalizeName(name || ''));
+            return rec && rec.avatarUrl ? rec.avatarUrl : '';
+        }
+
+        function avatarThumbHtml(name, sizeClass) {
+            if (!name || name === 'Singles') return '';
+            const cls = sizeClass || 'w-6 h-6';
+            const url = getPlayerAvatarUrl(name);
+            const initial = name.trim().charAt(0).toUpperCase() || '?';
+            return url
+                ? `<img src="${url}" alt="${escapeHtml(name)}" class="${cls} rounded-full object-cover flex-shrink-0 border border-gray-200">`
+                : `<div class="${cls} rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 font-black text-gray-500" style="font-size: 9px;">${escapeHtml(initial)}</div>`;
+        }
+
+        // "Singles"/blank just render as plain text (nothing to open a profile
+        // for). Inline styles reset button chrome so this drops into existing
+        // markup without inheriting browser default button styling.
+        function nameLinkHtml(name, labelHtml) {
+            const label = labelHtml != null ? labelHtml : escapeHtml(name || '');
+            if (!name || name === 'Singles') return label;
+            return `<button type="button" onclick="openProfile('${name}')" class="hover:text-rose-600 hover:underline transition" style="background:none;border:none;padding:0;margin:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;">${label}</button>`;
+        }
+
+        // Profile improvements: a dependency-free inline SVG sparkline (no
+        // charting library in this app) for the "Rating Trend" card on a
+        // player's profile - just a simple line + a highlighted dot on the
+        // most recent value, scaled to fit whatever range of values it's given.
+        function buildSparklineSvg(values, opts) {
+            opts = opts || {};
+            const width = opts.width || 280;
+            const height = opts.height || 56;
+            const color = opts.color || '#e11d48';
+            if (!values || values.length < 2) return '';
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const range = (max - min) || 1;
+            const pad = 4;
+            const toXY = (v, i) => {
+                const x = (i / (values.length - 1)) * width;
+                const y = height - pad - ((v - min) / range) * (height - pad * 2);
+                return [x, y];
+            };
+            const points = values.map((v, i) => toXY(v, i).map(n => n.toFixed(1)).join(',')).join(' ');
+            const [lastX, lastY] = toXY(values[values.length - 1], values.length - 1);
+            return `
+            <svg viewBox="0 0 ${width} ${height}" class="w-full" style="height: ${height}px; display: block;" preserveAspectRatio="none">
+                <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+                <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3.5" fill="${color}" />
+            </svg>`;
+        }
+
         // Item #14: a temporary 'Pending Payment' hold occupies a real seat (that's
         // the point of the 15-minute reservation window), so anywhere that counts
         // "how many seats are taken" needs to treat it the same as 'Confirmed'.
@@ -5566,7 +5624,8 @@
                             </span>
                             <span style="color: ${accentColor} !important; font-size: 1.5rem; font-weight: 900;">+${p.recentChange}</span>
                         </div>
-                        <h4 style="color: #ffffff !important; font-family: 'Oswald', sans-serif !important; font-size: 1.8rem; font-weight: 900; font-style: italic; text-transform: uppercase; margin-top: 1rem;">
+                        <h4 style="color: #ffffff !important; font-family: 'Oswald', sans-serif !important; font-size: 1.8rem; font-weight: 900; font-style: italic; text-transform: uppercase; margin-top: 1rem; display: flex; align-items: center; gap: 10px;">
+                            ${avatarThumbHtml(p.name, 'w-9 h-9')}
                             ${p.name}
                         </h4>
                         <div style="margin-top: 1rem; display: flex; justify-between; align-items: center;">
@@ -5692,6 +5751,7 @@
                                 <span class="inline-flex items-center justify-center flex-shrink-0" style="width: 28px;">
                                     ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge-lg" title="Active Member">` : ''}
                                 </span>
+                                ${avatarThumbHtml(p.name, 'w-7 h-7')}
                                 <button onclick="openProfile('${p.name}')" class="font-black text-left text-xs md:text-lg hover:text-rose-600 transition underline decoration-rose-200 underline-offset-4">
                                     ${p.name}
                                 </button>
@@ -5730,7 +5790,7 @@
         function renderAdminHistory() {
             const adminBody = document.getElementById('adminHistoryBody');
             if (adminBody) {
-                adminBody.innerHTML = globalData.history.slice(0, adminMatchesVisible).map(m => `<tr><td class="py-3 font-bold text-gray-400 text-xs">${m.date}</td><td class="py-3 text-sm"><span class="font-black text-rose-600">${m.w1}/${m.w2}</span> <span class="mx-1 italic">vs</span> <span class="font-bold text-gray-600">${m.l1}/${m.l2}</span></td><td class="py-3 text-right"><button onclick='confirmDeleteMatch(${JSON.stringify(m)})' class="p-2 text-gray-300 hover:text-rose-600"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></td></tr>`).join('');
+                adminBody.innerHTML = globalData.history.slice(0, adminMatchesVisible).map(m => `<tr><td class="py-3 font-bold text-gray-400 text-xs">${m.date}</td><td class="py-3 text-sm"><span class="font-black text-rose-600">${nameLinkHtml(m.w1)}/${nameLinkHtml(m.w2)}</span> <span class="mx-1 italic">vs</span> <span class="font-bold text-gray-600">${nameLinkHtml(m.l1)}/${nameLinkHtml(m.l2)}</span></td><td class="py-3 text-right"><button onclick='confirmDeleteMatch(${JSON.stringify(m)})' class="p-2 text-gray-300 hover:text-rose-600"><svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></td></tr>`).join('');
                 const smBtn = document.getElementById('adminShowMoreContainer');
                 if (globalData.history.length > adminMatchesVisible) smBtn.classList.remove('hidden'); else smBtn.classList.add('hidden');
             }
@@ -5758,21 +5818,21 @@
                     <td class="p-2 md:p-4 font-bold text-gray-400 text-[10px] md:text-sm border-r">${m.date}</td>
                     <td class="p-2 md:p-4">
                         <div class="text-[10px] md:text-sm font-black text-rose-600 uppercase leading-tight">
-                            ${m.w1} <span style="color: ${getPointColor(m.c1)} !important;" class="text-[9px]">(${m.c1})</span>
+                            ${nameLinkHtml(m.w1)} <span style="color: ${getPointColor(m.c1)} !important;" class="text-[9px]">(${m.c1})</span>
                         </div>
                         ${m.w2 !== 'Singles' ? `
                         <div class="text-[10px] md:text-sm font-black text-rose-600 uppercase leading-tight mt-1">
-                            ${m.w2} <span style="color: ${getPointColor(m.c2)} !important;" class="text-[9px]">(${m.c2})</span>
+                            ${nameLinkHtml(m.w2)} <span style="color: ${getPointColor(m.c2)} !important;" class="text-[9px]">(${m.c2})</span>
                         </div>` : ''}
                         <div class="mt-1 font-bold text-[9px] text-gray-400 uppercase">Score: ${m.sW}</div>
                     </td>
                     <td class="p-2 md:p-4">
                         <div class="text-[10px] md:text-sm font-bold text-gray-800 uppercase leading-tight">
-                            ${m.l1} <span style="color: ${getPointColor(m.c3)} !important;" class="text-[9px]">(${m.c3})</span>
+                            ${nameLinkHtml(m.l1)} <span style="color: ${getPointColor(m.c3)} !important;" class="text-[9px]">(${m.c3})</span>
                         </div>
                         ${m.l2 !== 'Singles' ? `
                         <div class="text-[10px] md:text-sm font-bold text-gray-800 uppercase leading-tight mt-1">
-                            ${m.l2} <span style="color: ${getPointColor(m.c4)} !important;" class="text-[9px]">(${m.c4})</span>
+                            ${nameLinkHtml(m.l2)} <span style="color: ${getPointColor(m.c4)} !important;" class="text-[9px]">(${m.c4})</span>
                         </div>` : ''}
                         <div class="mt-1 font-bold text-[9px] text-gray-400 uppercase">Score: ${m.sL}</div>
                     </td>
@@ -7239,8 +7299,8 @@
                 <div class="flex items-center gap-3 mb-2">
                     <input type="number" id="liveA_${r[0]}" value="${r[5]}" placeholder="0" class="sc-score-A rounded text-center font-black bg-white" style="${boxStyle}">
                     <div class="flex-grow font-bold text-xs leading-tight text-black">
-                        <span class="pn1">${r[1]}</span> 
-                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn2">' + r[2] + '</span>' : '<span class="pn2 hidden">Singles</span>'}
+                        <span class="pn1">${nameLinkHtml(r[1])}</span> 
+                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn2">' + nameLinkHtml(r[2]) + '</span>' : '<span class="pn2 hidden">Singles</span>'}
                     </div>
                 </div>
 
@@ -7249,8 +7309,8 @@
                 <!-- TEAM B -->
                 <div class="flex items-center gap-3 mt-2">
                     <div class="flex-grow font-bold text-xs text-right leading-tight text-black">
-                        <span class="pn3">${r[3]}</span> 
-                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn4">' + r[4] + '</span>' : '<span class="pn4 hidden">Singles</span>'}
+                        <span class="pn3">${nameLinkHtml(r[3])}</span> 
+                        ${!isS ? '<br><span style="color: #999 !important;">&</span> <span class="pn4">' + nameLinkHtml(r[4]) + '</span>' : '<span class="pn4 hidden">Singles</span>'}
                     </div>
                     <input type="number" id="liveB_${r[0]}" value="${r[6]}" placeholder="0" class="sc-score-B rounded text-center font-black bg-white" style="${boxStyle}">
                 </div>
@@ -7666,7 +7726,7 @@
 
 				const playersHtml = players.map((p, i) => `
 					<div class="flex justify-between items-center py-2 ${i < players.length - 1 ? 'border-b border-gray-100' : ''}">
-						<span class="font-bold text-sm uppercase">${i + 1}. ${p.playerName}</span>
+						<span class="font-bold text-sm uppercase flex items-center gap-2">${i + 1}. ${avatarThumbHtml(p.playerName, 'w-5 h-5')} ${nameLinkHtml(p.playerName)}</span>
 						<span class="font-black text-rose-600">${p.roundPoints} pts <span class="text-gray-400 font-bold">(${p.pointsDiff > 0 ? '+' : ''}${p.pointsDiff})</span></span>
 					</div>
 				`).join('');
@@ -7689,8 +7749,8 @@
             // Item #6: show who's actually filling a slot vs. whose ladder points
             // it is, so a substitution stays obvious at a glance (e.g. on court).
             const nameLabel = (name, original) => original
-                ? `${name} <span style="color:#999; font-weight:700;">(sub for ${original})</span>`
-                : name;
+                ? `${nameLinkHtml(name)} <span style="color:#999; font-weight:700;">(sub for ${original})</span>`
+                : nameLinkHtml(name);
 
             return `
             <div class="border-2 border-gray-100 rounded-xl p-4">
@@ -8272,7 +8332,7 @@
             <div id="membershipAllPlayersList" class="overflow-y-auto space-y-2 divide-y" style="max-height: 340px;">
                 ${players.map(p => `
                     <div class="flex justify-between items-center py-3 gap-3 membership-all-player-row" data-name="${p.name.toLowerCase()}">
-                        <span class="font-bold text-sm uppercase flex-grow">${p.name} ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}</span>
+                        <span class="font-bold text-sm uppercase flex-grow flex items-center gap-2">${avatarThumbHtml(p.name, 'w-7 h-7')} ${nameLinkHtml(p.name)} ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}</span>
                         ${memberNames.has(normalizeName(p.name)) ? `
                         <button onclick='openMembershipGiftModal(${JSON.stringify({ name: p.name, endDate: p.membershipEndDate })})'
                                 class="btn-gold px-3 py-2 rounded-full text-[9px] font-black uppercase flex-shrink-0" title="Give 1 month of membership for free">🎁 Free Month</button>
