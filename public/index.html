@@ -142,6 +142,8 @@
                 <button onclick="showTab('club-info-page')" id="nav-club-info" class="nav-link py-1">Club Info & Resources</button>
                 <button onclick="showTab('merchandise-page')" id="nav-merchandise" class="nav-link py-1">Merchandise</button>
                 <button onclick="showTab('membership-page')" id="nav-membership" class="nav-link nav-link-gold py-1">⭐ Membership</button>
+                <!-- Item #4: only shown to logged-in players - see updateUIForLogin() -->
+                <button onclick="showTab('profile-page')" id="nav-profile" class="nav-link py-1 hidden">👤 Profile</button>
                 <button onclick="openWalletModal()" id="nav-wallet" class="hidden bg-black bg-opacity-30 border border-white border-opacity-20 px-3 py-1.5 rounded-full font-black" style="color: var(--ponty-gold) !important;">💰 <span id="nav-wallet-balance">£0.00</span></button>
                 <button onclick="showTab('admin')" id="nav-admin" class="btn-red px-4 py-2 rounded font-black hidden">Admin</button>
                 <button onclick="openAuthModal()" id="nav-auth" class="bg-white text-black px-4 py-2 rounded-full font-black hover:bg-rose-600 hover:text-white transition">Login / Sign Up</button>
@@ -173,6 +175,8 @@
                 <button onclick="showTab('club-info-page'); closeMobileMenu();" id="nav-club-info-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">ℹ️ Club Info & Resources</button>
                 <button onclick="showTab('merchandise-page'); closeMobileMenu();" id="nav-merchandise-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🛍️ Merchandise</button>
                 <button onclick="showTab('membership-page'); closeMobileMenu();" id="nav-membership-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 nav-link-gold transition">⭐ Membership</button>
+                <!-- Item #4: only shown to logged-in players - see updateUIForLogin() -->
+                <button onclick="showTab('profile-page'); closeMobileMenu();" id="nav-profile-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">👤 Profile</button>
                 <button onclick="openWalletModal(); closeMobileMenu();" id="nav-wallet-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 transition" style="color: var(--ponty-gold) !important;">💰 Wallet: <span id="nav-wallet-balance-m">£0.00</span></button>
                 <button onclick="showTab('admin'); closeMobileMenu();" id="nav-admin-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 text-rose-400 hover:text-rose-300 transition">⚙️ Admin</button>
 				<button onclick="openAuthModal(); closeMobileMenu();" id="nav-auth-m" class="text-left px-2 py-3 text-rose-400 hover:text-rose-300 transition">Login / Sign Up</button>
@@ -653,6 +657,67 @@
                 <p class="text-lg leading-relaxed" style="color: #ffffff !important;">
                     Pontypool Pickleball Club is a <strong style="color: var(--ponty-gold-light) !important;">not-for-profit</strong> club. Every penny raised through membership goes straight back into the club — equipment, court bookings, and growing the game in Pontypool. Thank you for your support! 🙏
                 </p>
+            </div>
+        </div>
+        <!-- PROFILE PAGE (Item #4): expanded personal profile for logged-in
+             players - picture + bio (editable here) plus the same match/
+             winstreak/best-partner stats as the "View Profile" popup. See
+             renderProfilePage() in the script below. -->
+        <div id="profile-page" class="tab-content hidden max-w-3xl mx-auto space-y-6 px-4 pb-20">
+            <!-- RESTRICTED ACCESS MESSAGE (logged-out visitors) -->
+            <div id="profileRestricted" class="card p-12 text-center space-y-6 border-t-8 border-black">
+                <div class="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="text-2xl font-black uppercase italic">Login Required</h3>
+                    <p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">
+                        Log in or sign up for a free account to set up your profile.
+                    </p>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+                    <button onclick="openAuthModal()" class="btn-red px-8 py-3 rounded-full font-black uppercase text-sm shadow-lg">Login / Sign Up</button>
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div id="profileMainContent" class="hidden space-y-6">
+                <h2 class="text-4xl font-black border-l-8 border-rose-600 pl-4 uppercase italic">My Profile</h2>
+
+                <!-- Avatar + name -->
+                <div class="card p-6 md:p-8 flex flex-col sm:flex-row items-center gap-6 border-t-8 border-black">
+                    <div class="relative flex-shrink-0">
+                        <img id="profileAvatarPreview" src="" alt="Your profile picture" class="w-28 h-28 rounded-full object-cover border-4 border-gray-100 hidden">
+                        <div id="profileAvatarPlaceholder" class="w-28 h-28 rounded-full bg-gray-100 border-4 border-gray-100 flex items-center justify-center text-4xl font-black text-gray-400">?</div>
+                        <label for="profileAvatarInput" title="Change profile picture" class="absolute bottom-0 right-0 bg-black text-white w-9 h-9 rounded-full flex items-center justify-center cursor-pointer hover:bg-rose-600 transition shadow-lg">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </label>
+                        <input type="file" id="profileAvatarInput" accept="image/*" class="hidden" onchange="handleOwnAvatarUpload(this)">
+                    </div>
+                    <div class="flex-grow text-center sm:text-left min-w-0 w-full">
+                        <div id="profileNameHeaderBadges" class="flex items-center gap-2 mb-1 flex-wrap justify-center sm:justify-start"></div>
+                        <h3 id="profileNameHeader" class="text-3xl font-black italic uppercase truncate"></h3>
+                        <p id="profileAvatarUploadStatus" class="text-[10px] font-bold text-gray-400 uppercase mt-1 tracking-widest"></p>
+                    </div>
+                </div>
+
+                <!-- Bio -->
+                <div class="card p-6 border-t-8 border-rose-600 space-y-3">
+                    <h3 class="font-black uppercase text-sm text-gray-500">About Me</h3>
+                    <textarea id="profileBioInput" maxlength="280" rows="3" oninput="updateProfileBioCharCount()" placeholder="Tell other players a bit about yourself..." class="input-field border-2 w-full"></textarea>
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <p class="text-[10px] font-bold text-gray-400 uppercase"><span id="profileBioCharCount">0</span>/280</p>
+                        <button onclick="handleSaveOwnBio()" id="profileBioSaveBtn" class="bg-black text-white px-5 py-2.5 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition">Save Bio</button>
+                    </div>
+                </div>
+
+                <!-- Stats (shared with the "View Profile" popup - see buildProfileView()) -->
+                <div id="profileStatsBody" class="space-y-6"></div>
             </div>
         </div>
         <!-- SCRAMBLE PAGE -->
@@ -1392,6 +1457,23 @@
         create unique index if not exists users_membership_number_idx
             on users (membership_number) where membership_number is not null;
 
+        -- Item #4: expanded personal profile - a short self-written bio and a
+        -- profile picture, editable by the player themselves from the new
+        -- "Profile" tab (see renderProfilePage()/saveOwnBio()/
+        -- handleOwnAvatarUpload() in this file). The picture itself is stored
+        -- in the same public "event-documents" Storage bucket already used for
+        -- Rules PDFs/merchandise/gallery photos (path prefix "avatars/") - no
+        -- extra bucket needs creating. Like every other non-money/membership
+        -- column on this table, these are left writable by the anon/
+        -- authenticated key (not included in the `revoke update (...)` list in
+        -- supabase/sql/wallet_stripe_auth_migration.sql) - the app only ever
+        -- writes to the current user's own row (`.eq('username',
+        -- currentUser.username)`), consistent with this schema's existing
+        -- "no RLS, client code is the boundary" posture everywhere outside the
+        -- wallet/membership columns.
+        alter table users add column if not exists bio text;
+        alter table users add column if not exists avatar_url text;
+
         -- Site settings (item #9) - simple key/value store for singleton
         -- admin-managed values (currently just the Rules PDF link) so future
         -- one-off settings don't each need their own dedicated column/table.
@@ -1870,6 +1952,21 @@
             return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
         }
 
+        // Item #4: bios are free text written by the player themselves (unlike
+        // most other user-facing strings in this file, which are either
+        // admin-entered or constrained inputs like names/scores) and get
+        // rendered via innerHTML wherever a profile is shown - escape it first
+        // so someone can't put live HTML/script into their own bio and have it
+        // run in everyone else's browser when they view that profile.
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // Item #14: a temporary 'Pending Payment' hold occupies a real seat (that's
         // the point of the 15-minute reservation window), so anywhere that counts
         // "how many seats are taken" needs to treat it the same as 'Confirmed'.
@@ -2031,7 +2128,14 @@
                 endDate: u.membership_end_date || null,
                 lastReminderSent: u.membership_last_reminder_sent || null,
                 paymentRef: u.membership_payment_ref || '',
-                isActive: isMembershipActive(u)
+                isActive: isMembershipActive(u),
+                // Item #4: expanded personal profile (bio + profile picture) -
+                // degrades gracefully to blank until the bio/avatar_url columns
+                // migration (supabase/sql/add_user_profile_bio_avatar_columns.sql)
+                // has been run, since `u.bio`/`u.avatar_url` would then simply be
+                // undefined from the select rather than throwing anywhere.
+                bio: u.bio || '',
+                avatarUrl: u.avatar_url || ''
             };
         }
 
@@ -2520,7 +2624,7 @@
                 supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
                 supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
                 supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true }),
-                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref').eq('status', 'Approved').order('first_name', { ascending: true }),
+                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url').eq('status', 'Approved').order('first_name', { ascending: true }),
                 // Fetched separately (not merged into the query above) so that sites
                 // which haven't yet run the membership_number/created_at migration
                 // comment near the top of this file don't lose the existing Manage
@@ -4417,6 +4521,74 @@
             }
         }
 
+        // Item #4: expanded personal profile (bio + profile picture) - lets any
+        // logged-in player personalise their own account from the new "Profile"
+        // tab. Like other direct-write functions in this file, there's no RLS on
+        // `users` to enforce this server-side - the `.eq('username', ...)` below,
+        // always scoped to the logged-in account's own username, is what keeps
+        // this self-service rather than letting someone edit anyone else's
+        // profile (see the schema comment near `alter table users add column
+        // ... bio` for the fuller reasoning).
+        const PROFILE_BIO_MAX_LENGTH = 280;
+
+        async function saveOwnBio(bio) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const trimmed = String(bio || '').trim();
+            if (trimmed.length > PROFILE_BIO_MAX_LENGTH) {
+                throw new Error(`Bio must be ${PROFILE_BIO_MAX_LENGTH} characters or fewer.`);
+            }
+            const { error } = await supabaseClient.from('users').update({ bio: trimmed }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            patchOwnProfileExtrasInGlobalData({ bio: trimmed });
+            return trimmed;
+        }
+
+        // Reuses the same public "event-documents" Storage bucket already used
+        // for Rules PDFs/merchandise/gallery photos (see the setup comment near
+        // the top of this file) - no extra bucket needs creating. Each upload
+        // gets its own timestamped filename, so an old picture is never
+        // overwritten/broken by a new one failing partway through - the
+        // `users.avatar_url` row is only repointed once the new file has
+        // finished uploading successfully.
+        const AVATAR_IMAGE_BUCKET = 'event-documents';
+
+        async function uploadAvatarImage(file) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `avatars/${currentUser.username}-${Date.now()}-${safeName}`;
+            const { error } = await supabaseClient.storage.from(AVATAR_IMAGE_BUCKET).upload(path, file, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: file.type || 'image/jpeg'
+            });
+            if (error) throw new Error(`Could not upload image (${error.message}). Make sure the "${AVATAR_IMAGE_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
+            const { data: publicUrlData } = supabaseClient.storage.from(AVATAR_IMAGE_BUCKET).getPublicUrl(path);
+            return publicUrlData.publicUrl;
+        }
+
+        async function saveOwnAvatar(file) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const avatarUrl = await uploadAvatarImage(file);
+            const { error } = await supabaseClient.from('users').update({ avatar_url: avatarUrl }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            patchOwnProfileExtrasInGlobalData({ avatarUrl });
+            return avatarUrl;
+        }
+
+        // Mirrors patchOwnMembershipInGlobalData() above - updates just the
+        // current user's own entry in the already-loaded globalData.members, so
+        // a bio/avatar change is reflected immediately everywhere it's shown
+        // (the Profile tab, and anyone else's "View Profile" popup) without
+        // waiting for the next full background refreshAllData().
+        function patchOwnProfileExtrasInGlobalData(fields) {
+            if (!globalData || !currentUser) return;
+            const members = globalData.members;
+            if (!Array.isArray(members)) return;
+            const idx = members.findIndex(m => m.username === currentUser.username);
+            if (idx !== -1) {
+                members[idx] = Object.assign({}, members[idx], fields);
+            }
+        }
+
         // Wallet system: paying for an event is now an automatic, near-instant step
         // right after signing up (see payForEventSignupNow()) rather than something
         // a member has 15 minutes to go and do separately via bank transfer. This
@@ -5179,6 +5351,11 @@
 				if(id === 'history-page') applyLoginGate('historyRestricted', 'historyMainContent');
 				if(id === 'club-info-page') applyLoginGate('clubInfoRestricted', 'clubInfoGatedContent');
 				if(id === 'merchandise-page') applyLoginGate('merchandiseRestricted', 'merchandiseMainContent');
+				// Item #4: the Profile tab itself is just login-gated (any logged-in
+				// player can set a picture/bio) - the match stats inside it have
+				// their own, stricter Members-only gate, handled by
+				// renderProfilePage() itself (mirroring openProfile()).
+				if(id === 'profile-page') { applyLoginGate('profileRestricted', 'profileMainContent'); if (currentUser) renderProfilePage(); }
             }
             // render() calls showTab(currentTabId, { scroll: false }) purely to
             // re-apply visibility/access state for whatever tab is already open -
@@ -6535,25 +6712,23 @@
                 });
         }
 
-        function openProfile(playerName) {
+        // Item #4: shared stats/markup builder behind both the quick "View
+        // Profile" popup (openProfile(), read-only, used when browsing other
+        // players from the Ratings/Ladders pages) and the dedicated "Profile"
+        // tab (renderProfilePage(), the logged-in player's own expanded space
+        // with an editable bio/avatar) - both show exactly the same
+        // match/winstreak/best-partner stats, computed once here, so they can
+        // never drift out of sync with each other. Returns null if there's no
+        // `players` row for this name yet (e.g. a brand-new account that
+        // hasn't been through the "Approve" step that creates one).
+        function buildProfileView(playerName, options) {
+            const opts = options || {};
+            // The dedicated Profile tab (renderProfilePage()) shows the bio in
+            // its own editable textarea above these stats, so it passes
+            // includeBio: false to avoid showing the same text twice.
+            const includeBio = opts.includeBio !== false;
             const p = globalData.standings.find(x => x.name === playerName);
-            if (!p) return;
-			
-			if (!currentUser || (currentUser.role !== 'Member' && currentUser.role !== 'Admin')) {
-				document.getElementById('profileHeaderTitle').innerHTML = `
-					<h2 class="text-3xl font-black italic tracking-tight uppercase text-white">Members Only</h2>
-				`;
-				document.getElementById('profileContent').innerHTML = `
-					<div class="text-center py-10 space-y-4">
-						<p class="text-5xl">🔒</p>
-						<p class="font-bold text-gray-600 max-w-sm mx-auto">Player profiles are only available to club members.</p>
-						<button onclick="closeProfile(); showTab('membership-page');" class="btn-gold px-6 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">⭐ Activate Your Membership</button>
-					</div>
-				`;
-				document.getElementById('profileModal').style.display = 'flex';
-				document.body.classList.add('modal-open');
-				return;
-			}
+            if (!p) return null;
 
             // 1. Calculate Rating Rank (mixed board) - must mirror the exact
             // same filtering renderStandings() applies before assigning rank
@@ -6714,23 +6889,44 @@
                 </div>`;
             }
 
-            // 5. Inject Header
+            // 5. Build Header
             const memberRecord = (globalData.members || []).find(m => normalizeName(m.name) === normalizeName(p.name));
             const membershipNumberBadge = memberRecord && memberRecord.membershipNumberFormatted
                 ? `<span class="bg-white bg-opacity-10 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest" style="color: var(--ponty-gold) !important;">${memberRecord.membershipNumberFormatted}</span>`
                 : '';
-            document.getElementById('profileHeaderTitle').innerHTML = `
-                <div class="flex items-center gap-2 mb-1 flex-wrap">
-                    <span class="skill-badge ${badgeClass}" style="font-size: 9px; padding: 3px 10px;">${badgeText}</span>
-                    <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank || '—'}</span>
-                    ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
-                    ${membershipNumberBadge}
+            // Item #4: profile picture, shown in the popup header next to the
+            // name - falls back to a plain initial-letter avatar when the
+            // player hasn't uploaded one.
+            const avatarUrl = memberRecord && memberRecord.avatarUrl ? memberRecord.avatarUrl : '';
+            const avatarInitial = (p.name || '?').trim().charAt(0).toUpperCase() || '?';
+            const avatarHtml = avatarUrl
+                ? `<img src="${avatarUrl}" alt="${p.name}" class="w-16 h-16 rounded-full object-cover border-2 flex-shrink-0" style="border-color: var(--ponty-gold) !important;">`
+                : `<div class="w-16 h-16 rounded-full bg-white bg-opacity-10 border-2 flex items-center justify-center flex-shrink-0 text-2xl font-black text-white" style="border-color: var(--ponty-gold) !important;">${avatarInitial}</div>`;
+            const bio = memberRecord && memberRecord.bio ? memberRecord.bio : '';
+            const bioHtml = (includeBio && bio)
+                ? `<div class="bg-gray-50 border-l-4 border-gray-200 rounded-xl p-4">
+                        <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Bio</p>
+                        <p class="text-sm font-bold text-gray-700 whitespace-pre-wrap break-words">${escapeHtml(bio)}</p>
+                   </div>`
+                : '';
+            const headerHtml = `
+                <div class="flex items-center gap-3">
+                    ${avatarHtml}
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 mb-1 flex-wrap">
+                            <span class="skill-badge ${badgeClass}" style="font-size: 9px; padding: 3px 10px;">${badgeText}</span>
+                            <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${skillRank || '—'}</span>
+                            ${p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
+                            ${membershipNumberBadge}
+                        </div>
+                        <h2 class="text-3xl font-black italic tracking-tight uppercase text-white truncate">${p.name}</h2>
+                    </div>
                 </div>
-                <h2 class="text-3xl font-black italic tracking-tight uppercase text-white">${p.name}</h2>
             `;
 
-            // 6. Inject Body
-            document.getElementById('profileContent').innerHTML = `
+            // 6. Build Body
+            const bodyHtml = `
+                ${bioHtml}
                 <div class="grid grid-cols-2 gap-4">
                     <div class="stat-card border-l-4 border-black p-3 text-left bg-gray-50 rounded-xl">
                         <p class="text-[10px] font-bold text-gray-400 uppercase">Skill Rating</p>
@@ -6788,7 +6984,35 @@
                 ${femaleSectionHtml}
                 <div class="h-20"></div>
             `;
-            
+
+            return { p, memberRecord, skillRank, badgeClass, badgeText, membershipNumberBadge, avatarUrl, avatarHtml, bio, headerHtml, bodyHtml };
+        }
+
+        // Quick read-only "View Profile" popup used when browsing other players
+        // (Ratings/Ladders pages) - editing your own bio/avatar happens on the
+        // dedicated "Profile" tab instead (see renderProfilePage()).
+        function openProfile(playerName) {
+            if (!currentUser || (currentUser.role !== 'Member' && currentUser.role !== 'Admin')) {
+				document.getElementById('profileHeaderTitle').innerHTML = `
+					<h2 class="text-3xl font-black italic tracking-tight uppercase text-white">Members Only</h2>
+				`;
+				document.getElementById('profileContent').innerHTML = `
+					<div class="text-center py-10 space-y-4">
+						<p class="text-5xl">🔒</p>
+						<p class="font-bold text-gray-600 max-w-sm mx-auto">Player profiles are only available to club members.</p>
+						<button onclick="closeProfile(); showTab('membership-page');" class="btn-gold px-6 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">⭐ Activate Your Membership</button>
+					</div>
+				`;
+				document.getElementById('profileModal').style.display = 'flex';
+				document.body.classList.add('modal-open');
+				return;
+			}
+
+            const view = buildProfileView(playerName);
+            if (!view) return;
+
+            document.getElementById('profileHeaderTitle').innerHTML = view.headerHtml;
+            document.getElementById('profileContent').innerHTML = view.bodyHtml;
             document.getElementById('profileModal').style.display = 'flex';
             document.body.classList.add('modal-open');
         }
@@ -6796,6 +7020,139 @@
         function closeProfile() {
             document.getElementById('profileModal').style.display = 'none';
             document.body.classList.remove('modal-open');
+        }
+
+        // Item #4: the dedicated "Profile" tab - the logged-in player's own
+        // expanded space (picture, bio, and the same stats as the "View
+        // Profile" popup via buildProfileView()). Re-run on every showTab()
+        // into this page and after every background data refresh, same as
+        // every other tab - see render()/showTab().
+        function renderProfilePage() {
+            if (!currentUser) return;
+            const playerName = currentUserFullName();
+            const memberRecord = (globalData.members || []).find(m => m.username === currentUser.username);
+
+            const avatarUrl = memberRecord && memberRecord.avatarUrl ? memberRecord.avatarUrl : '';
+            const avatarImg = document.getElementById('profileAvatarPreview');
+            const avatarPlaceholder = document.getElementById('profileAvatarPlaceholder');
+            if (avatarImg && avatarPlaceholder) {
+                if (avatarUrl) {
+                    avatarImg.src = avatarUrl;
+                    avatarImg.classList.remove('hidden');
+                    avatarPlaceholder.classList.add('hidden');
+                } else {
+                    avatarImg.classList.add('hidden');
+                    avatarPlaceholder.classList.remove('hidden');
+                    avatarPlaceholder.innerText = (playerName || currentUser.firstName || '?').trim().charAt(0).toUpperCase() || '?';
+                }
+            }
+
+            const nameHeader = document.getElementById('profileNameHeader');
+            if (nameHeader) nameHeader.innerText = playerName || currentUser.firstName;
+
+            // Don't stomp on the textarea while the player's actively typing in
+            // it - a background refresh re-running this mid-edit would otherwise
+            // silently discard an unsaved bio draft (the same class of bug fixed
+            // for the Ladders player-selection checkboxes - see
+            // renderLadderCheckboxes()).
+            const bioInput = document.getElementById('profileBioInput');
+            if (bioInput && document.activeElement !== bioInput) {
+                bioInput.value = memberRecord && memberRecord.bio ? memberRecord.bio : '';
+            }
+            updateProfileBioCharCount();
+
+            const badgesContainer = document.getElementById('profileNameHeaderBadges');
+            const statsContainer = document.getElementById('profileStatsBody');
+            if (!badgesContainer || !statsContainer) return;
+
+            const isMember = currentUser.role === 'Member' || currentUser.role === 'Admin';
+            if (!isMember) {
+                badgesContainer.innerHTML = '';
+                statsContainer.innerHTML = `
+                    <div class="card p-10 text-center space-y-4 border-t-8 border-gray-200">
+                        <p class="text-4xl">⭐</p>
+                        <p class="font-bold text-gray-600 max-w-sm mx-auto">Activate your membership to unlock your match stats, win streaks, and best-partner insights here.</p>
+                        <button onclick="showTab('membership-page')" class="btn-gold px-6 py-3 rounded-full font-black uppercase text-xs tracking-widest shadow-lg">⭐ Activate Your Membership</button>
+                    </div>
+                `;
+                return;
+            }
+
+            const view = buildProfileView(playerName, { includeBio: false });
+            if (!view) {
+                badgesContainer.innerHTML = '';
+                statsContainer.innerHTML = `<p class="text-center text-gray-400 italic py-10">Your player record hasn't been set up yet - check back once your account's fully approved.</p>`;
+                return;
+            }
+
+            badgesContainer.innerHTML = `
+                <span class="skill-badge ${view.badgeClass}" style="font-size: 9px; padding: 3px 10px;">${view.badgeText}</span>
+                <span class="bg-rose-600 px-2 py-0.5 rounded text-[10px] font-black uppercase italic text-white">Rank #${view.skillRank || '—'}</span>
+                ${view.p.isActiveMember ? `<img src="https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg" class="member-gold-badge" title="Active Member">` : ''}
+                ${view.membershipNumberBadge}
+            `;
+            statsContainer.innerHTML = view.bodyHtml;
+        }
+
+        function updateProfileBioCharCount() {
+            const bioInput = document.getElementById('profileBioInput');
+            const counter = document.getElementById('profileBioCharCount');
+            if (!bioInput || !counter) return;
+            counter.innerText = bioInput.value.length;
+        }
+
+        function handleSaveOwnBio() {
+            const bioInput = document.getElementById('profileBioInput');
+            const btn = document.getElementById('profileBioSaveBtn');
+            if (!bioInput || !btn) return;
+
+            btn.disabled = true;
+            btn.innerText = "Saving...";
+
+            saveOwnBio(bioInput.value)
+                .then(() => {
+                    triggerToast("Bio saved!");
+                    btn.disabled = false;
+                    btn.innerText = "Save Bio";
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    btn.disabled = false;
+                    btn.innerText = "Save Bio";
+                });
+        }
+
+        function handleOwnAvatarUpload(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                input.value = '';
+                return triggerError("Please choose an image file.");
+            }
+            // Keep uploads modest - these are small profile thumbnails, not
+            // full-resolution photos, and a multi-MB phone photo would both be
+            // slow to upload on club wifi and slow to load for everyone who
+            // later views this player's profile.
+            const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+            if (file.size > MAX_AVATAR_BYTES) {
+                input.value = '';
+                return triggerError("Please choose an image under 5MB.");
+            }
+
+            const status = document.getElementById('profileAvatarUploadStatus');
+            if (status) status.innerText = "Uploading...";
+
+            saveOwnAvatar(file)
+                .then(() => {
+                    if (status) status.innerText = "";
+                    renderProfilePage();
+                    triggerToast("Profile picture updated!");
+                })
+                .catch(err => {
+                    if (status) status.innerText = "";
+                    triggerError(err.message);
+                })
+                .finally(() => { input.value = ''; });
         }
 
         function handleUserAction(username, action) {
@@ -10170,11 +10527,17 @@
 			const authBtnMobile = document.getElementById('nav-auth-m');
 			const adminBtn = document.getElementById('nav-admin');
 			const adminBtnMobile = document.getElementById('nav-admin-m');
+			// Item #4: the "Profile" tab link, shown to any logged-in player
+			// (not just Members/Admins - everyone gets to set a picture/bio).
+			const profileBtn = document.getElementById('nav-profile');
+			const profileBtnMobile = document.getElementById('nav-profile-m');
 
 			if (currentUser) {
 				const label = currentUser.firstName + " (Logout)";
 				if (authBtn) authBtn.innerText = label;
 				if (authBtnMobile) authBtnMobile.innerText = label;
+				if (profileBtn) profileBtn.classList.remove('hidden');
+				if (profileBtnMobile) profileBtnMobile.classList.remove('hidden');
 				if (currentUser.role === "Admin") {
 					if (adminBtn) adminBtn.classList.remove('hidden');
 					if (adminBtnMobile) adminBtnMobile.classList.remove('hidden');
@@ -10184,6 +10547,8 @@
 				if (authBtnMobile) authBtnMobile.innerText = "Login / Sign Up";
 				if (adminBtn) adminBtn.classList.add('hidden');
 				if (adminBtnMobile) adminBtnMobile.classList.add('hidden');
+				if (profileBtn) profileBtn.classList.add('hidden');
+				if (profileBtnMobile) profileBtnMobile.classList.add('hidden');
 			}
 			updateScrambleAccess();
 			updateLaddersAccess();
