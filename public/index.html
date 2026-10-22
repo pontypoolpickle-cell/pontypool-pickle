@@ -5364,33 +5364,18 @@
         }
 
         async function cancelEvent(payload) {
-            const { eventId, message } = payload;
-            const [{ data: eventRows, error: eventErr }, { data: signupRows, error: signupErr }] = await Promise.all([
-                supabaseClient.from('events').select('*').eq('id', eventId).limit(1),
-                supabaseClient.from('signups').select('*').eq('event_id', eventId)
-            ]);
-            if (eventErr) throw new Error(eventErr.message);
-            if (signupErr) throw new Error(signupErr.message);
-
-            const event = eventRows && eventRows.length ? eventRows[0] : null;
-
-            const { error } = await supabaseClient.from('events').update({ status: 'Cancelled' }).eq('id', eventId);
-            if (error) throw new Error(error.message);
-
-            const recipients = (signupRows || []).filter(s => s.email);
-            await Promise.all(recipients.map(r =>
-				sendEmail('event_cancelled', {
-					name: r.player_name,
-					email: r.email,
-					eventTitle: event ? event.title : 'Event',
-					eventDate: event ? event.event_date : '',
-					eventTime: event ? event.event_time : '',
-					eventLocation: event ? event.location : '',
-					message: message || ''
-				})
-			));
-
-            return refreshAllData();
+            // Cancelling a whole event now goes through the cancel-event Edge
+            // Function rather than writing `events.status` directly from the
+            // browser, because it also has to automatically refund every paid
+            // signup to their wallet balance - and crediting balance has to
+            // happen server-side (see that function's header comment for why).
+            // It handles setting the event to Cancelled, the refunds, and
+            // emailing every signed-up player (including their refund amount,
+            // if any) itself - this is just a thin wrapper that reports back
+            // what happened.
+            const result = await callEdgeFunction('cancel-event', { eventId: payload.eventId, message: payload.message || '' });
+            const res = await refreshAllData();
+            return { res, result };
         }
 
         async function sendContactEmail(payload) {
@@ -11090,9 +11075,12 @@
             btn.innerText = "Cancelling...";
             
             cancelEvent({ eventId: eventId, message: message })
-                .then(res => {
+                .then(({ res, result }) => {
                     render(res);
-                    triggerToast("Event Cancelled. Attendees notified by email.");
+                    const refundNote = result && result.refundedCount > 0
+                        ? ` ${result.refundedCount} paid player${result.refundedCount === 1 ? '' : 's'} refunded £${Number(result.refundedTotal).toFixed(2)} total.`
+                        : '';
+                    triggerToast(`Event Cancelled. Attendees notified by email.${refundNote}`);
                     closeCancelEventModal();
                     btn.disabled = false;
                     btn.innerText = "Confirm Cancellation";

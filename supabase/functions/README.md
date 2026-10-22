@@ -83,6 +83,7 @@ supabase functions deploy stripe-webhook --no-verify-jwt
 supabase functions deploy wallet-topup-checkout
 supabase functions deploy spend-balance
 supabase functions deploy cancel-event-signup
+supabase functions deploy cancel-event
 supabase functions deploy admin-actions
 supabase functions deploy migrate-users-to-auth --no-verify-jwt
 ```
@@ -202,6 +203,11 @@ With `STRIPE_SECRET_KEY` still set to a `sk_test_...` key:
    merchandise order from that balance, and try cancelling a paid event
    signup both more than 24h and less than 24h before it starts, to confirm
    the refund-vs-no-refund behaviour.
+6. As an admin, cancel a whole event that has at least one paid signup
+   (Admin -> that event -> Cancel Event) and confirm the paid player's
+   wallet balance goes up by the event fee, a `wallet_transactions` row with
+   `type = 'event_refund'` appears for them, and their cancellation email
+   mentions the refund.
 
 ## 9. Go live
 
@@ -235,12 +241,13 @@ but an admin afterwards.
 
 ## What's intentionally *not* covered by this migration
 
-- **Admin-initiated event removals** (an admin removing a no-show, or
-  cancelling a whole event) still use the old, unchanged code path with no
-  automatic refund - only a member cancelling *their own* signup goes
-  through the new 24-hour refund logic. If an admin needs to refund someone
-  removed this way, use the new balance-adjustment control on their player
-  profile (Admin -> Manage Players -> click a player -> Wallet Balance).
+- **Admin removing an individual player** (e.g. a no-show) still uses the
+  old, unchanged code path with no automatic refund - only a member
+  cancelling *their own* signup, or an admin cancelling a *whole event* (see
+  `supabase/functions/cancel-event/index.ts`), auto-refunds. If an admin
+  needs to refund someone removed individually, use the new
+  balance-adjustment control on their player profile (Admin -> Manage
+  Players -> click a player -> Wallet Balance).
 - **Refunds in general** are manual by design (per the club's decision):
   if a member wants real money back, process it yourself via bank transfer,
   then use that same balance-adjustment control to correct their balance to
