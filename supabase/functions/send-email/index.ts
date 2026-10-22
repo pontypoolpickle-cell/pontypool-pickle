@@ -348,11 +348,22 @@ serve(async (req) => {
             <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#374151;line-height:1.6;">${data.message.replace(/\n/g, '<br>')}</p>
           </div>
         ` : '';
+        // Refunds are now automatic when an admin cancels a whole event (see
+        // supabase/functions/cancel-event/index.ts) - let the player know
+        // their money is already back in their wallet rather than leaving
+        // them to wonder/ask.
+        const refundedAmount = Number(data.refundedAmount || 0);
+        const refundMsg = refundedAmount > 0 ? `
+          <div style="background-color:#f0fdf4;border-radius:10px;padding:14px 18px;margin:20px 0;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#15803d;font-weight:700;">💳 You paid for this event, so £${refundedAmount.toFixed(2)} has already been refunded to your club wallet balance.</p>
+          </div>
+        ` : '';
         const body = `
           <p style="margin:0 0 4px;font-family:Arial,sans-serif;font-size:22px;font-weight:900;color:#000000;">Hi ${data.name},</p>
           <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;color:#374151;">We're sorry to let you know that the following event has been <strong>cancelled</strong>:</p>
           ${eventBox(data.eventTitle, data.eventDate, data.eventTime, data.eventLocation)}
           ${optionalMsg}
+          ${refundMsg}
           <div style="background-color:#fff1f2;border-radius:10px;padding:14px 18px;margin:20px 0;">
             <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#e11d48;font-weight:700;">We're sorry for any inconvenience. Keep an eye on the website for upcoming events!</p>
           </div>
