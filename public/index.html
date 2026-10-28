@@ -117,7 +117,13 @@
             border-color: var(--ponty-red) !important;
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Pinned to an exact version (not "@2") - unpinned, every visitor's browser
+         silently picks up whatever the latest 2.x.x release happens to be the
+         moment they load the page, with no commit to this file and no way to
+         tell afterwards which version actually broke something. Bump this
+         deliberately (and re-test signup/payment/wallet flows) rather than
+         ever going back to an unpinned major-version tag. -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 </head>
 <body>
@@ -2248,8 +2254,14 @@
             // reserve promotion, payment status, etc.) should behave exactly as if
             // they were deleted, so they're filtered out here at the single boundary
             // where raw DB rows become the `signups` array the rest of the app reads.
-            const activeSignups = signups.filter(s => s.status !== 'Withdrawn');
-            const withdrawnSignups = signups.filter(s => s.status === 'Withdrawn');
+            // Re-sorted back to ascending here (the fetch itself is newest-first -
+            // see the comment on that query in fetchAllDataFromSupabase() - so a
+            // future row cap truncates old history instead of today's signups)
+            // since everything downstream (reserve priority order, per-event
+            // attendee lists, etc.) has always assumed chronological order.
+            const bySignupDateAsc = (a, b) => new Date(a.created_at) - new Date(b.created_at);
+            const activeSignups = signups.filter(s => s.status !== 'Withdrawn').sort(bySignupDateAsc);
+            const withdrawnSignups = signups.filter(s => s.status === 'Withdrawn').sort(bySignupDateAsc);
             const locations = payload.locations || [];
             const pendingUsers = payload.pendingUsers || [];
 			const ladderSessionsRaw = payload.ladderSessions || [];
@@ -2718,7 +2730,21 @@
                 supabaseClient.from('players').select('*').order('name', { ascending: true }),
                 supabaseClient.from('matches').select('*').order('match_date', { ascending: false }).order('created_at', { ascending: false }),
                 supabaseClient.from('events').select('*').order('event_date', { ascending: true }),
-                supabaseClient.from('signups').select('*').order('created_at', { ascending: true }),
+                // Newest-first (not chronological - mapGlobalData() re-sorts that in
+                // after filtering, see activeSignups below). This table only ever
+                // grows - item #5 soft-deletes cancellations instead of removing the
+                // row, so every signup/withdrawal/promotion ever made stays in it
+                // forever - so it's the first table in this app to reach however many
+                // rows Supabase/PostgREST's own row cap allows per request (1000 by
+                // default, see Project Settings -> API -> "Max Rows"). An ascending
+                // fetch with no limit silently gets truncated to the *oldest* rows
+                // once that cap is hit, which drops every *new* signup from
+                // globalData - so new signups go on taking payment and sending the
+                // confirmation email just fine, but can never register as "signed up"
+                // anywhere in the app again. Fetching newest-first means a future cap
+                // truncates old history instead, which is harmless, rather than
+                // truncating the one thing everyone actually needs to see right now.
+                supabaseClient.from('signups').select('*').order('created_at', { ascending: false }),
                 supabaseClient.from('locations').select('*').order('name', { ascending: true }),
                 supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
                 supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
