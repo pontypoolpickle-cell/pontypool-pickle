@@ -117,7 +117,13 @@
             border-color: var(--ponty-red) !important;
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Pinned to an exact version (not "@2") - unpinned, every visitor's browser
+         silently picks up whatever the latest 2.x.x release happens to be the
+         moment they load the page, with no commit to this file and no way to
+         tell afterwards which version actually broke something. Bump this
+         deliberately (and re-test signup/payment/wallet flows) rather than
+         ever going back to an unpinned major-version tag. -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 </head>
 <body>
