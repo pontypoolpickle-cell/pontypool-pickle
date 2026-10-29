@@ -2024,7 +2024,7 @@
             const url = getPlayerAvatarUrl(name);
             const initial = name.trim().charAt(0).toUpperCase() || '?';
             return url
-                ? `<img src="${url}" alt="${escapeHtml(name)}" class="${cls} rounded-full object-cover flex-shrink-0 border border-gray-200">`
+                ? `<img src="${url}" alt="${escapeHtml(name)}" loading="lazy" decoding="async" class="${cls} rounded-full object-cover flex-shrink-0 border border-gray-200">`
                 : `<div class="${cls} rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 font-black text-gray-500" style="font-size: 9px;">${escapeHtml(initial)}</div>`;
         }
 
@@ -3815,7 +3815,7 @@
                 // there first, but on a photo full of people that just reads as a
                 // second, blurrier copy of them sitting right next to the real ones.
                 slidesEl.innerHTML = `
-                    <img src="${photo.imageUrl}" alt="${safeAlt}" class="w-full h-full object-contain">
+                    <img src="${photo.imageUrl}" alt="${safeAlt}" loading="lazy" decoding="async" class="w-full h-full object-contain">
                     ${photo.caption ? `<div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs md:text-sm font-bold px-4 py-3">${photo.caption}</div>` : ''}
                 `;
                 dotsEl.innerHTML = photos.map((_, i) => `
@@ -4668,6 +4668,60 @@
             return trimmed;
         }
 
+        // Shared by every image upload on the site (avatars, merchandise
+        // photos, gallery photos) - downscales to maxDimension on the longest
+        // side and re-encodes as JPEG at the given quality, using an off-DOM
+        // <canvas> to do the resize entirely in the browser before anything is
+        // uploaded to Storage. This is the fix for Supabase's free-tier
+        // "cached egress bandwidth" quota getting exceeded: uploaded photos
+        // (often multi-MB straight off a phone) were previously stored and
+        // served at full resolution even though most of them render as small
+        // thumbnails, so every page view re-downloaded far more data than was
+        // ever shown on screen. Resolves to the resized File on success, or
+        // silently falls back to the original file for anything that isn't a
+        // browser-renderable raster image (SVGs, already-small images, or any
+        // decode/canvas failure) so uploads never break because of this.
+        function resizeImageForUpload(file, maxDimension, quality) {
+            return new Promise((resolve) => {
+                if (!file || !file.type || !file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+                    resolve(file);
+                    return;
+                }
+                const objectUrl = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    let { width, height } = img;
+                    if (!width || !height || (width <= maxDimension && height <= maxDimension)) {
+                        resolve(file);
+                        return;
+                    }
+                    const scale = maxDimension / Math.max(width, height);
+                    width = Math.max(1, Math.round(width * scale));
+                    height = Math.max(1, Math.round(height * scale));
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        canvas.toBlob((blob) => {
+                            if (!blob) { resolve(file); return; }
+                            const resizedName = file.name.replace(/\.\w+$/, '') + '.jpg';
+                            resolve(new File([blob], resizedName, { type: 'image/jpeg', lastModified: Date.now() }));
+                        }, 'image/jpeg', quality);
+                    } catch (e) {
+                        resolve(file);
+                    }
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    resolve(file);
+                };
+                img.src = objectUrl;
+            });
+        }
+
         // Reuses the same public "event-documents" Storage bucket already used
         // for Rules PDFs/merchandise/gallery photos (see the setup comment near
         // the top of this file) - no extra bucket needs creating. Each upload
@@ -4677,13 +4731,32 @@
         // finished uploading successfully.
         const AVATAR_IMAGE_BUCKET = 'event-documents';
 
+        // Avatars only ever render as small circles (20-36px in rosters/
+        // standings, a bit bigger on the Profile tab/View Profile popup - see
+        // avatarThumbHtml()/renderProfilePage()) but phones hand us multi-MB,
+        // several-thousand-pixel-wide originals. Serving those full-size on
+        // every page that shows a player's name (which is most of the site) is
+        // what burns through Supabase's free-tier Storage bandwidth quota -
+        // downscaling + re-compressing client-side before upload keeps picture
+        // quality indistinguishable at display size while cutting the bytes
+        // served per view by roughly 10-50x. See resizeImageForUpload() below.
+        const AVATAR_MAX_DIMENSION = 480;
+
         async function uploadAvatarImage(file) {
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const resized = await resizeImageForUpload(file, AVATAR_MAX_DIMENSION, 0.85);
+            const safeName = resized.name.replace(/[^a-zA-Z0-9._-]/g, '_');
             const path = `avatars/${currentUser.username}-${Date.now()}-${safeName}`;
-            const { error } = await supabaseClient.storage.from(AVATAR_IMAGE_BUCKET).upload(path, file, {
-                cacheControl: '3600',
+            const { error } = await supabaseClient.storage.from(AVATAR_IMAGE_BUCKET).upload(path, resized, {
+                // A year, not the previous hour - each path is unique and
+                // timestamped (upsert: false, above) and is never overwritten,
+                // so it's safe to let browsers/the CDN cache it indefinitely.
+                // A long cacheControl header is what lets repeat views of the
+                // same avatar actually be served from cache instead of
+                // re-downloading from Storage every hour - see the email this
+                // was added in response to ("cached egress bandwidth" quota).
+                cacheControl: '31536000',
                 upsert: false,
-                contentType: file.type || 'image/jpeg'
+                contentType: resized.type || 'image/jpeg'
             });
             if (error) throw new Error(`Could not upload image (${error.message}). Make sure the "${AVATAR_IMAGE_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(AVATAR_IMAGE_BUCKET).getPublicUrl(path);
@@ -9080,7 +9153,7 @@
                     <div class="card overflow-hidden border-t-4 flex flex-col" style="border-color: var(--ponty-black) !important;">
                         <div class="h-48 bg-gray-100 relative flex-shrink-0">
                             ${item.imageUrl
-                                ? `<img src="${item.imageUrl}" alt="${item.name}" class="w-full h-full object-cover">`
+                                ? `<img src="${item.imageUrl}" alt="${item.name}" loading="lazy" decoding="async" class="w-full h-full object-cover">`
                                 : `<div class="w-full h-full flex items-center justify-center text-5xl text-gray-300">🛍️</div>`}
                             ${adminViewOn ? `
                                 <div class="absolute top-2 right-2 flex items-center gap-2">
@@ -9320,13 +9393,21 @@
 
         const MERCHANDISE_IMAGE_BUCKET = 'event-documents';
 
+        // Product photos only ever show in small shop cards / an h-20 admin
+        // thumbnail, so there's no benefit to storing (and re-serving on every
+        // shop visit) whatever full-resolution photo was uploaded - see
+        // resizeImageForUpload() above for why this matters for Supabase's
+        // free-tier bandwidth quota.
+        const MERCHANDISE_IMAGE_MAX_DIMENSION = 1200;
+
         async function uploadMerchandiseImage(file) {
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const resized = await resizeImageForUpload(file, MERCHANDISE_IMAGE_MAX_DIMENSION, 0.85);
+            const safeName = resized.name.replace(/[^a-zA-Z0-9._-]/g, '_');
             const path = `merchandise/${Date.now()}-${safeName}`;
-            const { error } = await supabaseClient.storage.from(MERCHANDISE_IMAGE_BUCKET).upload(path, file, {
-                cacheControl: '3600',
+            const { error } = await supabaseClient.storage.from(MERCHANDISE_IMAGE_BUCKET).upload(path, resized, {
+                cacheControl: '31536000',
                 upsert: false,
-                contentType: file.type || 'image/jpeg'
+                contentType: resized.type || 'image/jpeg'
             });
             if (error) throw new Error(`Could not upload image (${error.message}). Make sure the "${MERCHANDISE_IMAGE_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(MERCHANDISE_IMAGE_BUCKET).getPublicUrl(path);
@@ -9341,13 +9422,21 @@
         // prefix "gallery/") - no extra bucket needs creating.
         const GALLERY_IMAGE_BUCKET = 'event-documents';
 
+        // The homepage slideshow is the biggest a photo ever renders on this
+        // site, but it's still just a browser viewport - there's no point
+        // storing/serving an untouched 12MP camera photo for that. See
+        // resizeImageForUpload() above for why this matters for Supabase's
+        // free-tier bandwidth quota.
+        const GALLERY_IMAGE_MAX_DIMENSION = 1920;
+
         async function uploadGalleryImage(file) {
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const resized = await resizeImageForUpload(file, GALLERY_IMAGE_MAX_DIMENSION, 0.85);
+            const safeName = resized.name.replace(/[^a-zA-Z0-9._-]/g, '_');
             const path = `gallery/${Date.now()}-${safeName}`;
-            const { error } = await supabaseClient.storage.from(GALLERY_IMAGE_BUCKET).upload(path, file, {
-                cacheControl: '3600',
+            const { error } = await supabaseClient.storage.from(GALLERY_IMAGE_BUCKET).upload(path, resized, {
+                cacheControl: '31536000',
                 upsert: false,
-                contentType: file.type || 'image/jpeg'
+                contentType: resized.type || 'image/jpeg'
             });
             if (error) throw new Error(`Could not upload image (${error.message}). Make sure the "${GALLERY_IMAGE_BUCKET}" storage bucket has been created - see the setup notes near the top of this file.`);
             const { data: publicUrlData } = supabaseClient.storage.from(GALLERY_IMAGE_BUCKET).getPublicUrl(path);
