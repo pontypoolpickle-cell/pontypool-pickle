@@ -2122,11 +2122,11 @@
         // Leaderboard visibility (replaces the old "decay" + 100-day auto-hide
         // system entirely - there is no more gradual point loss for inactivity
         // anywhere in this file). The rule is now simple:
-        //   - A brand new registration that hasn't played a single game within
-        //     7 days of creating their account is hidden (unchanged from before -
-        //     keeps the boards free of untested accounts that never actually
-        //     played). They appear instantly the moment their first match is
-        //     recorded.
+        //   - A brand new sign-up is hidden from the rankings until they've
+        //     played at least one ranked game - there's no grace period any
+        //     more (previously they stayed visible for their first 7 days even
+        //     with zero games). They appear instantly the moment their first
+        //     match is recorded.
         //   - Once someone has played at least one game, they stay visible for
         //     a rolling 28 days after their most recent match, then are hidden
         //     again until they next play - at which point the 28-day window
@@ -2142,16 +2142,11 @@
         // (with her real mixed rating on one and the 1200 default on the
         // other) rather than confusingly disappearing from the Women's
         // Rankings just because that specific pool has no games yet.
-        const NEW_PLAYER_GRACE_DAYS = 7;
         const LEADERBOARD_ACTIVE_WINDOW_DAYS = 28;
 
-        function isBoardVisible(totalGames, lastMatchDate, registeredAt) {
+        function isBoardVisible(totalGames, lastMatchDate) {
             const games = Number(totalGames || 0);
-            if (games === 0) {
-                if (!registeredAt) return true;
-                const daysSinceRegistration = (serverNow().getTime() - new Date(registeredAt).getTime()) / 86400000;
-                return daysSinceRegistration <= NEW_PLAYER_GRACE_DAYS;
-            }
+            if (games === 0) return false;
             if (!lastMatchDate) return true;
             const daysSinceLastMatch = (serverNow().getTime() - new Date(lastMatchDate).getTime()) / 86400000;
             return daysSinceLastMatch <= LEADERBOARD_ACTIVE_WINDOW_DAYS;
@@ -2169,7 +2164,7 @@
                 .filter(Boolean)
                 .sort()
                 .pop() || null;
-            const isHidden = !!row.is_hidden || !isBoardVisible(combinedTotalGames, combinedLastMatchDate, registeredAt);
+            const isHidden = !!row.is_hidden || !isBoardVisible(combinedTotalGames, combinedLastMatchDate);
 
             return {
                 name: row.name,
@@ -2279,9 +2274,12 @@
             const memberExtrasMap = new Map();
             memberExtrasRaw.forEach(e => memberExtrasMap.set(e.username, e));
 
-            // Registration date per player name (item #3 - hiding new, never-played
-            // registrations from the leaderboard after 7 days). Joined via username
-            // since memberExtrasRaw only carries username/created_at/membership_number.
+            // Registration date per player name - no longer used by the
+            // leaderboard visibility rule (a never-played sign-up is now always
+            // hidden, with no grace period - see isBoardVisible()), but still
+            // surfaced on the player view below in case it's needed elsewhere.
+            // Joined via username since memberExtrasRaw only carries
+            // username/created_at/membership_number.
             const memberCreatedAtByName = new Map();
             membersRaw.forEach(u => {
                 const fullName = normalizeName(`${u.first_name || ''} ${u.surname || ''}`);
@@ -2521,7 +2519,7 @@
             { question: "What if I'm simply not good enough to play?", answer: `<p>There is no such thing as "not good enough" at Pontypool Pickle—we've completely got you covered!</p><p>To help build your confidence, we use a ladder system. This ensures you are always paired with and playing against people of a similar skill level. Here is how it works:</p><p><strong>A Welcoming Start:</strong> Every new sign-up starts on the top court with a base score of 1800.</p><p><strong>Find Your Level:</strong> If that's higher than your current standard, don't worry - your first few results will naturally settle you onto the right court as you play, rather than leaving you stuck at the bottom with no way to prove yourself against stronger players.</p><p><strong>Find Your Groove:</strong> The more games you play, the more accurate your rating becomes. As you find your level, you'll move up or down the ladder to play on the courts that suit you!</p>` },
             { question: "How does the rating system work?", answer: `<p>We use a dynamic rating system based on the traditional Elo method (similar to how global DUPR ratings operate) to ensure you are always playing against people of a similar skill level.</p><p><strong>Your Starting Block:</strong> Every new account starts on the top court with a flat rating of 1800 - there's no self-assessment to fill in. If that's above your current level, your results will naturally settle you onto the right court as you play, rather than starting at the bottom with no way to work your way up.</p><p><strong>The Provisional Period:</strong> Your first 10 matches are "provisional." During this time, the system applies a boosted multiplier to your points so it can quickly find your natural level on the ladder.</p><p><strong>Every Point Counts:</strong> Once settled, your rating shifts after every match. Winning by a wide margin earns you more points than scraping a close 11-9 win. The same applies to losses.</p><p><strong>The Underdog Advantage:</strong> Beating a higher-rated player gives your ranking a massive boost! Flip side? If you lose to a heavily favoured, higher-ranked player, your score barely takes a hit.</p>` },
             { question: "Why has my name disappeared from the leaderboard?", answer: `<p>Our leaderboard is designed to stay fresh and only show genuinely active players - so unlike some rating systems, we don't gradually "decay" or reduce anyone's points for taking a break.</p><p>Instead, once you've played your first match, you stay visible on the leaderboard for <strong>28 days</strong> after your most recent game. If you haven't played again within that window, your name is simply hidden (not deleted!) until you next play - at which point you'll reappear instantly with your rating exactly as it was, and the 28-day clock restarts from your new match date.</p><p>This keeps the standings clean and current for our regulars without ever penalising anyone's hard-earned rating just for taking time off.</p>` },
-            { question: "I just registered - why can't I see myself on the leaderboard?", answer: `<p>New accounts stay visible on the leaderboard for the first <strong>7 days</strong> after registering. If you haven't played a game at the club within those 7 days, your name is automatically hidden from the public rankings so the leaderboard stays accurate and uncluttered for active players.</p><p>Your account isn't affected in any other way, and your name will <strong>instantly reappear</strong> the moment your first match is recorded - there's nothing you need to do to fix it, just get out on the courts!</p>` },
+            { question: "I just registered - why can't I see myself on the leaderboard?", answer: `<p>New accounts are hidden from the public rankings until you've played your first ranked game - this keeps the leaderboard accurate and uncluttered for active players rather than listing untested accounts.</p><p>Your account isn't affected in any other way, and your name will <strong>instantly appear</strong> the moment your first match is recorded - there's nothing you need to do to fix it, just get out on the courts!</p>` },
             { question: "How do the Women's Rankings work?", answer: `<p>Alongside our normal mixed rating, we run a completely separate <strong>Women's Rankings</strong> board for our female-only ladder sessions. Because playing against men tends to skew ratings downward for women (and vice versa), we wanted a fairer, standalone way to track progress against other female players specifically.</p><p>Every female player starts on the Women's Rankings at the same base score of <strong>1200</strong>, and it only ever changes when you play in a session flagged as Female Only - your rating from mixed sessions is completely unaffected, and playing mixed sessions never changes your Women's Ranking either. You can switch between the two boards using the toggle at the top of the Ratings page, and if you're a female player, your profile shows both ratings side by side.</p>` },
             { question: "Do you have a downloadable app?", answer: `<p>Not quite yet! The club is still in its foundation stages, but launching a dedicated mobile app is definitely an exciting milestone we are striving toward for the future.</p><p>In the meantime, our website is fully optimized for mobile devices. You can easily view our schedule, check player rankings, and secure your spot on the courts directly from your phone's web browser!</p>` }
         ];
