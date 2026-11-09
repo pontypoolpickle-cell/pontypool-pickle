@@ -1203,6 +1203,18 @@
 		return `${date.getDate()} ${months[date.getMonth()]}`;
 	}
 
+	// Compact "21 Oct 2024" form (includes the year, unlike formatShortMatchDate
+	// above) used in Finance ledger descriptions - recurring events reuse the
+	// same title week after week (and year after year), so the date is what
+	// actually tells two signup/refund entries for "Thursday Pickle" apart.
+	function formatFinanceEventDate(dateStr) {
+		if (!dateStr) return '';
+		const date = new Date(dateStr + 'T00:00:00');
+		if (isNaN(date.getTime())) return dateStr;
+		const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+		return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+	}
+
 	// Formats a raw timestamp (e.g. "2026-07-13T20:42:42.666457+00:00") into "2026-07-13 20:42"
 	function formatSignupTimestamp(timestampStr) {
 		if (!timestampStr) return '';
@@ -5140,7 +5152,7 @@
                         direction: 'In',
                         amount: amount,
                         category: 'Event Fees',
-                        description: eventRow ? eventRow[1] : 'Event signup',
+                        description: eventRow ? `Event Signup: ${eventRow[1]} (${formatFinanceEventDate(eventRow[2])})` : 'Event Signup',
                         playerName: payload.name,
                         source: 'Event Signup'
                     });

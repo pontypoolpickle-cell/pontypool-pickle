@@ -44,6 +44,19 @@ function normalizeName(name: string): string {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+// Compact "21 Oct 2024" form for Finance ledger descriptions - mirrors
+// formatFinanceEventDate() in public/index.html exactly. Recurring events
+// reuse the same title week after week (and year after year), so the date
+// is what actually tells two signup/refund entries for the same event title
+// apart in the admin Finance list.
+function formatEventDateShort(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  const date = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(date.getTime())) return String(dateStr);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -165,7 +178,7 @@ serve(async (req) => {
           direction: "Out",
           amount,
           category: "Event Fees",
-          description: `Refund - event cancelled: ${eventRow.title}`,
+          description: `Event Cancelled Refund: ${eventRow.title} (${formatEventDateShort(eventRow.event_date)})`,
           player_name: signup.player_name,
           source: "Wallet"
         });
