@@ -4887,6 +4887,33 @@
 
 			const reservedUntil = isFree ? null : new Date(Date.now() + RESERVATION_WINDOW_MINUTES * 60000).toISOString();
 
+			// Bug history: the "Sign Up" button only shows at all because the browser's
+			// own (possibly stale) copy of globalData said there was a spot free -
+			// nothing re-checked that against the live table before this insert ran.
+			// A tab left open since before the event filled up would still show "Sign
+			// Up" and, without this check, would insert an extra Confirmed/Pending
+			// Payment row straight past max_players - overbooking the event with no
+			// error, no warning, and no reserve-list entry to show for it. Re-read the
+			// live count immediately before inserting, mirroring the same fresh-count
+			// approach promoteReservesForEvent() already uses instead of trusting
+			// globalData. This narrows the race to the instant between this count and
+			// the insert below - enforce_event_signup_capacity() (see
+			// supabase/sql/enforce_event_signup_capacity.sql) is the atomic backstop
+			// that closes that window completely, for this insert and every other way
+			// a row could land in this table.
+			const maxPlayers = eventRow && eventRow[4] ? Number(eventRow[4]) : null;
+			if (maxPlayers) {
+				const { count: heldCount, error: countError } = await supabaseClient
+					.from('signups')
+					.select('id', { count: 'exact', head: true })
+					.eq('event_id', payload.eventId)
+					.in('status', ['Confirmed', 'Pending Payment']);
+				if (countError) throw new Error(countError.message);
+				if ((heldCount || 0) >= maxPlayers) {
+					throw new Error('This event just filled up - please join the reserve list instead.');
+				}
+			}
+
 			const { error } = await supabaseClient.from('signups').insert({
 				event_id: payload.eventId,
 				player_name: payload.name,
@@ -4896,6 +4923,14 @@
 				payment_status: 'Unpaid',
 				reserved_until: reservedUntil
 			});
+			// The DB-level trigger (enforce_event_signup_capacity.sql) rejects this
+			// insert outright if the event is still full despite the check above (the
+			// narrow race window, or someone else grabbing the last spot a moment
+			// earlier) - translate its raw Postgres error into the same friendly
+			// message rather than surfacing "EVENT_FULL: ..." straight to the member.
+			if (error && /EVENT_FULL/.test(error.message || '')) {
+				throw new Error('This event just filled up - please join the reserve list instead.');
+			}
 			if (error) throw new Error(error.message);
 			// Paid events no longer email here - payForEventSignupNow() sends the
 			// normal event_signup confirmation once the automatic payment actually
