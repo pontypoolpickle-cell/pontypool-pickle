@@ -67,6 +67,19 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Compact "21 Oct 2024" form for Finance ledger descriptions - mirrors
+// formatFinanceEventDate() in public/index.html exactly. Recurring events
+// reuse the same title week after week (and year after year), so the date
+// is what actually tells two signup/refund entries for the same event title
+// apart in the admin Finance list.
+function formatEventDateShort(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  const date = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(date.getTime())) return String(dateStr);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 async function debit(userId: string, amount: number, type: string, referenceId: string | null, note: string) {
   const { data: newBalance, error } = await supabase.rpc("adjust_user_balance", {
     p_user_id: userId,
@@ -258,7 +271,7 @@ serve(async (req) => {
           direction: "In",
           amount: price,
           category: "Event Fees",
-          description: eventRow.title || "Event signup",
+          description: `Event Signup: ${eventRow.title || "Event"} (${formatEventDateShort(eventRow.event_date)})`,
           playerName: fullName,
           source: "Wallet"
         });

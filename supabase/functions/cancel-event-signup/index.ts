@@ -175,6 +175,19 @@ function getEventStartDateTime(eventRow: { event_date: string; event_time: strin
   return eventRow.event_time ? new Date(`${eventRow.event_date}T${eventRow.event_time}`) : new Date(`${eventRow.event_date}T23:59:59`);
 }
 
+// Compact "21 Oct 2024" form for Finance ledger descriptions - mirrors
+// formatFinanceEventDate() in public/index.html exactly. Recurring events
+// reuse the same title week after week (and year after year), so the date
+// is what actually tells two signup/refund entries for the same event title
+// apart in the admin Finance list.
+function formatEventDateShort(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  const date = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(date.getTime())) return String(dateStr);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: CORS_HEADERS });
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
@@ -260,7 +273,7 @@ serve(async (req) => {
             direction: "Out",
             amount: refundedAmount,
             category: "Event Fees",
-            description: `Refund - ${eventRow.title}`,
+            description: `Event Withdrawal Refund: ${eventRow.title} (${formatEventDateShort(eventRow.event_date)})`,
             player_name: fullName,
             source: "Wallet"
           });
