@@ -144,6 +144,8 @@
                 <button onclick="showTab('history-page')" id="nav-history" class="nav-link py-1">History</button>
                 <button onclick="showTab('scramble-page')" id="nav-scramble" class="nav-link py-1">Scramble</button>
                 <button onclick="showTab('ladders-page')" id="nav-ladders" class="nav-link py-1">Ladders</button>
+                <!-- Item #5: only shown while The Randomizer is actually live - see render()/updateRandomizerNavVisibility(). -->
+                <button onclick="showTab('randomizer-page')" id="nav-randomizer" class="nav-link py-1 hidden" style="color: #2dd4bf !important;">🎲 The Randomizer</button>
                 <button onclick="showTab('events-page')" id="nav-events" class="nav-link py-1">Events</button>
                 <button onclick="showTab('club-info-page')" id="nav-club-info" class="nav-link py-1">Club Info & Resources</button>
                 <button onclick="showTab('merchandise-page')" id="nav-merchandise" class="nav-link py-1">Merchandise</button>
@@ -178,6 +180,8 @@
                 <button onclick="showTab('history-page'); closeMobileMenu();" id="nav-history-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">📖 History</button>
                 <button onclick="showTab('scramble-page'); closeMobileMenu();" id="nav-scramble-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🔀 Scramble</button>
                 <button onclick="showTab('ladders-page'); closeMobileMenu();" id="nav-ladders-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🪜 Ladders</button>
+                <!-- Item #5: only shown while The Randomizer is actually live - see render()/updateRandomizerNavVisibility(). -->
+                <button onclick="showTab('randomizer-page'); closeMobileMenu();" id="nav-randomizer-m" class="hidden text-left px-2 py-3 border-b border-white border-opacity-10 transition" style="color: #2dd4bf !important;">🎲 The Randomizer</button>
                 <button onclick="showTab('club-info-page'); closeMobileMenu();" id="nav-club-info-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">ℹ️ Club Info & Resources</button>
                 <button onclick="showTab('merchandise-page'); closeMobileMenu();" id="nav-merchandise-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 hover:text-rose-400 transition">🛍️ Merchandise</button>
                 <button onclick="showTab('membership-page'); closeMobileMenu();" id="nav-membership-m" class="text-left px-2 py-3 border-b border-white border-opacity-10 nav-link-gold transition">⭐ Membership</button>
@@ -736,6 +740,36 @@
                     </label>
                 </div>
 
+                <!-- DUPR Membership Number (item #2) - optional, with a public/
+                     private toggle. Admins can always see it regardless of this
+                     toggle - see buildProfileView()/openAdminPlayerProfile(). -->
+                <div class="card p-6 border-t-8 border-indigo-600 space-y-3">
+                    <h3 class="font-black uppercase text-sm text-gray-500">🏓 DUPR Membership Number</h3>
+                    <input type="text" id="profileDuprInput" placeholder="e.g. 1234-5678" class="input-field border-2 w-full">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" id="profileDuprPublicToggle" class="w-5 h-5 accent-indigo-600 flex-shrink-0">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase leading-relaxed">Show my DUPR number publicly on my profile</span>
+                    </label>
+                    <div class="flex justify-end">
+                        <button onclick="handleSaveOwnDupr()" id="profileDuprSaveBtn" class="bg-black text-white px-5 py-2.5 rounded-xl font-black uppercase text-xs hover:bg-indigo-600 transition">Save DUPR Number</button>
+                    </div>
+                </div>
+
+                <!-- Emergency Contact Info (items #3 & #4) - mandatory at sign up,
+                     editable here any time by the active member themselves. Never
+                     shown on any public profile - only the member and admins can
+                     see it (fetched on demand, see fetchOwnEmergencyContact()). -->
+                <div class="card p-6 border-t-8 border-black space-y-3">
+                    <h3 class="font-black uppercase text-sm text-gray-500">🚨 Emergency Contact</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase leading-relaxed">Kept private - only visible to you and club admins, in case of emergency during a session.</p>
+                    <input type="text" id="profileEmergencyName" placeholder="Contact Full Name" class="input-field border-2 w-full">
+                    <input type="tel" id="profileEmergencyPhone" placeholder="Contact Phone Number" class="input-field border-2 w-full">
+                    <input type="text" id="profileEmergencyRelationship" placeholder="Relationship (e.g. Spouse, Parent, Friend)" class="input-field border-2 w-full">
+                    <div class="flex justify-end">
+                        <button onclick="handleSaveOwnEmergencyContact()" id="profileEmergencySaveBtn" class="bg-black text-white px-5 py-2.5 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition">Save Emergency Contact</button>
+                    </div>
+                </div>
+
                 <!-- Stats (shared with the "View Profile" popup - see buildProfileView()) -->
                 <div id="profileStatsBody" class="space-y-6"></div>
             </div>
@@ -771,21 +805,32 @@
                 <div id="scrambleStep1" class="card p-6">
                     <h3 class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players Present Today</h3>
 
-                    <!-- Pre-select players straight from an event's confirmed sign ups,
-                         instead of ticking everyone by hand - mirrors the same feature
-                         on the Ladders page. Scramble itself is unaffected: it still
-                         just randomly mixes people up and never records match history. -->
-                    <div id="scrambleEventLoadBox" class="hidden bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4 space-y-3">
-                        <p class="text-[10px] font-black uppercase text-blue-700 tracking-widest">🏓 Start From An Event's Sign Ups (optional)</p>
-                        <div class="flex flex-col sm:flex-row gap-2">
-                            <select id="scrambleEventSelect" class="input-field border-2 flex-grow"></select>
-                            <button type="button" onclick="loadScramblePlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition whitespace-nowrap">Load Confirmed Players</button>
-                        </div>
+                    <!-- Item #6: starting a Scramble session is now admin-only -
+                         everyone else sees this notice instead of the player
+                         picker/Generate button. See generateScramble()/
+                         render()'s "Only admins can start" gate below. -->
+                    <div id="scrambleAdminOnlyNotice" class="hidden bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-center">
+                        <p class="text-sm font-black uppercase text-gray-500">Only admins can start a Scramble session.</p>
+                        <p class="text-xs font-bold text-gray-400 uppercase mt-1">Once an admin generates a rotation, you'll be able to enter scores here.</p>
                     </div>
 
-                    <div id="scramblePlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3"></div>
-                    <p id="scrambleHeadcountMsg" class="text-xs font-bold uppercase mb-3"></p>
-                    <button id="genScrambleBtn" onclick="generateScramble()" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg transition">Generate Rotation</button>
+                    <div id="scrambleStep1Controls" class="hidden">
+                        <!-- Pre-select players straight from an event's confirmed sign ups,
+                             instead of ticking everyone by hand - mirrors the same feature
+                             on the Ladders page. Scramble itself is unaffected: it still
+                             just randomly mixes people up and never records match history. -->
+                        <div id="scrambleEventLoadBox" class="hidden bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4 space-y-3">
+                            <p class="text-[10px] font-black uppercase text-blue-700 tracking-widest">🏓 Start From An Event's Sign Ups (optional)</p>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <select id="scrambleEventSelect" class="input-field border-2 flex-grow"></select>
+                                <button type="button" onclick="loadScramblePlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition whitespace-nowrap">Load Confirmed Players</button>
+                            </div>
+                        </div>
+
+                        <div id="scramblePlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3"></div>
+                        <p id="scrambleHeadcountMsg" class="text-xs font-bold uppercase mb-3"></p>
+                        <button id="genScrambleBtn" onclick="generateScramble()" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg transition">Generate Rotation</button>
+                    </div>
                 </div>
 
                 <!-- STEP 2: Play & Score -->
@@ -887,6 +932,69 @@
                     <div class="card p-8 border-t-8 border-rose-600 text-center">
                         <h3 id="ladderEndRoundTitle" class="text-xl font-black mb-4 uppercase italic">End Round</h3>
                         <button id="endRoundBtn" onclick="checkLadderRoundComplete()" class="w-full btn-red py-5 rounded-xl font-black text-xl uppercase shadow-2xl">Confirm & End Round</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- THE RANDOMIZER PAGE (item #5) -->
+        <div id="randomizer-page" class="tab-content hidden space-y-6">
+            <div class="flex justify-between items-end">
+                <h2 class="text-4xl font-black border-l-8 border-teal-600 pl-4 uppercase italic">🎲 The Randomizer</h2>
+            </div>
+
+            <!-- RESTRICTED ACCESS MESSAGE -->
+            <div id="randomizerRestricted" class="card p-12 text-center space-y-6 border-t-8 border-black">
+                <div class="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="text-2xl font-black uppercase italic">Login Required</h3>
+                    <p class="text-gray-500 max-w-sm mx-auto font-bold uppercase text-xs leading-relaxed">Log in or sign up for a free account to take part in The Randomizer.</p>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+                    <button onclick="openAuthModal()" class="btn-red px-8 py-3 rounded-full font-black uppercase text-sm shadow-lg">Login / Sign Up</button>
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div id="randomizerMainContent" class="hidden space-y-6">
+
+                <!-- STEP 1 (admin only): Select Players / Start -->
+                <div id="randomizerStep1" class="card p-6">
+                    <div id="randomizerAdminOnlyNotice" class="hidden bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-center">
+                        <p class="text-sm font-black uppercase text-gray-500">Only admins can start The Randomizer.</p>
+                        <p class="text-xs font-bold text-gray-400 uppercase mt-1">Check back once an admin has started it from the event page.</p>
+                    </div>
+                    <div id="randomizerStep1Controls" class="hidden">
+                        <h3 class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players (must be a multiple of 4)</h3>
+                        <div id="randomizerEventLoadBox" class="hidden bg-teal-50 border-2 border-teal-200 rounded-xl p-4 mb-4 space-y-3">
+                            <p class="text-[10px] font-black uppercase text-teal-700 tracking-widest">🎲 Starting From: <span id="randomizerEventName"></span></p>
+                            <button type="button" onclick="loadRandomizerPlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-teal-600 transition whitespace-nowrap">Load Confirmed Players</button>
+                        </div>
+                        <input type="text" id="randomizerSessionName" placeholder="Tournament Name (e.g. The Randomizer)" class="input-field border-2 mb-4">
+                        <div id="randomizerPlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3"></div>
+                        <p id="randomizerHeadcountMsg" class="text-xs font-bold uppercase mb-3"></p>
+                        <button id="startRandomizerBtn" onclick="startRandomizerSession()" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg transition" style="background-color:#0d9488 !important;">Start The Randomizer</button>
+                    </div>
+                </div>
+
+                <!-- STEP 2: Live Tournament -->
+                <div id="randomizerStep2" class="hidden space-y-6">
+                    <div class="bg-black text-white p-4 rounded-xl flex flex-wrap justify-between items-center gap-2 shadow-xl">
+                        <span id="randomizerSessionNameDisplay" class="font-black italic uppercase text-sm"></span>
+                        <button onclick="openRandomizerStandingsModal()" class="bg-white text-black px-4 py-2 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-teal-500 hover:text-white transition">📊 Standings</button>
+                    </div>
+
+                    <!-- ROUND TABS -->
+                    <div id="randomizerRoundTabsContainer" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1"></div>
+
+                    <div id="randomizerCourtsContainer" class="space-y-6"></div>
+
+                    <div class="card p-6 border-t-8 border-teal-600 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <button id="randomizeNextRoundBtn" onclick="randomizeNextRound()" class="w-full py-5 rounded-xl font-black text-lg uppercase shadow-lg transition" style="background-color:#0d9488 !important; color:#ffffff !important;">🔀 Randomize (Next Round)</button>
+                        <button id="endRandomizerBtn" onclick="confirmEndRandomizerEvent()" class="w-full border-2 border-rose-600 text-rose-600 py-5 rounded-xl font-black text-lg uppercase hover:bg-rose-600 hover:text-white transition">🏁 End Event</button>
                     </div>
                 </div>
             </div>
@@ -1313,6 +1421,10 @@
         let adminMatchesVisible = 10;
         let adminTimeout;
         let currentUser = null;
+        // Items #3/#4: tracks which username's Emergency Contact fields have
+        // already been fetched into the Profile tab this session - see
+        // renderProfilePage()/fetchOwnEmergencyContact().
+        let profileEmergencyContactLoadedFor = null;
         let currentTabId = 'welcome-page'; // Tracks the active tab
 
         /*
@@ -1525,6 +1637,20 @@
         -- toggle on the Profile tab. Defaults to false (today's behaviour)
         -- until a player explicitly opts in.
         alter table users add column if not exists profile_public boolean not null default false;
+
+        -- DUPR membership number (item #2) + emergency contact (items #3/#4) -
+        -- see supabase/sql/add_dupr_and_emergency_contact_columns.sql for the
+        -- full explanation. In short: dupr_number/dupr_public let a player
+        -- optionally show their DUPR number on their own profile (admins can
+        -- always see it regardless of dupr_public); the emergency_contact_*
+        -- columns are mandatory at sign up, editable afterwards from the
+        -- Profile tab, and are never shown on any public-facing page - only
+        -- fetched on demand for the player themselves or an admin.
+        alter table users add column if not exists dupr_number text;
+        alter table users add column if not exists dupr_public boolean not null default false;
+        alter table users add column if not exists emergency_contact_name text;
+        alter table users add column if not exists emergency_contact_phone text;
+        alter table users add column if not exists emergency_contact_relationship text;
 
         -- Site settings (item #9) - simple key/value store for singleton
         -- admin-managed values (currently just the Rules PDF link) so future
@@ -1832,6 +1958,59 @@
         stable
         as $$ select now(); $$;
         grant execute on function get_server_time() to anon, authenticated;
+
+        -- THE RANDOMIZER (item #5) - see supabase/sql/add_randomizer_tables.sql
+        -- for the full explanation. Short version: an event flagged
+        -- is_randomizer must have a player count that's a multiple of 4 (checked
+        -- in the app, not the DB); once an admin starts it, randomizer_session +
+        -- randomizer_games hold the live, round-by-round courts/scores - this is
+        -- pure scratch storage for the duration of one tournament, deleted
+        -- outright the moment the event is ended, and never touches `matches` or
+        -- anyone's rating. Only the final top-3 male/top-3 female result is kept
+        -- forever, copied into hall_of_fame right before the live rows are
+        -- deleted - groundwork for a future Hall of Fame page, not shown anywhere
+        -- yet. See startRandomizerSession()/saveRandomizerScore()/
+        -- randomizeNextRound()/finalizeRandomizerEvent() in this file.
+        alter table events add column if not exists is_randomizer boolean default false;
+
+        create table if not exists randomizer_session (
+          id uuid primary key default gen_random_uuid(),
+          event_id uuid references events(id),
+          name text not null,
+          status text not null default 'Active',
+          current_round integer not null default 1,
+          players jsonb not null default '[]'::jsonb,
+          created_at timestamptz not null default now()
+        );
+
+        create table if not exists randomizer_games (
+          id uuid primary key default gen_random_uuid(),
+          session_id uuid not null references randomizer_session(id) on delete cascade,
+          round integer not null,
+          court integer not null,
+          p1 text not null,
+          p2 text not null,
+          p3 text not null,
+          p4 text not null,
+          score_a integer,
+          score_b integer,
+          scored_at timestamptz,
+          scored_by text,
+          created_at timestamptz not null default now()
+        );
+
+        create table if not exists hall_of_fame (
+          id uuid primary key default gen_random_uuid(),
+          event_id uuid references events(id),
+          event_title text,
+          event_date date,
+          category text not null,
+          position integer not null,
+          player_name text not null,
+          total_points integer not null default 0,
+          wins integer not null default 0,
+          created_at timestamptz not null default now()
+        );
         */
 
         const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
@@ -2145,15 +2324,16 @@
         //     simply restarts from the new match date. Ratings are never
         //     reduced for inactivity; this only affects whether a player
         //     currently shows up on a board.
-        // Visibility is based on OVERALL club activity, combining mixed and
-        // female_only matches together, and is the same on both the mixed
-        // board and the Women's Rankings board - someone is only ever hidden
-        // if they're genuinely inactive across the whole club, not just on one
-        // specific board. E.g. a woman who played a mixed match yesterday but
-        // has never played a female_only match still shows up on both boards
-        // (with her real mixed rating on one and the 1200 default on the
-        // other) rather than confusingly disappearing from the Women's
-        // Rankings just because that specific pool has no games yet.
+        // Visibility is now determined SEPARATELY per board (item #1): a
+        // player only shows up on the Mixed board if they've recently played
+        // a mixed-session match, and only shows up on the Women's Rankings
+        // board if they've recently played a female_only match - playing one
+        // doesn't make them visible on the other any more. E.g. a woman who
+        // played a mixed match yesterday but has never played a female_only
+        // match shows up on the Mixed board only, not on Women's Rankings,
+        // until she actually plays a female-only session. See isHidden/
+        // femaleIsHidden below in toPlayerView(), each now computed purely
+        // from that board's own total_games/last_match_date.
         const LEADERBOARD_ACTIVE_WINDOW_DAYS = 28;
 
         function isBoardVisible(totalGames, lastMatchDate) {
@@ -2168,15 +2348,13 @@
             const membershipUser = memberMap ? memberMap.get(normalizeName(row.name)) : null;
             const registeredAt = memberCreatedAtByName ? memberCreatedAtByName.get(normalizeName(row.name)) : null;
 
-            // Combine mixed + female_only activity into one "are they active
-            // in the club at all" signal, used for both boards' visibility -
-            // see the comment above isBoardVisible() for why.
-            const combinedTotalGames = Number(row.total_games || 0) + Number(row.female_total_games || 0);
-            const combinedLastMatchDate = [row.last_match_date, row.female_last_match_date]
-                .filter(Boolean)
-                .sort()
-                .pop() || null;
-            const isHidden = !!row.is_hidden || !isBoardVisible(combinedTotalGames, combinedLastMatchDate);
+            // Item #1: each board's visibility is now based purely on that
+            // board's OWN activity - a mixed-session match no longer keeps a
+            // player visible on the Women's Rankings board (and vice versa).
+            // `row.is_hidden` (a manual admin hide) still applies to both,
+            // same as before.
+            const isHidden = !!row.is_hidden || !isBoardVisible(row.total_games, row.last_match_date);
+            const femaleIsHidden = !!row.is_hidden || !isBoardVisible(row.female_total_games, row.female_last_match_date);
 
             return {
                 name: row.name,
@@ -2192,17 +2370,15 @@
                 isHidden,
                 // Women's Rankings - a separate rating pool from the mixed
                 // elo/wins/losses/total_games (see the schema comment near
-                // `alter table players add column ... female_elo` above), but
-                // visibility (femaleIsHidden) intentionally mirrors isHidden -
-                // both use the same combined club-wide activity, so a player
-                // isn't hidden from one board just because her recent match
-                // happened to be on the other one.
+                // `alter table players add column ... female_elo` above).
+                // Item #1: femaleIsHidden is now its own independent check
+                // (computed above) rather than mirroring isHidden.
                 femaleElo: Number(row.female_elo != null ? row.female_elo : FEMALE_STARTING_ELO),
                 femaleWins: Number(row.female_wins || 0),
                 femaleLosses: Number(row.female_losses || 0),
                 femaleTotalGames: Number(row.female_total_games || 0),
                 femaleLastMatchDate: row.female_last_match_date || '',
-                femaleIsHidden: isHidden,
+                femaleIsHidden: femaleIsHidden,
                 isUnder18: !!row.is_under18,
                 ratingResetAt: row.rating_reset_at || null,
                 femaleRatingResetAt: row.female_rating_reset_at || null,
@@ -2247,7 +2423,13 @@
                 // Climber of the Week card) - see openProfile()/
                 // saveOwnProfileVisibility(). Defaults to false (today's
                 // behaviour: Members Only) until a player explicitly opts in.
-                profilePublic: !!u.profile_public
+                profilePublic: !!u.profile_public,
+                // Item #2: DUPR membership number - dupr_public only gates
+                // whether it's shown to OTHER players on this player's public
+                // profile view; admins always see it regardless (see
+                // buildProfileView()/openAdminPlayerProfile()).
+                duprNumber: u.dupr_number || '',
+                duprPublic: !!u.dupr_public
             };
         }
 
@@ -2355,7 +2537,8 @@
 					!!e.female_only,
 					!!e.all_ages,
 					!!e.is_special_event,
-					e.special_event_info_url || ''
+					e.special_event_info_url || '',
+					!!e.is_randomizer
 					]),
                 signups: activeSignups.map(s => [
                     s.event_id,
@@ -2406,6 +2589,9 @@
                 ]),
                 ladderSessions: ladderSessionsRaw.map(entry => mapLadderSession(entry.session, entry.courts, entry.games)),
                 activeScramble,
+                // Item #5: The Randomizer - null when no tournament is
+                // currently live. See mapRandomizerSession().
+                randomizerSession: payload.randomizerSession ? mapRandomizerSession(payload.randomizerSession.session, payload.randomizerSession.games) : null,
                 // Item #9: key/value settings, exposed as a plain object (e.g.
                 // siteSettings.rules_pdf_url) rather than the raw row array.
                 siteSettings: Object.fromEntries((payload.siteSettings || []).map(s => [s.key, s.value])),
@@ -2515,6 +2701,35 @@
 					roundPoints: Number(c.round_points || 0),
 					pointsDiff: Number(c.points_diff || 0)
 				})),
+				games: mappedGames
+			};
+		}
+
+		// Item #5: The Randomizer. Unlike ladder sessions, games from EVERY
+		// round are mapped (not just the current one) so finished rounds stay
+		// browsable as read-only tabs - see renderRandomizerPage().
+		function mapRandomizerSession(session, games) {
+			const mappedGames = (games || []).map(g => ({
+				gameId: g.id,
+				round: Number(g.round || 1),
+				court: Number(g.court || 0),
+				p1: g.p1 || '',
+				p2: g.p2 || '',
+				p3: g.p3 || '',
+				p4: g.p4 || '',
+				scoreA: g.score_a ?? '',
+				scoreB: g.score_b ?? '',
+				scoredAt: g.scored_at || null
+			}));
+			return {
+				session: {
+					id: session.id,
+					eventId: session.event_id || null,
+					name: session.name || 'The Randomizer',
+					status: session.status,
+					currentRound: Number(session.current_round || 1),
+					players: session.players || []
+				},
 				games: mappedGames
 			};
 		}
@@ -2727,6 +2942,7 @@
                 pendingUsersRes,
                 ladderSessionRes,
                 scrambleRes,
+                randomizerSessionRes,
                 membersRes,
                 memberExtrasRes,
                 membershipPlansRes,
@@ -2759,7 +2975,11 @@
                 supabaseClient.from('users').select('*').eq('status', 'Pending').order('created_at', { ascending: true }),
                 supabaseClient.from('ladder_session').select('*').eq('status', 'Active').order('created_at', { ascending: true }),
                 supabaseClient.from('live_scramble').select('*').order('court', { ascending: true }).order('round', { ascending: true }),
-                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url, profile_public').eq('status', 'Approved').order('first_name', { ascending: true }),
+                // Item #5: The Randomizer. Only ever one live tournament at a
+                // time (newest Active row wins if, somehow, more than one
+                // exists) - see startRandomizerSession()/mapGlobalData().
+                supabaseClient.from('randomizer_session').select('*').eq('status', 'Active').order('created_at', { ascending: false }).limit(1),
+                supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url, profile_public, dupr_number, dupr_public').eq('status', 'Approved').order('first_name', { ascending: true }),
                 // Fetched separately (not merged into the query above) so that sites
                 // which haven't yet run the membership_number/created_at migration
                 // comment near the top of this file don't lose the existing Manage
@@ -2825,6 +3045,18 @@
 				return { session, courts: courtsRes.data || [], games: gamesRes.data || [] };
 			}));
 
+			// Item #5: The Randomizer - unlike Ladders, every round (not just
+			// the current one) needs to be fetched, since finished rounds stay
+			// browsable as tabs. Small data volume (one tournament at a time),
+			// so this isn't worth the per-round query-splitting Ladders uses.
+			const randomizerSessionRow = (randomizerSessionRes.data || [])[0] || null;
+			let randomizerSession = null;
+			if (randomizerSessionRow) {
+				const gamesRes = await supabaseClient.from('randomizer_games').select('*').eq('session_id', randomizerSessionRow.id).order('round', { ascending: true }).order('court', { ascending: true });
+				if (gamesRes.error) throw new Error(gamesRes.error.message);
+				randomizerSession = { session: randomizerSessionRow, games: gamesRes.data || [] };
+			}
+
 			return mapGlobalData({
 				players: playersRes.data || [],
 				matches: matchesRes.data || [],
@@ -2834,6 +3066,7 @@
 				pendingUsers: pendingUsersRes.data || [],
 				ladderSessions,
 				liveScramble: scrambleRes.data || [],
+				randomizerSession,
 				members: membersRes.data || [],
 				memberExtras: memberExtrasRes.data || [],
 				membershipPlans: membershipPlansRes.data || [],
@@ -4020,6 +4253,7 @@
 				under18_only: !!data.under18Only,
 				female_only: !!data.femaleOnly,
 				all_ages: !!data.allAges,
+				is_randomizer: !!data.isRandomizer,
 				is_special_event: !!data.isSpecialEvent,
 				special_event_info_url: data.isSpecialEvent ? (data.specialEventInfoUrl || null) : null
             });
@@ -4042,6 +4276,7 @@
 				under18_only: !!data.under18Only,
 				female_only: !!data.femaleOnly,
 				all_ages: !!data.allAges,
+				is_randomizer: !!data.isRandomizer,
 				is_special_event: !!data.isSpecialEvent,
 				special_event_info_url: data.isSpecialEvent ? (data.specialEventInfoUrl || null) : null
 			}).eq('id', eventId);
@@ -4812,6 +5047,104 @@
             return !!isPublic;
         }
 
+        // Item #2: DUPR membership number + public/private toggle. Fetched as
+        // part of the normal members list (dupr_number/dupr_public aren't
+        // sensitive the way balance/emergency contact are - the whole point is
+        // that they're sometimes shown on a public profile) so no separate
+        // fetch is needed here, just an update + the same globalData patch
+        // pattern used by saveOwnBio()/saveOwnProfileVisibility() above.
+        async function saveOwnDupr(duprNumber, isPublic) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const trimmed = String(duprNumber || '').trim();
+            const { error } = await supabaseClient.from('users').update({
+                dupr_number: trimmed || null,
+                dupr_public: !!isPublic
+            }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            patchOwnProfileExtrasInGlobalData({ duprNumber: trimmed, duprPublic: !!isPublic });
+            return { duprNumber: trimmed, duprPublic: !!isPublic };
+        }
+
+        function handleSaveOwnDupr() {
+            const input = document.getElementById('profileDuprInput');
+            const toggle = document.getElementById('profileDuprPublicToggle');
+            const btn = document.getElementById('profileDuprSaveBtn');
+            if (!input || !toggle || !btn) return;
+
+            btn.disabled = true;
+            btn.innerText = "Saving...";
+
+            saveOwnDupr(input.value, toggle.checked)
+                .then(() => {
+                    triggerToast("DUPR number saved!");
+                    btn.disabled = false;
+                    btn.innerText = "Save DUPR Number";
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    btn.disabled = false;
+                    btn.innerText = "Save DUPR Number";
+                });
+        }
+
+        // Items #3 & #4: Emergency Contact info. Unlike bio/DUPR, this is
+        // sensitive personal data that has no business value being shown on
+        // anyone's profile, so (like wallet balance - see
+        // openAdminPlayerProfile()) it's deliberately left OUT of the broad
+        // `members` fetch every visitor's browser loads for the public
+        // leaderboard, and is instead fetched on demand: here, for the
+        // logged-in player's own record, and separately for admins viewing a
+        // specific player's profile (see openAdminPlayerProfile()).
+        async function fetchOwnEmergencyContact() {
+            if (!currentUser) throw new Error('Please log in first.');
+            const { data, error } = await supabaseClient.from('users')
+                .select('emergency_contact_name, emergency_contact_phone, emergency_contact_relationship')
+                .eq('username', currentUser.username)
+                .maybeSingle();
+            if (error) throw new Error(error.message);
+            return data || {};
+        }
+
+        async function saveOwnEmergencyContact(name, phone, relationship) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const trimmedName = String(name || '').trim();
+            const trimmedPhone = String(phone || '').trim();
+            const trimmedRelationship = String(relationship || '').trim();
+            if (!trimmedName || !trimmedPhone || !trimmedRelationship) {
+                throw new Error('Please fill in all three emergency contact fields.');
+            }
+            const { error } = await supabaseClient.from('users').update({
+                emergency_contact_name: trimmedName,
+                emergency_contact_phone: trimmedPhone,
+                emergency_contact_relationship: trimmedRelationship
+            }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            return { name: trimmedName, phone: trimmedPhone, relationship: trimmedRelationship };
+        }
+
+        function handleSaveOwnEmergencyContact() {
+            const nameInput = document.getElementById('profileEmergencyName');
+            const phoneInput = document.getElementById('profileEmergencyPhone');
+            const relInput = document.getElementById('profileEmergencyRelationship');
+            const btn = document.getElementById('profileEmergencySaveBtn');
+            if (!nameInput || !phoneInput || !relInput || !btn) return;
+
+            btn.disabled = true;
+            btn.innerText = "Saving...";
+
+            saveOwnEmergencyContact(nameInput.value, phoneInput.value, relInput.value)
+                .then(() => {
+                    triggerToast("Emergency contact saved!");
+                    btn.disabled = false;
+                    btn.innerText = "Save Emergency Contact";
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    btn.disabled = false;
+                    btn.innerText = "Save Emergency Contact";
+                });
+        }
+
         // Wallet system: paying for an event is now an automatic, near-instant step
         // right after signing up (see payForEventSignupNow()) rather than something
         // a member has 15 minutes to go and do separately via bank transfer. This
@@ -5251,7 +5584,11 @@
                 starting_elo: NEW_SIGNUP_STARTING_ELO,
                 is_under18: !!data.isUnder18,
                 consent_verified: false,
-                status: 'Pending'
+                status: 'Pending',
+                // Item #3: mandatory emergency contact, collected at sign up.
+                emergency_contact_name: String(data.emergencyContactName || '').trim(),
+                emergency_contact_phone: String(data.emergencyContactPhone || '').trim(),
+                emergency_contact_relationship: String(data.emergencyContactRelationship || '').trim()
             });
             if (error) throw new Error(error.message);
             clearLeagueCache();
@@ -5586,6 +5923,7 @@
                 // Trigger specific logic for the Scramble page
                 if(id === 'scramble-page') updateScrambleAccess();
                 if(id === 'ladders-page') { updateLaddersAccess(); if (currentUser) renderLadderSession(); }
+                if(id === 'randomizer-page') { updateRandomizerAccess(); if (currentUser) renderRandomizerPage(); }
 				if(id === 'rating-page') updateRatingsAccess();
 
 				// Item #2: login-gated pages (homepage, membership page, and the
@@ -5664,6 +6002,578 @@
             }
         }
 
+        // ============================================================================
+        // THE RANDOMIZER (item #5)
+        // ============================================================================
+        // A brand new live tournament format: an admin starts it from a
+        // specific event (must be flagged is_randomizer, capacity a multiple
+        // of 4 - see submitNewEvent()/goToRandomizerForEvent()). Every round
+        // randomly mixes the SAME fixed player list onto fresh 4-player
+        // courts (2v2) - there's no rating-based promotion/demotion like
+        // Ladders, and none of this ever touches `matches` or anyone's
+        // rating (see the schema comment near `create table
+        // randomizer_session`). Scores can be entered by anyone logged in,
+        // but only an admin can change one that's already been entered.
+        // Ending the event copies the top-3 male/top-3 female result into
+        // hall_of_fame (groundwork for a future Hall of Fame page) and then
+        // deletes the live session/games outright - this is purely scratch
+        // storage for the duration of one tournament.
+
+        // Which event this Step 1 setup screen is pre-filled from, so
+        // startRandomizerSession() knows which event_id to link the session
+        // to - see goToRandomizerForEvent()/applyEventPlayersToRandomizerSetup().
+        let randomizerSetupEventId = null;
+        // Which round's tab the viewer currently has open - defaults to the
+        // latest round whenever it's unset or points at a round that no
+        // longer exists (e.g. right after a fresh page load).
+        let randomizerViewRound = null;
+
+        function updateRandomizerAccess() {
+            const restricted = document.getElementById('randomizerRestricted');
+            const content = document.getElementById('randomizerMainContent');
+            if (!restricted || !content) return;
+            if (currentUser) {
+                restricted.classList.add('hidden');
+                content.classList.remove('hidden');
+            } else {
+                restricted.classList.remove('hidden');
+                content.classList.add('hidden');
+            }
+        }
+
+        // The nav link only ever shows while a tournament is actually live -
+        // called from render() on every data refresh, same pattern as
+        // updateUIForLogin()'s nav toggling.
+        function updateRandomizerNavVisibility() {
+            const isActive = !!(globalData.randomizerSession && globalData.randomizerSession.session.status === 'Active');
+            document.getElementById('nav-randomizer')?.classList.toggle('hidden', !isActive);
+            document.getElementById('nav-randomizer-m')?.classList.toggle('hidden', !isActive);
+        }
+
+        function isRandomizerActiveForEvent(eventId) {
+            const rs = globalData.randomizerSession;
+            return !!(rs && rs.session.status === 'Active' && rs.session.eventId === eventId);
+        }
+
+        // Entry point from the "🎲 Start The Randomizer" / "Go To The
+        // Randomizer" button on an event's calendar modal (admin only).
+        function goToRandomizerForEvent(eventId) {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+            if (!eventRow) return triggerError("Event not found.");
+            if (!eventRow[19]) return triggerError("This event isn't flagged as The Randomizer.");
+
+            if (isRandomizerActiveForEvent(eventId)) {
+                showTab('randomizer-page');
+                return;
+            }
+
+            if (globalData.randomizerSession && globalData.randomizerSession.session.status === 'Active') {
+                return triggerError("Another Randomizer tournament is already live - end it first before starting a new one.");
+            }
+
+            randomizerSetupEventId = eventId;
+            showTab('randomizer-page');
+            // showTab()/renderRandomizerPage() rebuild the checkboxes - wait a
+            // tick so the pre-fill below runs after that, not before it gets
+            // wiped out (same pattern as createLadderFromEvent()).
+            setTimeout(() => applyEventPlayersToRandomizerSetup(eventId), 150);
+        }
+
+        // Pre-fills the Step 1 setup screen with an event's confirmed sign
+        // ups, same idea as applyEventPlayersToLadderSetup() /
+        // applyEventPlayersToScrambleSetup().
+        function applyEventPlayersToRandomizerSetup(eventId) {
+            const eventRow = (globalData.events || []).find(e => e[0] === eventId);
+            if (!eventRow) return;
+            randomizerSetupEventId = eventId;
+
+            const nameInput = document.getElementById('randomizerSessionName');
+            if (nameInput && !nameInput.value) nameInput.value = eventRow[1];
+
+            const box = document.getElementById('randomizerEventLoadBox');
+            const nameLabel = document.getElementById('randomizerEventName');
+            if (box) box.classList.remove('hidden');
+            if (nameLabel) nameLabel.innerText = eventRow[1];
+
+            const confirmedNames = (globalData.signups || [])
+                .filter(s => s[0] === eventId && s[5] === 'Confirmed')
+                .map(s => s[1]);
+
+            let matched = 0;
+            const unmatched = [];
+            confirmedNames.forEach(name => {
+                const checkbox = Array.from(document.querySelectorAll('.randomizer-check'))
+                    .find(cb => normalizeName(cb.value) === normalizeName(name));
+                if (checkbox) { checkbox.checked = true; matched++; }
+                else unmatched.push(name);
+            });
+            validateRandomizerHeadcount();
+
+            if (unmatched.length > 0) {
+                triggerToast(`Pre-selected ${matched} player(s). Couldn't match: ${unmatched.join(', ')} - add manually if needed.`);
+            } else if (matched > 0) {
+                triggerToast(`Pre-selected ${matched} confirmed player(s) from "${eventRow[1]}" - review below, then start The Randomizer.`);
+            }
+        }
+
+        function loadRandomizerPlayersFromEvent() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!randomizerSetupEventId) return triggerError("No event selected.");
+            applyEventPlayersToRandomizerSetup(randomizerSetupEventId);
+        }
+
+        function validateRandomizerHeadcount() {
+            const selected = document.querySelectorAll('.randomizer-check:checked').length;
+            const msg = document.getElementById('randomizerHeadcountMsg');
+            const btn = document.getElementById('startRandomizerBtn');
+            if (!msg || !btn) return;
+
+            if (selected === 0) {
+                msg.innerText = '';
+            } else if (selected < 4 || selected % 4 !== 0) {
+                msg.innerText = `${selected} selected — needs a multiple of 4 (4, 8, 12, 16...).`;
+                msg.className = 'text-xs font-bold uppercase mb-3 text-rose-600';
+            } else {
+                msg.innerText = `${selected} selected — ${selected / 4} court${selected / 4 === 1 ? '' : 's'} of 4.`;
+                msg.className = 'text-xs font-bold uppercase mb-3 text-green-600';
+            }
+            const valid = selected >= 4 && selected % 4 === 0;
+            btn.disabled = !valid;
+            btn.style.opacity = valid ? '1' : '0.5';
+        }
+
+        // Randomly splits a shuffled player list into 4-player courts (2v2) -
+        // always exactly 4 per court since headcount is enforced to be a
+        // multiple of 4 everywhere this is called from.
+        function buildRandomizerRoundGames(shuffledPlayers) {
+            const games = [];
+            for (let i = 0; i < shuffledPlayers.length; i += 4) {
+                const courtPlayers = shuffledPlayers.slice(i, i + 4);
+                games.push({
+                    court: (i / 4) + 1,
+                    p1: courtPlayers[0], p2: courtPlayers[1],
+                    p3: courtPlayers[2], p4: courtPlayers[3]
+                });
+            }
+            return games;
+        }
+
+        function renderRandomizerPage() {
+            const rs = globalData.randomizerSession;
+            const step1 = document.getElementById('randomizerStep1');
+            const step2 = document.getElementById('randomizerStep2');
+            if (!step1 || !step2) return;
+
+            if (rs && rs.session.status === 'Active') {
+                step1.classList.add('hidden');
+                step2.classList.remove('hidden');
+                renderRandomizerLive(rs);
+                return;
+            }
+
+            step1.classList.remove('hidden');
+            step2.classList.add('hidden');
+
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            document.getElementById('randomizerStep1Controls')?.classList.toggle('hidden', !isAdmin);
+            document.getElementById('randomizerAdminOnlyNotice')?.classList.toggle('hidden', isAdmin);
+            if (!isAdmin) return;
+
+            // Preserve whatever's already ticked across a background
+            // re-render, same fix as the Ladders/Scramble checkboxes.
+            const container = document.getElementById('randomizerPlayerCheckboxes');
+            if (container && globalData.names) {
+                const previouslyChecked = new Set(Array.from(document.querySelectorAll('.randomizer-check:checked')).map(cb => cb.value));
+                container.innerHTML = globalData.names.map(n => `
+                    <label class="flex items-center space-x-3 p-3 bg-white rounded border cursor-pointer hover:bg-teal-50 transition">
+                        <input type="checkbox" value="${n}" class="randomizer-check w-5 h-5 accent-teal-600" ${previouslyChecked.has(n) ? 'checked' : ''} onchange="validateRandomizerHeadcount()">
+                        <span class="font-bold text-xs uppercase">${n}</span>
+                    </label>
+                `).join('');
+                validateRandomizerHeadcount();
+            }
+        }
+
+        function startRandomizerSession() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required to start The Randomizer.");
+            if (globalData.randomizerSession && globalData.randomizerSession.session.status === 'Active') {
+                return triggerError("Another Randomizer tournament is already live.");
+            }
+
+            const name = (document.getElementById('randomizerSessionName').value || '').trim() || 'The Randomizer';
+            const selected = Array.from(document.querySelectorAll('.randomizer-check:checked')).map(cb => cb.value);
+
+            if (selected.length < 4 || selected.length % 4 !== 0) {
+                return triggerError("Please select a multiple of 4 players (4, 8, 12, 16...).");
+            }
+
+            const btn = document.getElementById('startRandomizerBtn');
+            btn.disabled = true;
+            btn.innerText = "Starting...";
+
+            createRandomizerSessionData({ name, players: selected, eventId: randomizerSetupEventId })
+                .then(res => {
+                    randomizerViewRound = 1;
+                    render(res);
+                    triggerToast("The Randomizer has started!");
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    btn.disabled = false;
+                    btn.innerText = "Start The Randomizer";
+                });
+        }
+
+        async function createRandomizerSessionData(payload) {
+            const shuffled = shuffleArray([...payload.players]);
+            const games = buildRandomizerRoundGames(shuffled);
+
+            const { data: session, error: sessionErr } = await supabaseClient
+                .from('randomizer_session')
+                .insert({
+                    name: payload.name || 'The Randomizer',
+                    status: 'Active',
+                    current_round: 1,
+                    players: payload.players,
+                    event_id: payload.eventId || null
+                })
+                .select('*')
+                .single();
+            if (sessionErr) throw new Error(sessionErr.message);
+
+            const gameRows = games.map(g => ({ session_id: session.id, round: 1, court: g.court, p1: g.p1, p2: g.p2, p3: g.p3, p4: g.p4 }));
+            const { error: gamesErr } = await supabaseClient.from('randomizer_games').insert(gameRows);
+            if (gamesErr) throw new Error(gamesErr.message);
+
+            return refreshAllData();
+        }
+
+        function renderRandomizerLive(rs) {
+            const nameDisplay = document.getElementById('randomizerSessionNameDisplay');
+            if (nameDisplay) nameDisplay.innerText = `${rs.session.name} — Round ${rs.session.currentRound}`;
+
+            const rounds = Array.from(new Set(rs.games.map(g => g.round))).sort((a, b) => a - b);
+            if (randomizerViewRound === null || !rounds.includes(randomizerViewRound)) {
+                randomizerViewRound = rs.session.currentRound;
+            }
+
+            const tabsContainer = document.getElementById('randomizerRoundTabsContainer');
+            if (tabsContainer) {
+                tabsContainer.innerHTML = rounds.map(r => `
+                    <button onclick="setRandomizerViewRound(${r})" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition ${r === randomizerViewRound ? 'text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}" ${r === randomizerViewRound ? 'style="background-color:#0d9488 !important;"' : ''}>
+                        Round ${r}
+                    </button>
+                `).join('');
+            }
+
+            renderRandomizerRoundView(rs, randomizerViewRound);
+
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+            document.getElementById('randomizeNextRoundBtn')?.classList.toggle('hidden', !isAdmin);
+            document.getElementById('endRandomizerBtn')?.classList.toggle('hidden', !isAdmin);
+        }
+
+        function setRandomizerViewRound(round) {
+            randomizerViewRound = round;
+            renderRandomizerPage();
+        }
+
+        function renderRandomizerRoundView(rs, round) {
+            const container = document.getElementById('randomizerCourtsContainer');
+            if (!container) return;
+            const games = rs.games.filter(g => g.round === round).sort((a, b) => a.court - b.court);
+            const isAdmin = !!(currentUser && currentUser.role === 'Admin');
+
+            // Don't stomp on a score input the viewer's mid-typing when this
+            // re-renders (e.g. after saving a different court's score) - same
+            // class of fix as the bio textarea/Ladders checkboxes elsewhere in
+            // this file. Captures the focused input's in-progress value/cursor
+            // before the full rebuild, then restores it afterwards.
+            const activeEl = document.activeElement;
+            const focusedId = (activeEl && container.contains(activeEl)) ? activeEl.id : null;
+            const focusedValue = focusedId ? activeEl.value : null;
+            const focusedSelectionStart = (focusedId && typeof activeEl.selectionStart === 'number') ? activeEl.selectionStart : null;
+
+            container.innerHTML = games.map(g => {
+                // Item #5: once a score's been entered, only admins can edit
+                // it - everyone else just sees it locked, read-only.
+                const locked = g.scoredAt && !isAdmin;
+                const scoreAId = `randScoreA-${g.gameId}`;
+                const scoreBId = `randScoreB-${g.gameId}`;
+                return `
+                <div class="card p-5 border-l-4 space-y-3" style="border-color:#0d9488 !important;">
+                    <p class="text-xs font-black uppercase text-gray-400">Court ${g.court}</p>
+                    <div class="grid grid-cols-2 gap-4 items-center">
+                        <div class="text-center">
+                            <p class="text-sm font-black uppercase truncate">${escapeHtml(g.p1)} &amp; ${escapeHtml(g.p2)}</p>
+                            <input type="number" min="0" value="${g.scoreA}" id="${scoreAId}" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
+                        </div>
+                        <div class="text-center">
+                            <p class="text-sm font-black uppercase truncate">${escapeHtml(g.p3)} &amp; ${escapeHtml(g.p4)}</p>
+                            <input type="number" min="0" value="${g.scoreB}" id="${scoreBId}" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
+                        </div>
+                    </div>
+                    ${locked
+                        ? `<p class="text-[10px] font-bold text-gray-400 uppercase text-center">Scored - only admins can edit this now</p>`
+                        : `<button onclick="saveRandomizerScore('${g.gameId}')" class="w-full bg-black text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-teal-600 transition">${g.scoredAt ? 'Update Score' : 'Save Score'}</button>`
+                    }
+                </div>`;
+            }).join('');
+
+            if (focusedId) {
+                const restored = document.getElementById(focusedId);
+                if (restored) {
+                    restored.value = focusedValue;
+                    restored.focus();
+                    if (focusedSelectionStart !== null && restored.setSelectionRange) {
+                        try { restored.setSelectionRange(focusedSelectionStart, focusedSelectionStart); } catch (e) {}
+                    }
+                }
+            }
+        }
+
+        function saveRandomizerScore(gameId) {
+            if (!currentUser) return triggerError("Please log in first.");
+            const aInput = document.getElementById('randScoreA-' + gameId);
+            const bInput = document.getElementById('randScoreB-' + gameId);
+            if (!aInput || !bInput) return;
+            if (aInput.value === '' || bInput.value === '') return triggerError("Please enter both scores.");
+            const scoreA = Number(aInput.value);
+            const scoreB = Number(bInput.value);
+            if (isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) return triggerError("Please enter valid, non-negative scores.");
+
+            updateRandomizerScore(gameId, scoreA, scoreB)
+                .then(res => { render(res); triggerToast("Score saved!"); })
+                .catch(err => triggerError(err.message));
+        }
+
+        async function updateRandomizerScore(gameId, scoreA, scoreB) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const { data: game, error: fetchErr } = await supabaseClient.from('randomizer_games').select('*').eq('id', gameId).single();
+            if (fetchErr) throw new Error(fetchErr.message);
+            // Item #5: anyone logged in can enter a score the first time -
+            // once it's been scored, only an admin can change it.
+            if (game.scored_at && currentUser.role !== 'Admin') {
+                throw new Error('This score has already been entered - only an admin can change it now.');
+            }
+            const { error } = await supabaseClient.from('randomizer_games').update({
+                score_a: scoreA,
+                score_b: scoreB,
+                scored_at: serverNow().toISOString(),
+                scored_by: currentUser.username
+            }).eq('id', gameId);
+            if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        function randomizeNextRound() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const rs = globalData.randomizerSession;
+            if (!rs) return;
+            const currentGames = rs.games.filter(g => g.round === rs.session.currentRound);
+            const unscored = currentGames.filter(g => g.scoreA === '' || g.scoreA === null || g.scoreB === '' || g.scoreB === null);
+            if (unscored.length > 0) {
+                return triggerError(`Please enter all ${currentGames.length} court score(s) for Round ${rs.session.currentRound} before randomizing the next round.`);
+            }
+
+            const btn = document.getElementById('randomizeNextRoundBtn');
+            if (btn) { btn.disabled = true; btn.innerText = "Shuffling..."; }
+
+            createNextRandomizerRound(rs.session.id, rs.session.players, rs.session.currentRound + 1)
+                .then(res => {
+                    randomizerViewRound = rs.session.currentRound + 1;
+                    render(res);
+                    triggerToast(`Round ${rs.session.currentRound + 1} is live!`);
+                })
+                .catch(err => triggerError(err.message))
+                .finally(() => {
+                    if (btn) { btn.disabled = false; btn.innerText = "🔀 Randomize (Next Round)"; }
+                });
+        }
+
+        async function createNextRandomizerRound(sessionId, players, nextRound) {
+            const shuffled = shuffleArray([...players]);
+            const games = buildRandomizerRoundGames(shuffled);
+            const gameRows = games.map(g => ({ session_id: sessionId, round: nextRound, court: g.court, p1: g.p1, p2: g.p2, p3: g.p3, p4: g.p4 }));
+
+            const { error: gamesErr } = await supabaseClient.from('randomizer_games').insert(gameRows);
+            if (gamesErr) throw new Error(gamesErr.message);
+
+            const { error: sessionErr } = await supabaseClient.from('randomizer_session').update({ current_round: nextRound }).eq('id', sessionId);
+            if (sessionErr) throw new Error(sessionErr.message);
+
+            return refreshAllData();
+        }
+
+        // Standings (item #5): total points scored first, then wins as the
+        // tiebreaker when two or more players are level on points - exactly
+        // as requested. Only counts games that have actually been scored.
+        function computeRandomizerStandings(rs) {
+            const stats = new Map();
+            const ensure = (name) => {
+                if (!stats.has(name)) stats.set(name, { name, points: 0, wins: 0, gamesPlayed: 0 });
+                return stats.get(name);
+            };
+            (rs.games || []).forEach(g => {
+                if (g.scoreA === '' || g.scoreA === null || g.scoreB === '' || g.scoreB === null) return;
+                const scoreA = Number(g.scoreA), scoreB = Number(g.scoreB);
+                const teamAWon = scoreA > scoreB;
+                const teamBWon = scoreB > scoreA;
+                [g.p1, g.p2].forEach(name => {
+                    if (!name) return;
+                    const s = ensure(name);
+                    s.points += scoreA;
+                    s.gamesPlayed++;
+                    if (teamAWon) s.wins++;
+                });
+                [g.p3, g.p4].forEach(name => {
+                    if (!name) return;
+                    const s = ensure(name);
+                    s.points += scoreB;
+                    s.gamesPlayed++;
+                    if (teamBWon) s.wins++;
+                });
+            });
+            return Array.from(stats.values()).sort((a, b) => b.points - a.points || b.wins - a.wins);
+        }
+
+        function openRandomizerStandingsModal() {
+            const rs = globalData.randomizerSession;
+            if (!rs) return;
+            const standings = computeRandomizerStandings(rs);
+            const body = document.getElementById('randomizerStandingsBody');
+            if (body) {
+                body.innerHTML = standings.length === 0
+                    ? `<p class="text-center text-gray-400 italic py-10 text-sm">No scores entered yet.</p>`
+                    : standings.map((s, i) => `
+                        <div class="flex items-center justify-between p-3 rounded-xl ${i === 0 ? 'border-2' : 'bg-gray-50 border border-gray-100'}" ${i === 0 ? 'style="background-color:#f0fdfa !important; border-color:#0d9488 !important;"' : ''}>
+                            <div class="flex items-center gap-3">
+                                <span class="font-black text-sm w-6">${i + 1}</span>
+                                <span class="font-bold text-sm uppercase">${escapeHtml(s.name)}</span>
+                            </div>
+                            <div class="flex items-center gap-4 text-right">
+                                <div><p class="text-[9px] font-bold text-gray-400 uppercase">Points</p><p class="font-black text-sm">${s.points}</p></div>
+                                <div><p class="text-[9px] font-bold text-gray-400 uppercase">Wins</p><p class="font-black text-sm">${s.wins}</p></div>
+                            </div>
+                        </div>
+                    `).join('');
+            }
+            openModal('randomizerStandingsModal');
+        }
+
+        // --- Ending the event -----------------------------------------------
+        // Two steps, deliberately: an "are you sure" confirmation (this
+        // permanently deletes the live session), then the Final Results pop
+        // up itself, which can ONLY be dismissed via its own "Confirm & Close"
+        // button (no ✕, no backdrop click) so nobody can lose the final
+        // standings by accident - per the requirement that once it's closed,
+        // "we can't get it back".
+
+        function confirmEndRandomizerEvent() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            if (!globalData.randomizerSession) return;
+            openModal('endRandomizerConfirmModal');
+        }
+
+        function closeEndRandomizerConfirmModal() {
+            closeModal('endRandomizerConfirmModal');
+        }
+
+        function executeEndRandomizerEvent() {
+            const rs = globalData.randomizerSession;
+            if (!rs) return;
+            const btn = document.getElementById('endRandomizerFinalBtn');
+            if (btn) { btn.disabled = true; btn.innerText = "Ending..."; }
+
+            finalizeRandomizerEvent(rs)
+                .then(results => {
+                    closeModal('endRandomizerConfirmModal');
+                    if (btn) { btn.disabled = false; btn.innerText = "Yes, End Event"; }
+                    showRandomizerFinalResultsModal(results);
+                    return refreshAllData();
+                })
+                .then(res => { if (res) render(res); })
+                .catch(err => {
+                    triggerError(err.message);
+                    if (btn) { btn.disabled = false; btn.innerText = "Yes, End Event"; }
+                });
+        }
+
+        // Copies the top-3 male/top-3 female result into hall_of_fame (item
+        // #5 - groundwork for a future Hall of Fame page, not shown anywhere
+        // yet) and then deletes the live randomizer_session row outright
+        // (on delete cascade removes its randomizer_games too) - none of
+        // this was ever permanent match data, so once the winners are
+        // safely copied there's nothing left to keep.
+        async function finalizeRandomizerEvent(rs) {
+            const standings = computeRandomizerStandings(rs);
+            const genderByName = new Map();
+            (globalData.standings || []).forEach(p => genderByName.set(normalizeName(p.name), p.gender));
+
+            const withGender = standings.map(s => ({ ...s, gender: genderByName.get(normalizeName(s.name)) || '' }));
+            const topMale = withGender.filter(s => s.gender === 'Male').slice(0, 3);
+            const topFemale = withGender.filter(s => s.gender === 'Female').slice(0, 3);
+
+            const eventRow = rs.session.eventId ? (globalData.events || []).find(e => e[0] === rs.session.eventId) : null;
+
+            const buildHallRows = (list, category) => list.map((s, i) => ({
+                event_id: rs.session.eventId || null,
+                event_title: eventRow ? eventRow[1] : rs.session.name,
+                event_date: eventRow ? eventRow[2] : todayStr(),
+                category,
+                position: i + 1,
+                player_name: s.name,
+                total_points: s.points,
+                wins: s.wins
+            }));
+            const hallRows = [...buildHallRows(topMale, 'Male'), ...buildHallRows(topFemale, 'Female')];
+
+            if (hallRows.length > 0) {
+                const { error: hallErr } = await supabaseClient.from('hall_of_fame').insert(hallRows);
+                if (hallErr) throw new Error(hallErr.message);
+            }
+
+            const { error: deleteErr } = await supabaseClient.from('randomizer_session').delete().eq('id', rs.session.id);
+            if (deleteErr) throw new Error(deleteErr.message);
+
+            return { topMale, topFemale };
+        }
+
+        function showRandomizerFinalResultsModal(results) {
+            const medal = ['🥇', '🥈', '🥉'];
+            const buildList = (list) => list.length === 0
+                ? `<p class="text-center text-gray-400 italic text-xs py-4">No results recorded.</p>`
+                : list.map((s, i) => `
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">${medal[i] || ''}</span>
+                            <span class="font-black text-sm uppercase">${escapeHtml(s.name)}</span>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-black text-sm">${s.points} pts</p>
+                            <p class="text-[9px] font-bold text-gray-400 uppercase">${s.wins} win${s.wins === 1 ? '' : 's'}</p>
+                        </div>
+                    </div>
+                `).join('');
+
+            const maleEl = document.getElementById('randomizerFinalMaleResults');
+            const femaleEl = document.getElementById('randomizerFinalFemaleResults');
+            if (maleEl) maleEl.innerHTML = buildList(results.topMale);
+            if (femaleEl) femaleEl.innerHTML = buildList(results.topFemale);
+            openModal('randomizerFinalResultsModal');
+        }
+
+        // The ONLY way to dismiss the Final Results pop up - see the note
+        // above confirmEndRandomizerEvent().
+        function confirmCloseRandomizerFinalResults() {
+            closeModal('randomizerFinalResultsModal');
+            randomizerViewRound = null;
+            randomizerSetupEventId = null;
+            triggerToast("The Randomizer has ended - results saved to the Hall of Fame!");
+            showTab('events-page');
+        }
+
         // --- MAIN RENDER FUNCTION ---
         function render(data) {
             if (data.error) {
@@ -5699,12 +6609,27 @@
                 step1.classList.remove('hidden');
                 step2.classList.add('hidden');
             }
+            // Item #6: only admins get the player-picker/Generate Rotation
+            // controls for starting a brand new Scramble session - everyone
+            // else sees scrambleAdminOnlyNotice instead (still has nothing to
+            // do with whether they can enter scores for an already-started
+            // session, which stays open to any logged-in player).
+            const isScrambleAdmin = !!(currentUser && currentUser.role === 'Admin');
+            document.getElementById('scrambleStep1Controls')?.classList.toggle('hidden', !isScrambleAdmin);
+            document.getElementById('scrambleAdminOnlyNotice')?.classList.toggle('hidden', isScrambleAdmin);
             // ---------------------------------------------------
 
             ladderSessionsState = data.ladderSessions || [];
 			if (activeLadderSessionId && !ladderSessionsState.some(s => s.session.id === activeLadderSessionId)) {
 				activeLadderSessionId = null;
 			}
+
+            // Item #5: show/hide the "The Randomizer" nav link based on
+            // whether a tournament is currently live, and re-render the page
+            // itself if it's the one currently open (same pattern as the
+            // Ladders/Scramble switcher above).
+            updateRandomizerNavVisibility();
+            if (currentTabId === 'randomizer-page' && currentUser) renderRandomizerPage();
 
             // 3. Populate Checkboxes (Selection Screen)
             // Item #2 fix: render(data) runs after every background data refresh
@@ -6214,6 +7139,9 @@
         }
 
         function generateScramble() {
+            // Item #6: starting a Scramble session is admin-only.
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required to start a Scramble session.");
+
             // 1. Get selected names from checkboxes (this is alphabetical)
             const selected = Array.from(document.querySelectorAll('.scramble-check:checked')).map(cb => cb.value);
             const btn = document.getElementById('genScrambleBtn');
@@ -6662,6 +7590,9 @@
                 : '';
             document.getElementById('playerProfileEmail').innerText = m.email || 'Not provided';
             document.getElementById('playerProfileRole').innerText = `${m.role} / ${m.status}`;
+            // Item #2: shown to admins regardless of this player's own
+            // public/private DUPR toggle.
+            document.getElementById('playerProfileDuprNumber').innerText = m.duprNumber || 'Not provided';
             document.getElementById('playerProfileMembershipNumberInput').value = m.membershipNumber || '';
             document.getElementById('playerProfileBalanceAdjustAmount').value = '';
             document.getElementById('playerProfileBalanceAdjustNote').value = '';
@@ -6697,6 +7628,20 @@
                 currentAdminPlayerProfile.userId = data.id;
                 document.getElementById('playerProfileBalance').innerText = '£' + Number(data.balance || 0).toFixed(2);
             });
+
+            // Items #3/#4: Emergency Contact - admins can always see it,
+            // fetched on demand (never part of the broad members list) same
+            // as wallet balance above.
+            supabaseClient.from('users')
+                .select('emergency_contact_name, emergency_contact_phone, emergency_contact_relationship')
+                .eq('username', username)
+                .maybeSingle()
+                .then(({ data, error }) => {
+                    const el = document.getElementById('playerProfileEmergencyContact');
+                    if (!el) return;
+                    if (error || !data || !data.emergency_contact_name) { el.innerText = 'Not provided'; return; }
+                    el.innerText = `${data.emergency_contact_name} (${data.emergency_contact_relationship || 'Unknown relation'}) — ${data.emergency_contact_phone || 'No phone provided'}`;
+                });
         }
 
         function savePlayerBalanceAdjustment() {
@@ -7271,6 +8216,25 @@
                         <p class="text-sm font-bold text-gray-700 whitespace-pre-wrap break-words">${escapeHtml(bio)}</p>
                    </div>`
                 : '';
+
+            // Item #2: DUPR number shows on the profile when the player has
+            // opted it public, OR when the viewer is an admin (admins can
+            // always see every player's DUPR number regardless of the
+            // checkbox). A non-public number viewed by an admin is labelled
+            // "Admin Only" so it's clear to the admin it isn't visible to
+            // anyone else.
+            const viewerIsAdmin = !!(currentUser && currentUser.role === 'Admin');
+            const duprNumber = memberRecord && memberRecord.duprNumber ? memberRecord.duprNumber : '';
+            const duprIsPublic = !!(memberRecord && memberRecord.duprPublic);
+            const duprHtml = duprNumber && (duprIsPublic || viewerIsAdmin)
+                ? `<div class="bg-indigo-50 border-l-4 border-indigo-600 rounded-xl p-4 flex items-center justify-between gap-2">
+                        <div>
+                            <p class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">🏓 DUPR Number</p>
+                            <p class="text-sm font-black text-indigo-900">${escapeHtml(duprNumber)}</p>
+                        </div>
+                        ${!duprIsPublic ? `<span class="text-[9px] font-black uppercase bg-indigo-600 text-white px-2 py-1 rounded-full flex-shrink-0">🔒 Admin Only</span>` : ''}
+                   </div>`
+                : '';
             const headerHtml = `
                 <div class="flex items-center gap-3">
                     ${avatarHtml}
@@ -7348,6 +8312,7 @@
             // 6. Build Body
             const bodyHtml = `
                 ${bioHtml}
+                ${duprHtml}
                 ${headToHeadHtml}
                 <div class="grid grid-cols-2 gap-4">
                     <div class="stat-card border-l-4 border-black p-3 text-left bg-gray-50 rounded-xl">
@@ -7529,6 +8494,34 @@
             // instantly (no draft text to lose on a background re-render).
             const publicToggle = document.getElementById('profilePublicToggle');
             if (publicToggle) publicToggle.checked = !!(memberRecord && memberRecord.profilePublic);
+
+            // Item #2: DUPR number + public toggle - same draft-safe guard as
+            // the bio textarea above (don't stomp on it mid-edit).
+            const duprInput = document.getElementById('profileDuprInput');
+            if (duprInput && document.activeElement !== duprInput) {
+                duprInput.value = memberRecord && memberRecord.duprNumber ? memberRecord.duprNumber : '';
+            }
+            const duprPublicToggle = document.getElementById('profileDuprPublicToggle');
+            if (duprPublicToggle) duprPublicToggle.checked = !!(memberRecord && memberRecord.duprPublic);
+
+            // Items #3/#4: Emergency Contact - deliberately NOT part of
+            // globalData.members (see fetchOwnEmergencyContact()), so it's
+            // fetched once per Profile tab visit rather than on every
+            // background re-render, both to avoid a wasted extra request on
+            // every refresh and to never stomp on an in-progress edit.
+            if (!profileEmergencyContactLoadedFor || profileEmergencyContactLoadedFor !== currentUser.username) {
+                profileEmergencyContactLoadedFor = currentUser.username;
+                fetchOwnEmergencyContact()
+                    .then(ec => {
+                        const nameInput = document.getElementById('profileEmergencyName');
+                        const phoneInput = document.getElementById('profileEmergencyPhone');
+                        const relInput = document.getElementById('profileEmergencyRelationship');
+                        if (nameInput) nameInput.value = ec.emergency_contact_name || '';
+                        if (phoneInput) phoneInput.value = ec.emergency_contact_phone || '';
+                        if (relInput) relInput.value = ec.emergency_contact_relationship || '';
+                    })
+                    .catch(() => { profileEmergencyContactLoadedFor = null; });
+            }
 
             // Item #9: nudge players who haven't set a photo and/or bio yet -
             // hidden automatically once both are filled in.
@@ -8501,6 +9494,7 @@
 				document.getElementById('evtDuration').value = event[10] ?? "";
 				document.getElementById('evtFemaleOnly').checked = !!event[15];
 				document.getElementById('evtAllAges').checked = !!event[16];
+				document.getElementById('evtIsRandomizer').checked = !!event[19];
 				document.getElementById('evtSpecialEvent').checked = !!event[17];
 				document.getElementById('evtSpecialEventUrl').value = event[18] || "";
 				document.getElementById('evtSpecialEventFile').value = "";
@@ -8523,6 +9517,7 @@
 				if (evtDuration) evtDuration.value = "";
 				document.getElementById('evtFemaleOnly').checked = false;
 				document.getElementById('evtAllAges').checked = false;
+				document.getElementById('evtIsRandomizer').checked = false;
 				document.getElementById('evtSpecialEvent').checked = false;
 				document.getElementById('evtSpecialEventUrl').value = "";
 				document.getElementById('evtSpecialEventFile').value = "";
@@ -8591,6 +9586,7 @@
 				under18Only: editingEvent ? !!editingEvent[14] : false,
 				femaleOnly: document.getElementById('evtFemaleOnly').checked,
 				allAges: document.getElementById('evtAllAges').checked,
+				isRandomizer: document.getElementById('evtIsRandomizer').checked,
 				isSpecialEvent: document.getElementById('evtSpecialEvent').checked,
 				specialEventInfoUrl: document.getElementById('evtSpecialEventUrl').value.trim(),
 				memberPrice: document.getElementById('evtMemberPrice').value,
@@ -8603,6 +9599,12 @@
 
 			if (data.memberPrice === "" || data.nonMemberPrice === "") {
 				return triggerError("Please enter both prices. Use £0 for free events.");
+			}
+
+			// Item #5: every Randomizer court needs exactly 4 players, so the
+			// event's capacity has to be a clean multiple of 4.
+			if (data.isRandomizer && (Number(data.max) % 4 !== 0 || Number(data.max) < 4)) {
+				return triggerError("The Randomizer requires Max Slots to be a multiple of 4 (e.g. 4, 8, 12, 16...).");
 			}
 
 			const btn = document.getElementById('evtSubmitBtn');
@@ -9922,6 +10924,7 @@
         // (e.g. Singles, Tournament), add an entry here + one line in getEventTypeKey().
         const EVENT_TYPES = {
             special: { key: 'special', label: 'Special Event', icon: '🏆', logo: 'https://i.postimg.cc/g0j5BgSn/Logo-gold.jpg', color: '#d97706', bg: '#fffbeb', text: '#b45309' },
+            randomizer: { key: 'randomizer', label: 'The Randomizer', icon: '🎲', logo: 'https://i.postimg.cc/W1Wps66D/Logo-red.jpg', color: '#0d9488', bg: '#f0fdfa', text: '#0f766e' },
             mixed:  { key: 'mixed',  label: 'Mixed Doubles', icon: '🎾', logo: 'https://i.postimg.cc/W1Wps66D/Logo-red.jpg',    color: '#e11d48', bg: '#fff1f2', text: '#be123c' },
             female: { key: 'female', label: 'Female Only',   icon: '♀️', logo: 'https://i.postimg.cc/13J2HkH9/Logo-purple.jpg', color: '#9333ea', bg: '#faf5ff', text: '#7e22ce' },
             junior: { key: 'junior', label: 'Junior',        icon: '👦', logo: 'https://i.postimg.cc/zGtDqSSb/Logo-Blue.jpg',   color: '#3b82f6', bg: '#eff6ff', text: '#1d4ed8' }
@@ -9942,6 +10945,7 @@
         // all_ages unset - keep showing up under the Junior filter chip.
         function getEventTypeKey(event) {
             if (!!event[17]) return 'special';
+            if (!!event[19]) return 'randomizer';
             if (!!event[15]) return 'female';
             if (!!event[16] || !!event[14]) return 'junior';
             return 'mixed';
@@ -10464,6 +11468,7 @@
                     <div class="flex-1">
                         <div class="flex flex-wrap gap-2 mb-2">
                             ${event[17] ? `<span class="bg-amber-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">🏆 Special Event</span>` : ''}
+                            ${event[19] ? `<span class="bg-teal-600 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">🎲 The Randomizer</span>` : ''}
                             ${under18Only ? `<span class="bg-blue-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👦 Junior</span>` : ''}
 							${allAges ? `<span class="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👨‍👧 All Ages</span>` : ''}
 							${femaleOnly ? `<span class="bg-purple-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">♀️ Women Only</span>` : ''}
@@ -10544,6 +11549,10 @@
 
                 ${isAdmin && status !== 'Cancelled' ? `
 				<div class="border-t border-gray-100 p-5 pt-3 space-y-2">
+					${event[19] ? `
+					<button onclick="closeCalendarEventModal(); setTimeout(() => goToRandomizerForEvent('${event[0]}'), 100);" class="w-full bg-teal-600 text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-teal-700 transition">
+						🎲 ${isRandomizerActiveForEvent(event[0]) ? 'Go To The Randomizer' : 'Start The Randomizer'}
+					</button>` : ''}
 					<button onclick="closeCalendarEventModal(); setTimeout(() => openEventSignupsModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}'), 100);" class="w-full bg-black text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-gray-800 transition">👥 View Signups (${signups.length}${maxPlayers ? '/' + maxPlayers : ''})</button>
 					<button onclick="closeCalendarEventModal(); setTimeout(() => openEventModal('${event[0]}'), 100);" class="w-full border-2 border-black text-black py-2 rounded-xl font-black uppercase text-xs hover:bg-black hover:text-white transition">✏️ Amend Event</button>
 					<button onclick="closeCalendarEventModal(); setTimeout(() => confirmCancelEvent('${event[0]}', '${event[1].replace(/'/g, "\\'")}'), 100);" class="w-full border-2 border-black text-black py-2 rounded-xl font-black uppercase text-xs hover:bg-black hover:text-white transition">🚫 Cancel Event</button>
@@ -10916,7 +11925,12 @@
                 username: document.getElementById('regUser').value.trim(),
                 password: document.getElementById('regPass').value.trim(),
                 gender: document.getElementById('regGender').value,
-                isUnder18: isUnder18
+                isUnder18: isUnder18,
+                // Item #3: mandatory emergency contact info, collected here
+                // at sign up (also editable later from the Profile tab - item #4).
+                emergencyContactName: document.getElementById('regEmergencyName').value.trim(),
+                emergencyContactPhone: document.getElementById('regEmergencyPhone').value.trim(),
+                emergencyContactRelationship: document.getElementById('regEmergencyRelationship').value.trim()
                 };
 
                 const btn = document.getElementById('signupSubmitBtn');
@@ -10925,6 +11939,10 @@
 
                 if (!data.username || !data.password || !data.firstName || !data.email) {
                     return triggerError("Please fill in all required fields, including your email address.");
+                }
+
+                if (!data.emergencyContactName || !data.emergencyContactPhone || !data.emergencyContactRelationship) {
+                    return triggerError("Please provide emergency contact details (name, phone and relationship) - this is required for everyone's safety.");
                 }
 
                 if (data.password !== confirmPass) {
@@ -10951,7 +11969,7 @@
                     triggerSuccess("Application Submitted", "An admin will review your account soon.");
                     
                     // Clear the form fields
-                    ['regFirst', 'regLast', 'regEmail', 'regUser', 'regPass', 'regPassConfirm'].forEach(id => {
+                    ['regFirst', 'regLast', 'regEmail', 'regUser', 'regPass', 'regPassConfirm', 'regEmergencyName', 'regEmergencyPhone', 'regEmergencyRelationship'].forEach(id => {
                         document.getElementById(id).value = "";
                     });
                     document.getElementById('regUnder18').checked = false;
@@ -11008,6 +12026,9 @@
 
         function logoutUser() {
             currentUser = null;
+            profileEmergencyContactLoadedFor = null;
+            randomizerSetupEventId = null;
+            randomizerViewRound = null;
             localStorage.removeItem('pickleUser');
             if (adminTimeout) clearTimeout(adminTimeout);
             closeModal('logoutModal');
@@ -12023,6 +13044,69 @@
             </div>
         </div>
     </div>
+    <!-- THE RANDOMIZER: Standings modal (item #5) -->
+    <div id="randomizerStandingsModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 710 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border-t-8" style="border-color:#0d9488 !important; max-height: 85vh; display:flex; flex-direction:column;">
+            <div class="p-6 pb-3 flex justify-between items-center flex-shrink-0">
+                <h3 class="text-2xl font-black italic uppercase">📊 Standings</h3>
+                <button onclick="closeModal('randomizerStandingsModal')" class="text-gray-400 hover:text-black transition text-2xl font-black leading-none">✕</button>
+            </div>
+            <p class="px-6 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ranked by total points scored, then wins</p>
+            <div id="randomizerStandingsBody" class="p-6 space-y-2 overflow-y-auto flex-1"></div>
+        </div>
+    </div>
+    <!-- THE RANDOMIZER: "End Event" confirmation (item #5) -->
+    <div id="endRandomizerConfirmModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 720 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-rose-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-black uppercase italic mb-2">End This Event?</h3>
+                <p class="text-gray-600 mb-6 text-sm font-bold uppercase">This permanently deletes the live tournament and all its round data. The top 3 male and top 3 female finishers will be saved. This cannot be undone.</p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="executeEndRandomizerEvent()" id="endRandomizerFinalBtn"
+                            style="background-color: #e11d48 !important; color: #ffffff !important;"
+                            class="w-full py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-rose-700 transition">
+                        Yes, End Event
+                    </button>
+                    <button onclick="closeEndRandomizerConfirmModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Keep Playing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- THE RANDOMIZER: Final Results pop up (item #5) - deliberately has NO
+         ✕ close button and no backdrop-click handler anywhere in this file -
+         confirmCloseRandomizerFinalResults() is the only way to dismiss it,
+         so the final standings can't be lost by an accidental tap. -->
+    <div id="randomizerFinalResultsModal" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center hidden p-4" style="z-index: 900 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8" style="border-color:#0d9488 !important; max-height: 90vh; display:flex; flex-direction:column;">
+            <div class="p-6 pb-3 text-center flex-shrink-0">
+                <p class="text-4xl mb-2">🏆</p>
+                <h3 class="text-3xl font-black italic uppercase">The Randomizer — Final Results</h3>
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Separate trophies for best male &amp; best female player</p>
+            </div>
+            <div class="p-6 pt-0 space-y-6 overflow-y-auto flex-1">
+                <div class="space-y-2">
+                    <h4 class="font-black italic uppercase text-sm text-gray-500 border-b-2 border-gray-100 pb-1">🚹 Top Male Players</h4>
+                    <div id="randomizerFinalMaleResults" class="space-y-2"></div>
+                </div>
+                <div class="space-y-2">
+                    <h4 class="font-black italic uppercase text-sm text-purple-500 border-b-2 border-purple-100 pb-1">🚺 Top Female Players</h4>
+                    <div id="randomizerFinalFemaleResults" class="space-y-2"></div>
+                </div>
+            </div>
+            <div class="p-6 pt-3 border-t border-gray-100 flex-shrink-0">
+                <button onclick="confirmCloseRandomizerFinalResults()" style="background-color:#0d9488 !important; color:#ffffff !important;" class="w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-lg transition">
+                    ✅ Confirm & Close — Results Saved
+                </button>
+            </div>
+        </div>
+    </div>
     <div id="recalcEloModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 700 !important;">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-blue-600">
             <div class="p-8 text-center">
@@ -12339,6 +13423,21 @@
                     </div>
                     <p class="text-[10px] text-gray-400 font-bold sm:col-span-2">Each reset only affects that one board and instantly returns it to the same fresh rating a brand-new sign-up gets, with 0 wins/losses on that board. Full match history is kept and stays visible on the profile either way - only the current rating and career W/L on the reset board are affected.</p>
                 </div>
+                <!-- Item #2: admins can always see a player's DUPR number
+                     regardless of their public/private toggle - see
+                     openAdminPlayerProfile(). Read-only here (the player
+                     manages it themselves from their Profile tab). -->
+                <div class="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                    <p class="text-[9px] font-bold text-indigo-400 uppercase mb-2">🏓 DUPR Membership Number</p>
+                    <p id="playerProfileDuprNumber" class="font-black text-sm"></p>
+                </div>
+                <!-- Items #3/#4: admins can always see a player's emergency
+                     contact info, fetched on demand (never part of the broad
+                     members list) - see openAdminPlayerProfile(). -->
+                <div class="bg-rose-50 rounded-xl p-4 border border-rose-100">
+                    <p class="text-[9px] font-bold text-rose-400 uppercase mb-2">🚨 Emergency Contact</p>
+                    <p id="playerProfileEmergencyContact" class="font-black text-sm">Loading...</p>
+                </div>
                 <div class="bg-rose-50 rounded-xl p-4 border border-rose-100">
                     <p class="text-[9px] font-bold text-rose-400 uppercase mb-2">Membership Number</p>
                     <div class="flex gap-2 items-center">
@@ -12635,6 +13734,16 @@
 					<span class="text-xs font-bold text-left uppercase text-purple-700">Female Only Event</span>
 				</label>
 
+				<!-- Item #5: "The Randomizer" - a new live tournament format, see
+				     startRandomizerSession() etc. Capacity must be a multiple of 4
+				     (checked in submitNewEvent()) since every court needs exactly
+				     4 players. -->
+				<label class="flex items-center gap-3 bg-teal-50 p-4 rounded-xl mt-2 cursor-pointer border border-teal-200">
+					<input type="checkbox" id="evtIsRandomizer" class="w-5 h-5 accent-teal-600">
+					<span class="text-xs font-bold text-left uppercase text-teal-700">🎲 The Randomizer</span>
+					<span class="text-[9px] font-bold text-teal-500 normal-case block">Max Slots must be a multiple of 4. Once created, start it from the event's page to open the live Randomizer.</span>
+				</label>
+
 				<label class="flex items-center gap-3 bg-amber-50 p-4 rounded-xl mt-2 cursor-pointer border border-amber-200">
 					<input type="checkbox" id="evtSpecialEvent" onchange="toggleSpecialEventFields()" class="w-5 h-5 accent-amber-600">
 					<span class="text-xs font-bold text-left uppercase text-amber-700">🏆 Special Event (Tournament)</span>
@@ -12895,6 +14004,16 @@
                     <span class="text-xs font-black uppercase text-green-700">✅ Consent form submitted to the club — thank you!</span>
                 </div>
                 <input type="hidden" id="regConsentAck" value="">
+            </div>
+            <!-- Item #3: mandatory emergency contact info, collected at sign up
+                 alongside everything else - see processSignup()/registerUser().
+                 Editable later from the Profile tab (item #4) - see
+                 saveOwnEmergencyContact(). -->
+            <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-3">
+                <p class="text-[10px] font-black uppercase text-rose-600 tracking-widest">🚨 Emergency Contact (Required)</p>
+                <input type="text" id="regEmergencyName" placeholder="Emergency Contact Full Name" class="input-field border-2">
+                <input type="tel" id="regEmergencyPhone" placeholder="Emergency Contact Phone Number" class="input-field border-2">
+                <input type="text" id="regEmergencyRelationship" placeholder="Relationship (e.g. Spouse, Parent, Friend)" class="input-field border-2">
             </div>
             <input type="text" id="regUser" placeholder="Choose Username" class="input-field border-2">
             <div class="relative">
