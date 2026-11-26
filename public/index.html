@@ -14,6 +14,24 @@
         .card { background: white; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-radius: 0.5rem; }
         .nav-link.active { color: var(--ponty-red); border-bottom: 3px solid var(--ponty-red); }
         .btn-red { background-color: var(--ponty-red); color: white; transition: all 0.2s; }
+        /* "teal" isn't in this Tailwind build's default colour palette (only
+           black/white/gray/red/orange/yellow/green/blue/indigo/purple/pink
+           are compiled into dist/tailwind.min.css@2.2.19) - bg-teal-*,
+           border-teal-*, text-teal-* and hover:bg-teal-* classes all
+           silently do nothing, which is what made a couple of The
+           Randomizer's buttons render with invisible/missing text. These
+           three small classes give The Randomizer's teal UI real,
+           working styles/hover states instead. */
+        .btn-teal { background-color: #0d9488; color: white; transition: all 0.2s; }
+        .btn-teal:hover { background-color: #0f766e; }
+        .border-teal-fix { border-color: #0d9488 !important; }
+        .hover-teal:hover { background-color: #0d9488 !important; color: white !important; }
+        /* Same root cause, but for "rose" (also missing from this Tailwind
+           build) - used by The Randomizer's End Event button, whose text
+           was disappearing on hover (hover:bg-rose-600 silently did
+           nothing, so hover:text-white turned the text white on an
+           unchanged white/transparent background). */
+        .hover-rose:hover { background-color: #e11d48 !important; color: white !important; }
         .btn-gold { background: linear-gradient(135deg, var(--ponty-gold-light) 0%, var(--ponty-gold) 100%); color: #1a1400; transition: all 0.2s; }
         .btn-gold:hover { filter: brightness(1.08); }
         .nav-link-gold { color: var(--ponty-gold-light) !important; font-weight: 900; }
@@ -939,7 +957,7 @@
         <!-- THE RANDOMIZER PAGE (item #5) -->
         <div id="randomizer-page" class="tab-content hidden space-y-6">
             <div class="flex justify-between items-end">
-                <h2 class="text-4xl font-black border-l-8 border-teal-600 pl-4 uppercase italic">🎲 The Randomizer</h2>
+                <h2 class="text-4xl font-black border-l-8 border-teal-fix pl-4 uppercase italic">🎲 The Randomizer</h2>
             </div>
 
             <!-- RESTRICTED ACCESS MESSAGE -->
@@ -971,7 +989,7 @@
                         <h3 class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players (must be a multiple of 4)</h3>
                         <div id="randomizerEventLoadBox" class="hidden bg-teal-50 border-2 border-teal-200 rounded-xl p-4 mb-4 space-y-3">
                             <p class="text-[10px] font-black uppercase text-teal-700 tracking-widest">🎲 Starting From: <span id="randomizerEventName"></span></p>
-                            <button type="button" onclick="loadRandomizerPlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-teal-600 transition whitespace-nowrap">Load Confirmed Players</button>
+                            <button type="button" onclick="loadRandomizerPlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover-teal transition whitespace-nowrap">Load Confirmed Players</button>
                         </div>
                         <input type="text" id="randomizerSessionName" placeholder="Tournament Name (e.g. The Randomizer)" class="input-field border-2 mb-4">
                         <div id="randomizerPlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3"></div>
@@ -992,9 +1010,9 @@
 
                     <div id="randomizerCourtsContainer" class="space-y-6"></div>
 
-                    <div class="card p-6 border-t-8 border-teal-600 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="card p-6 border-t-8 border-teal-fix grid grid-cols-1 md:grid-cols-2 gap-3">
                         <button id="randomizeNextRoundBtn" onclick="randomizeNextRound()" class="w-full py-5 rounded-xl font-black text-lg uppercase shadow-lg transition" style="background-color:#0d9488 !important; color:#ffffff !important;">🔀 Randomize (Next Round)</button>
-                        <button id="endRandomizerBtn" onclick="confirmEndRandomizerEvent()" class="w-full border-2 border-rose-600 text-rose-600 py-5 rounded-xl font-black text-lg uppercase hover:bg-rose-600 hover:text-white transition">🏁 End Event</button>
+                        <button id="endRandomizerBtn" onclick="confirmEndRandomizerEvent()" style="border-color:#e11d48 !important; color:#e11d48 !important;" class="w-full border-2 py-5 rounded-xl font-black text-lg uppercase hover-rose transition">🏁 End Event</button>
                     </div>
                 </div>
             </div>
@@ -6326,7 +6344,7 @@
                     </div>
                     ${locked
                         ? `<p class="text-[10px] font-bold text-gray-400 uppercase text-center">Scored - only admins can edit this now</p>`
-                        : `<button onclick="saveRandomizerScore('${g.gameId}')" class="w-full bg-black text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-teal-600 transition">${g.scoredAt ? 'Update Score' : 'Save Score'}</button>`
+                        : `<button onclick="saveRandomizerScore('${g.gameId}')" class="w-full bg-black text-white py-2 rounded-xl font-black uppercase text-xs hover-teal transition">${g.scoredAt ? 'Update Score' : 'Save Score'}</button>`
                     }
                 </div>`;
             }).join('');
@@ -11478,7 +11496,7 @@
                     <div class="flex-1">
                         <div class="flex flex-wrap gap-2 mb-2">
                             ${event[17] ? `<span class="bg-amber-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">🏆 Special Event</span>` : ''}
-                            ${event[19] ? `<span class="bg-teal-600 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">🎲 The Randomizer</span>` : ''}
+                            ${event[19] ? `<span style="background-color:#0d9488 !important; color:#ffffff !important;" class="px-2 py-0.5 rounded text-[9px] font-black uppercase">🎲 The Randomizer</span>` : ''}
                             ${under18Only ? `<span class="bg-blue-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👦 Junior</span>` : ''}
 							${allAges ? `<span class="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">👨‍👧 All Ages</span>` : ''}
 							${femaleOnly ? `<span class="bg-purple-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">♀️ Women Only</span>` : ''}
@@ -11560,7 +11578,7 @@
                 ${isAdmin && status !== 'Cancelled' ? `
 				<div class="border-t border-gray-100 p-5 pt-3 space-y-2">
 					${event[19] ? `
-					<button onclick="closeCalendarEventModal(); setTimeout(() => goToRandomizerForEvent('${event[0]}'), 100);" class="w-full bg-teal-600 text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-teal-700 transition">
+					<button onclick="closeCalendarEventModal(); setTimeout(() => goToRandomizerForEvent('${event[0]}'), 100);" class="btn-teal w-full py-2 rounded-xl font-black uppercase text-xs transition">
 						🎲 ${isRandomizerActiveForEvent(event[0]) ? 'Go To The Randomizer' : 'Start The Randomizer'}
 					</button>` : ''}
 					<button onclick="closeCalendarEventModal(); setTimeout(() => openEventSignupsModal('${event[0]}', '${event[1].replace(/'/g, "\\'")}'), 100);" class="w-full bg-black text-white py-2 rounded-xl font-black uppercase text-xs hover:bg-gray-800 transition">👥 View Signups (${signups.length}${maxPlayers ? '/' + maxPlayers : ''})</button>
