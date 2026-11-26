@@ -771,21 +771,32 @@
                 <div id="scrambleStep1" class="card p-6">
                     <h3 class="font-bold mb-4 uppercase text-gray-500 text-sm">1. Select Players Present Today</h3>
 
-                    <!-- Pre-select players straight from an event's confirmed sign ups,
-                         instead of ticking everyone by hand - mirrors the same feature
-                         on the Ladders page. Scramble itself is unaffected: it still
-                         just randomly mixes people up and never records match history. -->
-                    <div id="scrambleEventLoadBox" class="hidden bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4 space-y-3">
-                        <p class="text-[10px] font-black uppercase text-blue-700 tracking-widest">🏓 Start From An Event's Sign Ups (optional)</p>
-                        <div class="flex flex-col sm:flex-row gap-2">
-                            <select id="scrambleEventSelect" class="input-field border-2 flex-grow"></select>
-                            <button type="button" onclick="loadScramblePlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition whitespace-nowrap">Load Confirmed Players</button>
-                        </div>
+                    <!-- Item #6: starting a Scramble session is now admin-only -
+                         everyone else sees this notice instead of the player
+                         picker/Generate button. See generateScramble()/
+                         render()'s "Only admins can start" gate below. -->
+                    <div id="scrambleAdminOnlyNotice" class="hidden bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-center">
+                        <p class="text-sm font-black uppercase text-gray-500">Only admins can start a Scramble session.</p>
+                        <p class="text-xs font-bold text-gray-400 uppercase mt-1">Once an admin generates a rotation, you'll be able to enter scores here.</p>
                     </div>
 
-                    <div id="scramblePlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3"></div>
-                    <p id="scrambleHeadcountMsg" class="text-xs font-bold uppercase mb-3"></p>
-                    <button id="genScrambleBtn" onclick="generateScramble()" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg transition">Generate Rotation</button>
+                    <div id="scrambleStep1Controls" class="hidden">
+                        <!-- Pre-select players straight from an event's confirmed sign ups,
+                             instead of ticking everyone by hand - mirrors the same feature
+                             on the Ladders page. Scramble itself is unaffected: it still
+                             just randomly mixes people up and never records match history. -->
+                        <div id="scrambleEventLoadBox" class="hidden bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4 space-y-3">
+                            <p class="text-[10px] font-black uppercase text-blue-700 tracking-widest">🏓 Start From An Event's Sign Ups (optional)</p>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <select id="scrambleEventSelect" class="input-field border-2 flex-grow"></select>
+                                <button type="button" onclick="loadScramblePlayersFromEvent()" class="bg-black text-white px-4 py-2 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-600 transition whitespace-nowrap">Load Confirmed Players</button>
+                            </div>
+                        </div>
+
+                        <div id="scramblePlayerCheckboxes" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3"></div>
+                        <p id="scrambleHeadcountMsg" class="text-xs font-bold uppercase mb-3"></p>
+                        <button id="genScrambleBtn" onclick="generateScramble()" class="w-full btn-red py-4 rounded-xl font-black uppercase shadow-lg transition">Generate Rotation</button>
+                    </div>
                 </div>
 
                 <!-- STEP 2: Play & Score -->
@@ -5696,6 +5707,14 @@
                 step1.classList.remove('hidden');
                 step2.classList.add('hidden');
             }
+            // Item #6: only admins get the player-picker/Generate Rotation
+            // controls for starting a brand new Scramble session - everyone
+            // else sees scrambleAdminOnlyNotice instead (still has nothing to
+            // do with whether they can enter scores for an already-started
+            // session, which stays open to any logged-in player).
+            const isScrambleAdmin = !!(currentUser && currentUser.role === 'Admin');
+            document.getElementById('scrambleStep1Controls')?.classList.toggle('hidden', !isScrambleAdmin);
+            document.getElementById('scrambleAdminOnlyNotice')?.classList.toggle('hidden', isScrambleAdmin);
             // ---------------------------------------------------
 
             ladderSessionsState = data.ladderSessions || [];
@@ -6211,6 +6230,9 @@
         }
 
         function generateScramble() {
+            // Item #6: starting a Scramble session is admin-only.
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required to start a Scramble session.");
+
             // 1. Get selected names from checkboxes (this is alphabetical)
             const selected = Array.from(document.querySelectorAll('.scramble-check:checked')).map(cb => cb.value);
             const btn = document.getElementById('genScrambleBtn');
