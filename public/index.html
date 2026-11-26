@@ -6339,12 +6339,12 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-center">
                         <div class="text-center">
                             <p class="text-sm font-black uppercase break-words">${escapeHtml(g.p1)} &amp; ${escapeHtml(g.p2)}</p>
-                            <input type="number" min="0" value="${g.scoreA}" id="${scoreAId}" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
+                            <input type="number" min="0" value="${g.scoreA}" id="${scoreAId}" autocomplete="off" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
                         </div>
                         <p class="text-center text-[10px] font-bold text-gray-400 uppercase sm:hidden">vs</p>
                         <div class="text-center">
                             <p class="text-sm font-black uppercase break-words">${escapeHtml(g.p3)} &amp; ${escapeHtml(g.p4)}</p>
-                            <input type="number" min="0" value="${g.scoreB}" id="${scoreBId}" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
+                            <input type="number" min="0" value="${g.scoreB}" id="${scoreBId}" autocomplete="off" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
                         </div>
                     </div>
                     ${locked
@@ -9228,7 +9228,7 @@
             return `
             <div class="border-2 border-gray-100 rounded-xl p-4">
                 <div class="flex items-center gap-3 mb-2">
-                    <input type="number" id="ladderScoreA_${g.gameId}" value="${g.scoreA}" placeholder="0"
+                    <input type="number" id="ladderScoreA_${g.gameId}" value="${g.scoreA}" placeholder="0" autocomplete="off"
                           ${isScored ? 'disabled' : ''} class="ladder-score-A rounded text-center font-black bg-white" style="${boxStyle} ${isScored ? 'opacity: 0.5;' : ''}">
                     <div class="flex-grow font-bold text-xs leading-tight text-black">
                         ${nameLabel(g.p1, g.p1Original)} <br><span style="color: #999;">&</span> ${nameLabel(g.p2, g.p2Original)}
@@ -9239,7 +9239,7 @@
                     <div class="flex-grow font-bold text-xs text-right leading-tight text-black">
                         ${nameLabel(g.p3, g.p3Original)} <br><span style="color: #999;">&</span> ${nameLabel(g.p4, g.p4Original)}
                     </div>
-                    <input type="number" id="ladderScoreB_${g.gameId}" value="${g.scoreB}" placeholder="0"
+                    <input type="number" id="ladderScoreB_${g.gameId}" value="${g.scoreB}" placeholder="0" autocomplete="off"
                           ${isScored ? 'disabled' : ''} class="ladder-score-B rounded text-center font-black bg-white" style="${boxStyle} ${isScored ? 'opacity: 0.5;' : ''}">
                 </div>
                 <button id="ladderGameBtn_${g.gameId}" onclick="${isScored ? `unlockLadderGame('${g.gameId}')` : `saveLadderScore('${g.gameId}')`}"
@@ -13967,9 +13967,9 @@
             <button onclick="closeAuthModals()" class="text-gray-400 hover:text-black transition text-2xl font-black">✕</button>
         </div>
             <div class="space-y-4">
-                <input type="text" id="loginUser" placeholder="Username" class="input-field border-2">
+                <input type="text" id="loginUser" placeholder="Username" autocomplete="username" class="input-field border-2">
                 <div class="relative">
-                    <input type="password" id="loginPass" placeholder="Password" class="input-field border-2 pr-12">
+                    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password" class="input-field border-2 pr-12">
                     <button type="button" onclick="togglePasswordVisibility('loginPass', this)" 
                             class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -14048,9 +14048,9 @@
                 <input type="tel" id="regEmergencyPhone" placeholder="Emergency Contact Phone Number" class="input-field border-2">
                 <input type="text" id="regEmergencyRelationship" placeholder="Relationship (e.g. Spouse, Parent, Friend)" class="input-field border-2">
             </div>
-            <input type="text" id="regUser" placeholder="Choose Username" class="input-field border-2">
+            <input type="text" id="regUser" placeholder="Choose Username" autocomplete="username" class="input-field border-2">
             <div class="relative">
-                <input type="password" id="regPass" placeholder="Create Password" class="input-field border-2 pr-12">
+                <input type="password" id="regPass" placeholder="Create Password" autocomplete="new-password" class="input-field border-2 pr-12">
                 <button type="button" onclick="togglePasswordVisibility('regPass', this)"
                         class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -14060,7 +14060,7 @@
                 </button>
             </div>
             <div class="relative">
-                <input type="password" id="regPassConfirm" placeholder="Confirm Password" class="input-field border-2 pr-12">
+                <input type="password" id="regPassConfirm" placeholder="Confirm Password" autocomplete="new-password" class="input-field border-2 pr-12">
                 <button type="button" onclick="togglePasswordVisibility('regPassConfirm', this)"
                         class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -14157,7 +14157,7 @@
             <div class="space-y-4">
                 <input type="text" id="resetToken" placeholder="Reset Code" class="input-field border-2" maxlength="16" inputmode="numeric">
                 <div class="relative">
-                    <input type="password" id="resetNewPassword" placeholder="New Password" class="input-field border-2 pr-12">
+                    <input type="password" id="resetNewPassword" placeholder="New Password" autocomplete="new-password" class="input-field border-2 pr-12">
                     <button type="button" onclick="togglePasswordVisibility('resetNewPassword', this)"
                             class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -14167,7 +14167,7 @@
                     </button>
                 </div>
                 <div class="relative">
-                    <input type="password" id="resetConfirmPassword" placeholder="Confirm New Password" class="input-field border-2 pr-12">
+                    <input type="password" id="resetConfirmPassword" placeholder="Confirm New Password" autocomplete="new-password" class="input-field border-2 pr-12">
                     <button type="button" onclick="togglePasswordVisibility('resetConfirmPassword', this)"
                             class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
