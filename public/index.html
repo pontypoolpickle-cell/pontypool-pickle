@@ -5824,6 +5824,25 @@
             await supabaseClient.from('matches').update({ l2: newName }).eq('l2', oldName);
             await supabaseClient.from('signups').update({ player_name: newName }).eq('player_name', oldName);
 
+            // Bug fix: this used to leave users.first_name/surname untouched,
+            // so the player's account kept producing their OLD name (via
+            // currentUserFullName(), used for every new event sign up/score
+            // entry) even though players.name/signups.player_name had already
+            // been updated above. That mismatch is exactly what made "Load
+            // Confirmed Players" on Ladders/Scramble/The Randomizer fail to
+            // pre-select someone right after their name was changed - their
+            // new sign ups still carried their stale old name. Same
+            // "find the matching account by reconstructed full name" lookup
+            // already used by removePlayerFromSheet() above.
+            const { data: users, error: usersErr } = await supabaseClient.from('users').select('id, first_name, surname');
+            if (usersErr) throw new Error(usersErr.message);
+            const userToRename = (users || []).find(u => normalizeName(`${u.first_name} ${u.surname}`) === normalizeName(oldName));
+            if (userToRename) {
+                const [firstName, ...rest] = newName.split(' ');
+                const surname = rest.join(' ');
+                await supabaseClient.from('users').update({ first_name: firstName, surname: surname }).eq('id', userToRename.id);
+            }
+
             return refreshAllData();
         }
 
