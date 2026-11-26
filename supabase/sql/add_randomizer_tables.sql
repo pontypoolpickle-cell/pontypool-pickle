@@ -71,6 +71,16 @@ create table if not exists randomizer_games (
 
 create index if not exists randomizer_games_session_round_idx on randomizer_games (session_id, round);
 
+-- No RLS on either of the two tables above - same "no RLS, client code is
+-- the boundary" posture as every other table in this schema (see the note
+-- near the top of this file). Explicitly disabled here as a safety net:
+-- if a table gets created via the Supabase Table Editor UI instead of
+-- pasted into the SQL Editor, "Enable Row Level Security" defaults to ON
+-- there and silently blocks every insert/update with no policies defined,
+-- throwing "new row violates row-level security policy".
+alter table randomizer_session disable row level security;
+alter table randomizer_games disable row level security;
+
 -- Permanent record of the top 3 male / top 3 female finishers of every
 -- Randomizer tournament ever run (by total points scored, then wins) -
 -- written once, right when an admin ends the event (see
@@ -88,3 +98,6 @@ create table if not exists hall_of_fame (
   wins integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+-- See the note above randomizer_session for why this is explicit.
+alter table hall_of_fame disable row level security;
