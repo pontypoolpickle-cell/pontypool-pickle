@@ -2145,15 +2145,16 @@
         //     simply restarts from the new match date. Ratings are never
         //     reduced for inactivity; this only affects whether a player
         //     currently shows up on a board.
-        // Visibility is based on OVERALL club activity, combining mixed and
-        // female_only matches together, and is the same on both the mixed
-        // board and the Women's Rankings board - someone is only ever hidden
-        // if they're genuinely inactive across the whole club, not just on one
-        // specific board. E.g. a woman who played a mixed match yesterday but
-        // has never played a female_only match still shows up on both boards
-        // (with her real mixed rating on one and the 1200 default on the
-        // other) rather than confusingly disappearing from the Women's
-        // Rankings just because that specific pool has no games yet.
+        // Visibility is now determined SEPARATELY per board (item #1): a
+        // player only shows up on the Mixed board if they've recently played
+        // a mixed-session match, and only shows up on the Women's Rankings
+        // board if they've recently played a female_only match - playing one
+        // doesn't make them visible on the other any more. E.g. a woman who
+        // played a mixed match yesterday but has never played a female_only
+        // match shows up on the Mixed board only, not on Women's Rankings,
+        // until she actually plays a female-only session. See isHidden/
+        // femaleIsHidden below in toPlayerView(), each now computed purely
+        // from that board's own total_games/last_match_date.
         const LEADERBOARD_ACTIVE_WINDOW_DAYS = 28;
 
         function isBoardVisible(totalGames, lastMatchDate) {
@@ -2168,15 +2169,13 @@
             const membershipUser = memberMap ? memberMap.get(normalizeName(row.name)) : null;
             const registeredAt = memberCreatedAtByName ? memberCreatedAtByName.get(normalizeName(row.name)) : null;
 
-            // Combine mixed + female_only activity into one "are they active
-            // in the club at all" signal, used for both boards' visibility -
-            // see the comment above isBoardVisible() for why.
-            const combinedTotalGames = Number(row.total_games || 0) + Number(row.female_total_games || 0);
-            const combinedLastMatchDate = [row.last_match_date, row.female_last_match_date]
-                .filter(Boolean)
-                .sort()
-                .pop() || null;
-            const isHidden = !!row.is_hidden || !isBoardVisible(combinedTotalGames, combinedLastMatchDate);
+            // Item #1: each board's visibility is now based purely on that
+            // board's OWN activity - a mixed-session match no longer keeps a
+            // player visible on the Women's Rankings board (and vice versa).
+            // `row.is_hidden` (a manual admin hide) still applies to both,
+            // same as before.
+            const isHidden = !!row.is_hidden || !isBoardVisible(row.total_games, row.last_match_date);
+            const femaleIsHidden = !!row.is_hidden || !isBoardVisible(row.female_total_games, row.female_last_match_date);
 
             return {
                 name: row.name,
@@ -2192,17 +2191,15 @@
                 isHidden,
                 // Women's Rankings - a separate rating pool from the mixed
                 // elo/wins/losses/total_games (see the schema comment near
-                // `alter table players add column ... female_elo` above), but
-                // visibility (femaleIsHidden) intentionally mirrors isHidden -
-                // both use the same combined club-wide activity, so a player
-                // isn't hidden from one board just because her recent match
-                // happened to be on the other one.
+                // `alter table players add column ... female_elo` above).
+                // Item #1: femaleIsHidden is now its own independent check
+                // (computed above) rather than mirroring isHidden.
                 femaleElo: Number(row.female_elo != null ? row.female_elo : FEMALE_STARTING_ELO),
                 femaleWins: Number(row.female_wins || 0),
                 femaleLosses: Number(row.female_losses || 0),
                 femaleTotalGames: Number(row.female_total_games || 0),
                 femaleLastMatchDate: row.female_last_match_date || '',
-                femaleIsHidden: isHidden,
+                femaleIsHidden: femaleIsHidden,
                 isUnder18: !!row.is_under18,
                 ratingResetAt: row.rating_reset_at || null,
                 femaleRatingResetAt: row.female_rating_reset_at || null,
