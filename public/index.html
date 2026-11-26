@@ -1128,9 +1128,14 @@
 
             <div id="historyMainContent" class="hidden space-y-6">
                 <!-- Search Inputs only -->
-                <div class="grid md:grid-cols-2 gap-4 bg-white p-6 rounded shadow border">
+                <div class="grid md:grid-cols-3 gap-4 bg-white p-6 rounded shadow border">
                     <input type="text" id="historySearchPlayer" oninput="filterHistory()" placeholder="Search Player Name..." class="border-2 p-2 rounded w-full">
                     <input type="date" id="historySearchDate" onchange="filterHistory()" class="border-2 p-2 rounded w-full">
+                    <!-- Seasons: defaults to "All Seasons" so existing behaviour
+                         (searching across every match ever played) doesn't
+                         change for anyone who never touches this - see
+                         renderHistorySeasonFilterOptions()/filterHistory(). -->
+                    <select id="historySearchSeason" onchange="filterHistory()" class="border-2 p-2 rounded w-full font-bold"></select>
                 </div>
 
                 <!-- Table is now outside and will be full width -->
@@ -1256,6 +1261,12 @@
                     <div class="mt-4 flex justify-center">
                         <button onclick="openRecalcEloModal()" class="w-full md:w-1/2 bg-black text-white border-2 border-blue-600 py-4 rounded-xl font-black uppercase hover:bg-blue-600 transition shadow-lg">
                             &#8635; Recalculate All ELOs
+                        </button>
+                    </div>
+                    <!-- Row 5: Start New Season -->
+                    <div class="mt-4 flex justify-center">
+                        <button onclick="openStartSeasonModal()" class="w-full md:w-1/2 bg-black text-white border-2 border-rose-600 py-4 rounded-xl font-black uppercase hover:bg-rose-600 transition shadow-lg">
+                            &#128197; Start New Season
                         </button>
                     </div>
                 </div>
@@ -2039,6 +2050,38 @@
           created_at timestamptz not null default now()
         );
         alter table hall_of_fame disable row level security;
+
+        -- SEASONS (admin "Start New Season" action) - see
+        -- supabase/sql/add_seasons.sql for the full explanation. Short
+        -- version: archives the current season's ratings/wins/losses and
+        -- starts everyone fresh at SEASON_RESET_ELO, without ever losing a
+        -- single match - every match stays in `matches` forever, just
+        -- tagged with which season it belongs to, so recalculateAllEloFromScratch()
+        -- can scope its replay to only the currently active season (the one
+        -- row below with ended_at null) and a past season's win/loss record
+        -- stays fully visible on profiles/History. See startNewSeason()/
+        -- recalculateAllEloFromScratch() in this file.
+        create table if not exists seasons (
+          id uuid primary key default gen_random_uuid(),
+          name text not null,
+          started_at timestamptz not null default now(),
+          ended_at timestamptz,
+          created_at timestamptz not null default now()
+        );
+        alter table seasons disable row level security;
+
+        alter table matches add column if not exists season_id uuid references seasons(id);
+        create index if not exists matches_season_id_idx on matches (season_id);
+
+        -- Generalises the existing per-player "Reset Rating" admin reset
+        -- (rating_reset_at/female_rating_reset_at above) so
+        -- recalculateAllEloFromScratch() can snap a player's replayed rating
+        -- back to whatever value they were actually reset to, instead of
+        -- always assuming the sign-up defaults - this is what lets
+        -- "Start New Season" reuse the exact same mechanism for every
+        -- player at once, just targeting SEASON_RESET_ELO instead.
+        alter table players add column if not exists rating_reset_value integer;
+        alter table players add column if not exists female_rating_reset_value integer;
         */
 
         const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
@@ -2175,6 +2218,16 @@
         // never getting a chance to climb up and test themselves against
         // stronger players. See registerUser() below.
         const NEW_SIGNUP_STARTING_ELO = 1800;
+        // Seasons (admin "Start New Season" action, see startNewSeason()) -
+        // when a new season begins, EVERY player's rating/wins/losses on BOTH
+        // boards is reset to this flat baseline, regardless of how high or low
+        // they'd climbed the previous season. This is deliberately separate
+        // from NEW_SIGNUP_STARTING_ELO/FEMALE_STARTING_ELO above, which only
+        // ever apply to a brand-new member who's never played a single match -
+        // a returning veteran and a first-ever signup both land on exactly the
+        // same number at the start of a season, but a brand-new signup joining
+        // mid-season still gets the usual "new player" baseline, not this one.
+        const SEASON_RESET_ELO = 1500;
         let liveScrambleIdMap = {};
         let ladderGameIdMap = {};
 		
@@ -2486,6 +2539,17 @@
             const membersRaw = payload.members || [];
             const membershipPlansRaw = payload.membershipPlans || [];
             const memberExtrasRaw = payload.memberExtras || [];
+            // Seasons (admin "Start New Season" action) - see startNewSeason()
+            // and the schema comment above `create table seasons`. There
+            // should only ever be at most one row with ended_at null; if
+            // there's somehow more than one (shouldn't happen), the most
+            // recently started one wins as "active" since that's the one any
+            // new match should actually be tagged with.
+            const seasonsRaw = payload.seasons || [];
+            const seasonsList = seasonsRaw
+                .map(s => ({ id: s.id, name: s.name, startedAt: s.started_at, endedAt: s.ended_at || null }))
+                .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+            const activeSeason = seasonsList.find(s => !s.endedAt) || null;
 
             const memberMap = new Map();
             membersRaw.forEach(u => {
@@ -2543,7 +2607,8 @@
                         c2: Number(m.change_w2 || 0),
                         c3: Number(m.change_l1 || 0),
                         c4: Number(m.change_l2 || 0),
-                        isFemaleOnly: !!m.is_female_only
+                        isFemaleOnly: !!m.is_female_only,
+                        seasonId: m.season_id || null
                     }))
                     .sort((a, b) => new Date(b.date) - new Date(a.date)),
                 events: events.map(e => [
@@ -2620,6 +2685,14 @@
                 // Item #5: The Randomizer - null when no tournament is
                 // currently live. See mapRandomizerSession().
                 randomizerSession: payload.randomizerSession ? mapRandomizerSession(payload.randomizerSession.session, payload.randomizerSession.games) : null,
+                // Seasons - "Season 1" is auto-created by the add_seasons.sql
+                // migration the first time it runs, so seasons/activeSeasonId
+                // should never actually be empty/null on a migrated site -
+                // but every call site below treats a null activeSeasonId
+                // defensively anyway (falls back to "tag nothing"/"replay
+                // everything") in case the migration hasn't been run yet.
+                seasons: seasonsList,
+                activeSeasonId: activeSeason ? activeSeason.id : null,
                 // Item #9: key/value settings, exposed as a plain object (e.g.
                 // siteSettings.rules_pdf_url) rather than the raw row array.
                 siteSettings: Object.fromEntries((payload.siteSettings || []).map(s => [s.key, s.value])),
@@ -2971,6 +3044,7 @@
                 ladderSessionRes,
                 scrambleRes,
                 randomizerSessionRes,
+                seasonsRes,
                 membersRes,
                 memberExtrasRes,
                 membershipPlansRes,
@@ -3007,6 +3081,12 @@
                 // time (newest Active row wins if, somehow, more than one
                 // exists) - see startRandomizerSession()/mapGlobalData().
                 supabaseClient.from('randomizer_session').select('*').eq('status', 'Active').order('created_at', { ascending: false }).limit(1),
+                // Seasons - small, slow-growing table (one row per season
+                // ever run, see startNewSeason()) so fetching all of them
+                // every load is cheap. Oldest first so the first row found
+                // with ended_at null (there should only ever be one) is the
+                // currently active season - see mapGlobalData().
+                supabaseClient.from('seasons').select('*').order('started_at', { ascending: true }),
                 supabaseClient.from('users').select('id, username, first_name, surname, email, role, status, membership_status, membership_duration_weeks, membership_requested_duration_weeks, membership_start_date, membership_end_date, membership_last_reminder_sent, membership_payment_ref, bio, avatar_url, profile_public, dupr_number, dupr_public').eq('status', 'Approved').order('first_name', { ascending: true }),
                 // Fetched separately (not merged into the query above) so that sites
                 // which haven't yet run the membership_number/created_at migration
@@ -3095,6 +3175,7 @@
 				ladderSessions,
 				liveScramble: scrambleRes.data || [],
 				randomizerSession,
+				seasons: seasonsRes.data || [],
 				members: membersRes.data || [],
 				memberExtras: memberExtrasRes.data || [],
 				membershipPlans: membershipPlansRes.data || [],
@@ -3235,10 +3316,43 @@
             };
         }
 
+        // Runs an array of async "jobs" with at most `concurrency` in flight at
+        // once, rather than either one-at-a-time (slow) or all-at-once (can
+        // overwhelm the browser's per-host connection limit on a big replay,
+        // which just serializes everything anyway but with extra overhead).
+        // Used by recalculateAllEloFromScratch() below to batch its match
+        // corrections instead of awaiting them one row at a time.
+        async function runWithConcurrency(jobs, concurrency, worker) {
+            let cursor = 0;
+            async function runNext() {
+                while (cursor < jobs.length) {
+                    const job = jobs[cursor++];
+                    await worker(job);
+                }
+            }
+            await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, runNext));
+        }
+
         async function recalculateAllEloFromScratch() {
+			// Seasons: scope the replay to only the currently active season's
+			// matches (see startNewSeason()) - an archived season's matches
+			// are permanently frozen once it ends, so replaying them here
+			// every time would both (a) silently undo "Start New Season"'s
+			// reset the moment anyone edits/deletes a later match, and (b)
+			// be needlessly slow, redoing the same old history forever as it
+			// grows. Falls back to replaying EVERY match (the old, pre-Seasons
+			// behaviour) if the `seasons` table hasn't been migrated in yet.
+			const { data: seasonRows, error: seasonsError } = await supabaseClient.from('seasons').select('*');
+			const activeSeasonId = (!seasonsError && seasonRows && seasonRows.length)
+				? (seasonRows.find(s => !s.ended_at) || [...seasonRows].sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0] || {}).id || null
+				: null;
+
+			let matchesQuery = supabaseClient.from('matches').select('*').order('match_date', { ascending: true }).order('created_at', { ascending: true });
+			if (activeSeasonId) matchesQuery = matchesQuery.eq('season_id', activeSeasonId);
+
 			const [{ data: players, error: playersError }, { data: matches, error: matchesError }, { data: users, error: usersError }] = await Promise.all([
 				supabaseClient.from('players').select('*').order('name', { ascending: true }),
-				supabaseClient.from('matches').select('*').order('match_date', { ascending: true }).order('created_at', { ascending: true }),
+				matchesQuery,
 				supabaseClient.from('users').select('first_name, surname, starting_elo')
 			]);
 			if (playersError) throw new Error(playersError.message);
@@ -3277,6 +3391,15 @@
 					weeklySum: 0,
 					lastMatchDate: null,
 					resetAt: p.rating_reset_at ? new Date(p.rating_reset_at) : null,
+					// Generalised reset target (see the rating_reset_value
+					// schema comment) - lets this one mechanism cover both the
+					// single-player "Reset Rating" button (1800) AND
+					// "Start New Season" resetting everyone to SEASON_RESET_ELO
+					// (1500) at once, each remembering its own target. Falls
+					// back to the old hardcoded sign-up default for any reset
+					// made before this column existed (also backfilled by
+					// add_seasons.sql, so this fallback should rarely matter).
+					resetTargetElo: p.rating_reset_value != null ? Number(p.rating_reset_value) : NEW_SIGNUP_STARTING_ELO,
 					resetApplied: false
 				});
 				// Women's Rankings always recalculate from a flat 1200 start,
@@ -3289,17 +3412,18 @@
 					totalGames: 0,
 					lastMatchDate: null,
 					resetAt: p.female_rating_reset_at ? new Date(p.female_rating_reset_at) : null,
+					resetTargetElo: p.female_rating_reset_value != null ? Number(p.female_rating_reset_value) : FEMALE_STARTING_ELO,
 					resetApplied: false
 				});
 			});
 
-			// Snaps a player's running stat entry back to its fresh default the
+			// Snaps a player's running stat entry back to its reset target the
 			// moment we reach a match on/after their reset timestamp - see the
-			// comment above where resetAt/resetApplied are set.
-			function applyResetIfDue(entry, matchDateStr, isFemale) {
+			// comment above where resetAt/resetTargetElo/resetApplied are set.
+			function applyResetIfDue(entry, matchDateStr) {
 				if (!entry || !entry.resetAt || entry.resetApplied) return;
 				if (new Date(matchDateStr) < entry.resetAt) return;
-				entry.elo = isFemale ? FEMALE_STARTING_ELO : NEW_SIGNUP_STARTING_ELO;
+				entry.elo = entry.resetTargetElo;
 				entry.wins = 0;
 				entry.losses = 0;
 				entry.totalGames = 0;
@@ -3308,6 +3432,7 @@
 				entry.resetApplied = true;
 			}
 
+            const pendingMatchWrites = [];
             for (const m of (matches || [])) {
                 // Older matches may have been saved with the winner/loser labels
                 // swapped relative to the real scores (whichever team's score was
@@ -3333,7 +3458,7 @@
                 const targetStats = m.is_female_only ? femaleStats : stats;
                 const lookupAndMaybeReset = (n) => {
                     const entry = targetStats.get(normalizeName(n));
-                    applyResetIfDue(entry, m.match_date, !!m.is_female_only);
+                    applyResetIfDue(entry, m.match_date);
                     return entry;
                 };
                 const winners = [w1, w2].filter(n => n && n !== 'Singles').map(lookupAndMaybeReset).filter(Boolean);
@@ -3373,15 +3498,33 @@
                     matchUpdate.score_w = scoreW;
                     matchUpdate.score_l = scoreL;
                 }
-                await supabaseClient.from('matches').update(matchUpdate).eq('id', m.id);
+                // Performance fix: a recalculation is usually run after one
+                // small edit/delete, so the vast majority of matches replay to
+                // EXACTLY the same change_w1/w2/l1/l2 (and w1/w2/l1/l2/score_w/
+                // score_l, if swap-corrected) they already have stored - those
+                // rows need no write at all. Only the rows that actually come
+                // out different are queued up, and written concurrently
+                // (below, via runWithConcurrency) instead of one-at-a-time -
+                // this is what made deleting/editing a match "take an
+                // extremely long time" on a club with a lot of match history.
+                const unchanged = Number(m.change_w1 || 0) === matchUpdate.change_w1
+                    && Number(m.change_w2 || 0) === matchUpdate.change_w2
+                    && Number(m.change_l1 || 0) === matchUpdate.change_l1
+                    && Number(m.change_l2 || 0) === matchUpdate.change_l2
+                    && (!wasSwapped || (m.w1 === matchUpdate.w1 && m.w2 === matchUpdate.w2 && m.l1 === matchUpdate.l1 && m.l2 === matchUpdate.l2 && Number(m.score_w || 0) === matchUpdate.score_w && Number(m.score_l || 0) === matchUpdate.score_l));
+                if (!unchanged) pendingMatchWrites.push({ id: m.id, matchUpdate });
             }
+
+            await runWithConcurrency(pendingMatchWrites, 15, (job) =>
+                supabaseClient.from('matches').update(job.matchUpdate).eq('id', job.id)
+            );
 
             // A player who was reset but hasn't played a single match since
             // (in this pool) never hit the snap-back above - apply it now so
             // the reset still sticks even with zero qualifying matches to
             // trigger it during the replay.
-            stats.forEach(s => applyResetIfDue(s, serverNow().toISOString(), false));
-            femaleStats.forEach(s => applyResetIfDue(s, serverNow().toISOString(), true));
+            stats.forEach(s => applyResetIfDue(s, serverNow().toISOString()));
+            femaleStats.forEach(s => applyResetIfDue(s, serverNow().toISOString()));
 
             await Promise.all(Array.from(stats.values()).map(s => {
                 const fs = femaleStats.get(normalizeName(s.name)) || { elo: FEMALE_STARTING_ELO, wins: 0, losses: 0, totalGames: 0, lastMatchDate: null };
@@ -3413,6 +3556,13 @@
                 score_w: Number(d.sW || 0),
                 score_l: Number(d.sL || 0),
                 is_female_only: !!d.femaleOnly,
+                // Seasons: tag every new match with whichever season is
+                // currently active, so recalculateAllEloFromScratch() can
+                // scope its replay to just this season - see startNewSeason().
+                // Falls back to null (untagged) if seasons hasn't been
+                // migrated in yet, same "degrade gracefully" posture as the
+                // rest of this schema.
+                season_id: globalData.activeSeasonId || null,
                 change_w1: 0,
                 change_w2: 0,
                 change_l1: 0,
@@ -3864,6 +4014,8 @@
                     score_w: Math.max(Number(g.score_a), Number(g.score_b)),
                     score_l: Math.min(Number(g.score_a), Number(g.score_b)),
                     is_female_only: !!session.female_only,
+                    // Seasons: see the matching comment in processAdminAction().
+                    season_id: globalData.activeSeasonId || null,
                     change_w1: 0,
                     change_w2: 0,
                     change_l1: 0,
@@ -5794,7 +5946,12 @@
                     female_losses: 0,
                     female_total_games: 0,
                     female_last_match_date: null,
-                    female_rating_reset_at: serverNow().toISOString()
+                    female_rating_reset_at: serverNow().toISOString(),
+                    // See the rating_reset_value schema comment - lets
+                    // recalculateAllEloFromScratch() snap back to whatever this
+                    // player was actually reset to, rather than always assuming
+                    // the sign-up default.
+                    female_rating_reset_value: FEMALE_STARTING_ELO
                 }
                 : {
                     elo: NEW_SIGNUP_STARTING_ELO,
@@ -5803,10 +5960,78 @@
                     total_games: 0,
                     weekly_sum: 0,
                     last_match_date: null,
-                    rating_reset_at: serverNow().toISOString()
+                    rating_reset_at: serverNow().toISOString(),
+                    rating_reset_value: NEW_SIGNUP_STARTING_ELO
                 };
             const { error } = await supabaseClient.from('players').update(fields).eq('name', playerName);
             if (error) throw new Error(error.message);
+            return refreshAllData();
+        }
+
+        // Admin "Start New Season" action - archives the current season
+        // (closes it off with ended_at = now, see the `seasons` schema
+        // comment) and starts a fresh one, resetting EVERY player's
+        // rating/wins/losses on BOTH boards to a flat SEASON_RESET_ELO. This
+        // reuses exactly the same reset mechanism as the single-player
+        // "Reset Rating" button above (same rating_reset_at/rating_reset_value
+        // columns), just applied to every player at once with a different
+        // target - so recalculateAllEloFromScratch() (already reset-aware)
+        // keeps honouring it with zero extra special-casing. No match is ever
+        // touched or deleted - every match stays tagged with the season it
+        // was actually played in (see processAdminAction()/the Ladders round
+        // finalization code), so a past season's full history and win/loss
+        // record stay available forever (see the "Past Seasons" section on
+        // player profiles, and the season filter on the Match History page).
+        async function startNewSeason(seasonName) {
+            const name = String(seasonName || '').trim();
+            if (!name) throw new Error('Please enter a name for the new season.');
+
+            const nowIso = serverNow().toISOString();
+
+            const { data: openSeasons, error: openSeasonsError } = await supabaseClient
+                .from('seasons').select('id').is('ended_at', null);
+            if (openSeasonsError) throw new Error(openSeasonsError.message);
+            if (openSeasons && openSeasons.length) {
+                const { error: closeError } = await supabaseClient
+                    .from('seasons')
+                    .update({ ended_at: nowIso })
+                    .in('id', openSeasons.map(s => s.id));
+                if (closeError) throw new Error(closeError.message);
+            }
+
+            const { error: createError } = await supabaseClient
+                .from('seasons')
+                .insert({ name, started_at: nowIso });
+            if (createError) throw new Error(createError.message);
+
+            const { error: resetError } = await supabaseClient
+                .from('players')
+                .update({
+                    elo: SEASON_RESET_ELO,
+                    wins: 0,
+                    losses: 0,
+                    total_games: 0,
+                    weekly_sum: 0,
+                    last_match_date: null,
+                    rating_reset_at: nowIso,
+                    rating_reset_value: SEASON_RESET_ELO,
+                    female_elo: SEASON_RESET_ELO,
+                    female_wins: 0,
+                    female_losses: 0,
+                    female_total_games: 0,
+                    female_last_match_date: null,
+                    female_rating_reset_at: nowIso,
+                    female_rating_reset_value: SEASON_RESET_ELO
+                })
+                // Every player row has a non-null id - this is just an
+                // explicit "all rows" filter rather than an unfiltered
+                // update, since RLS is disabled on this table (see the
+                // schema comment near the top of this file) and there's
+                // otherwise nothing here to stop an unrelated typo from
+                // silently affecting zero rows instead of all of them.
+                .not('id', 'is', null);
+            if (resetError) throw new Error(resetError.message);
+
             return refreshAllData();
         }
 
@@ -6875,7 +7100,11 @@
             // the matching pool (mixed vs female_only) count towards each
             // board's trend arrows, so a Women's Rankings result never shows up
             // as a trend on the mixed board and vice versa.
-            const relevantHistory = (globalData.history || []).filter(m => isWomen ? m.isFemaleOnly : !m.isFemaleOnly);
+            // Seasons: scoped to the current season only, same reasoning as
+            // mixedHistory/femaleHistory in buildProfileView() - a trend
+            // arrow shouldn't reflect points earned under an already-archived
+            // rating scale, even briefly, in the days right after a reset.
+            const relevantHistory = (globalData.history || []).filter(m => (isWomen ? m.isFemaleOnly : !m.isFemaleOnly) && (!globalData.activeSeasonId || m.seasonId === globalData.activeSeasonId));
             const recentEloChanges = computeRecentEloChanges(relevantHistory, 7);
 
             const rSorted = [...filtered].sort((a,b) => b[eloKey] - a[eloKey]);
@@ -6967,10 +7196,30 @@
             renderStandings();
         }
 
+        // Seasons: keeps the Match History season <select> in sync with
+        // globalData.seasons - rebuilt (preserving whatever's currently
+        // selected) every time filterHistory() runs rather than once, since
+        // "Start New Season" can add a brand-new option while someone's
+        // sitting on this page. "All Seasons" always comes first and stays
+        // the default, so existing behaviour is unchanged until someone
+        // deliberately picks a specific season.
+        function renderHistorySeasonFilterOptions() {
+            const select = document.getElementById('historySearchSeason');
+            if (!select) return;
+            const seasons = (globalData.seasons || []);
+            const previousValue = select.value;
+            select.innerHTML = '<option value="">All Seasons</option>' + seasons.map(s =>
+                `<option value="${s.id}">${escapeHtml(s.name)}${!s.endedAt ? ' (Current)' : ''}</option>`
+            ).join('');
+            if (seasons.some(s => s.id === previousValue)) select.value = previousValue;
+        }
+
         function filterHistory() {
+            renderHistorySeasonFilterOptions();
             const ps = document.getElementById('historySearchPlayer').value.toLowerCase();
             const ds = document.getElementById('historySearchDate').value;
-            const filtered = globalData.history.filter(m => (!ps || [m.w1, m.w2, m.l1, m.l2].some(p => p.toLowerCase().includes(ps))) && (!ds || m.date === ds));
+            const seasonId = document.getElementById('historySearchSeason').value;
+            const filtered = globalData.history.filter(m => (!ps || [m.w1, m.w2, m.l1, m.l2].some(p => p.toLowerCase().includes(ps))) && (!ds || m.date === ds) && (!seasonId || m.seasonId === seasonId));
 
             // Helper to determine color based on +/-
             const getPointColor = (val) => (val && val.toString().includes('-')) ? '#e11d48' : '#16a34a';
@@ -7896,6 +8145,28 @@
                 .then(r => { render(r); triggerToast("All ELOs recalculated."); closeRecalcEloModal(); b.disabled = false; b.innerText = "Recalculate Now"; })
                 .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Recalculate Now"; });
         }
+        function openStartSeasonModal() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const seasonCount = (globalData.seasons || []).length;
+            document.getElementById('startSeasonName').value = `Season ${seasonCount + 1}`;
+            document.getElementById('startSeasonResetEloLabel').innerText = SEASON_RESET_ELO;
+            openModal('startSeasonModal');
+        }
+        function closeStartSeasonModal() {
+            closeModal('startSeasonModal');
+        }
+        function confirmStartSeason() {
+            if (!currentUser || currentUser.role !== 'Admin') return triggerError("Admin access required.");
+            const name = document.getElementById('startSeasonName').value.trim();
+            if (!name) return triggerError("Please enter a name for the new season.");
+
+            const b = document.getElementById('startSeasonFinalBtn');
+            b.disabled = true; b.innerText = "Starting Season...";
+
+            startNewSeason(name)
+                .then(r => { render(r); triggerToast(`${name} has started - every rating has been reset.`); closeStartSeasonModal(); b.disabled = false; b.innerText = "Archive & Start New Season"; })
+                .catch(err => { triggerError(err.message); b.disabled = false; b.innerText = "Archive & Start New Season"; });
+        }
         function openEditNameModal() {
             openModal('editNameModal');
         }
@@ -7988,8 +8259,19 @@
             // female player's "main" profile (recent form, streak, partners,
             // last-5 points) reflects only her mixed-session history - her
             // female-only history gets its own dedicated section below.
-            const mixedHistory = globalData.history.filter(m => !m.isFemaleOnly);
-            const femaleHistory = globalData.history.filter(m => m.isFemaleOnly);
+            // Seasons: the live profile (recent form, streaks, rating trend,
+            // match history list, partner/nemesis insights below) only ever
+            // looks at the CURRENT season's matches, same as the live
+            // elo/wins/losses numbers it sits next to - a season reset should
+            // feel like a genuinely fresh start here too, not just on the
+            // headline numbers. Falls back to every match ever played when
+            // activeSeasonId is null (pre-Seasons-migration sites, or before
+            // any "Start New Season" has ever run - Season 1 covers all
+            // existing history, so this is a no-op change until then). A
+            // past season's own record lives in the separate "Past Seasons"
+            // section below instead.
+            const mixedHistory = globalData.history.filter(m => !m.isFemaleOnly && (!globalData.activeSeasonId || m.seasonId === globalData.activeSeasonId));
+            const femaleHistory = globalData.history.filter(m => m.isFemaleOnly && (!globalData.activeSeasonId || m.seasonId === globalData.activeSeasonId));
 
             // For reliable matching, we compare everything in lowercase with no spaces
             const pKey = p.name.toLowerCase().replace(/\s+/g, '');
@@ -8128,7 +8410,9 @@
                 const keyViewer = viewerName.toLowerCase().replace(/\s+/g, '');
                 const keyTarget = pKey;
                 let viewerWins = 0, targetWins = 0;
-                (globalData.history || []).forEach(m => {
+                // Seasons: current-season only, same reasoning as mixedHistory/
+                // femaleHistory above.
+                (globalData.history || []).filter(m => !globalData.activeSeasonId || m.seasonId === globalData.activeSeasonId).forEach(m => {
                     const mw1 = m.w1.toLowerCase().replace(/\s+/g, '');
                     const mw2 = m.w2.toLowerCase().replace(/\s+/g, '');
                     const ml1 = m.l1.toLowerCase().replace(/\s+/g, '');
@@ -8361,6 +8645,57 @@
                     </div>
                 </div>` : '';
 
+            // Seasons: "Past Seasons" breakdown - this player's win/loss
+            // record for each ENDED season (see startNewSeason()), so the
+            // history an admin archived away is still genuinely useful to
+            // look back on, not just technically "kept". Combines mixed and
+            // female-only games into one tally per season (the live stats
+            // above already split those two boards out individually -
+            // keeping this summary simple avoids doubling its length).
+            // Computed live from globalData.history/globalData.seasons on
+            // every profile open rather than stored anywhere, since the raw
+            // match data never changes once a season ends.
+            const pastSeasonsHtml = (() => {
+                const endedSeasons = (globalData.seasons || []).filter(s => s.endedAt);
+                if (!endedSeasons.length) return '';
+                const formatSeasonDate = (iso) => {
+                    if (!iso) return 'Now';
+                    const d = new Date(iso);
+                    if (isNaN(d.getTime())) return '';
+                    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+                };
+                const rows = endedSeasons.map(season => {
+                    let wins = 0, losses = 0;
+                    (globalData.history || []).forEach(m => {
+                        if (m.seasonId !== season.id) return;
+                        const mw1 = m.w1.toLowerCase().replace(/\s+/g, '');
+                        const mw2 = m.w2.toLowerCase().replace(/\s+/g, '');
+                        const ml1 = m.l1.toLowerCase().replace(/\s+/g, '');
+                        const ml2 = m.l2.toLowerCase().replace(/\s+/g, '');
+                        if (mw1 === pKey || mw2 === pKey) wins++;
+                        else if (ml1 === pKey || ml2 === pKey) losses++;
+                    });
+                    return { season, wins, losses, total: wins + losses };
+                }).filter(r => r.total > 0);
+                if (!rows.length) return '';
+                return `
+                <div class="space-y-3">
+                    <h4 class="font-black italic uppercase border-b-2 border-gray-100 pb-1 text-xs text-gray-400">&#128197; Past Seasons</h4>
+                    <div class="space-y-2">
+                        ${rows.map(r => `
+                            <div class="flex items-center justify-between gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-black uppercase truncate">${escapeHtml(r.season.name)}</p>
+                                    <p class="text-[9px] font-bold text-gray-400 uppercase">${formatSeasonDate(r.season.startedAt)} &ndash; ${formatSeasonDate(r.season.endedAt)}</p>
+                                </div>
+                                <p class="font-black text-sm flex-shrink-0 text-right">${r.wins}W - ${r.losses}L <span class="text-gray-400 font-bold text-[10px] block">${r.total} games</span></p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            })();
+
             // 6. Build Body
             const bodyHtml = `
                 ${bioHtml}
@@ -8425,6 +8760,7 @@
                 </div>
                 ${matchHistoryHtml}
                 ${femaleSectionHtml}
+                ${pastSeasonsHtml}
                 <div class="h-20"></div>
             `;
 
@@ -13177,6 +13513,36 @@
                         Recalculate Now
                     </button>
                     <button onclick="closeRecalcEloModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- START NEW SEASON MODAL -->
+    <div id="startSeasonModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center hidden p-4" style="z-index: 700 !important;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden border-t-8 border-rose-600">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-black uppercase italic mb-2">Start New Season?</h3>
+                <p class="text-gray-600 mb-4 text-sm font-bold uppercase">This archives the current season and resets <u>every player's</u> rating, wins and losses on both boards to a flat <span id="startSeasonResetEloLabel" class="text-rose-600"></span>. Nothing is deleted - every match ever played stays fully accessible, split out by season, on player profiles and the Match History page.</p>
+                <div class="text-left mb-6">
+                    <label class="text-[10px] font-bold uppercase text-gray-400">New Season Name</label>
+                    <input type="text" id="startSeasonName" placeholder="e.g. Season 2 (2026)" class="p-3 border-2 rounded w-full font-bold mt-1">
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <button onclick="confirmStartSeason()" id="startSeasonFinalBtn"
+                            style="background-color: #e11d48 !important; color: #ffffff !important;"
+                            class="w-full py-4 rounded font-black uppercase tracking-widest shadow-lg hover:bg-rose-700 transition">
+                        Archive &amp; Start New Season
+                    </button>
+                    <button onclick="closeStartSeasonModal()" class="w-full py-2 font-bold uppercase text-gray-400 hover:text-black transition">
                         Cancel
                     </button>
                 </div>
