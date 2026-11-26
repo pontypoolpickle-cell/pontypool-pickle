@@ -1999,6 +1999,15 @@
           created_at timestamptz not null default now()
         );
 
+        -- No RLS on either table above - same "no RLS, client code is the
+        -- boundary" posture as the rest of this schema. Explicitly disabled
+        -- here as a safety net: a table created via the Supabase Table
+        -- Editor UI (rather than pasted into the SQL Editor) defaults to
+        -- RLS ON with no policies, which silently blocks every
+        -- insert/update with "new row violates row-level security policy".
+        alter table randomizer_session disable row level security;
+        alter table randomizer_games disable row level security;
+
         create table if not exists hall_of_fame (
           id uuid primary key default gen_random_uuid(),
           event_id uuid references events(id),
@@ -2011,6 +2020,7 @@
           wins integer not null default 0,
           created_at timestamptz not null default now()
         );
+        alter table hall_of_fame disable row level security;
         */
 
         const SUPABASE_URL = 'https://ujoiitdnmmvgnmplwlcz.supabase.co';
