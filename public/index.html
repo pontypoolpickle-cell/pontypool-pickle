@@ -736,6 +736,36 @@
                     </label>
                 </div>
 
+                <!-- DUPR Membership Number (item #2) - optional, with a public/
+                     private toggle. Admins can always see it regardless of this
+                     toggle - see buildProfileView()/openAdminPlayerProfile(). -->
+                <div class="card p-6 border-t-8 border-indigo-600 space-y-3">
+                    <h3 class="font-black uppercase text-sm text-gray-500">🏓 DUPR Membership Number</h3>
+                    <input type="text" id="profileDuprInput" placeholder="e.g. 1234-5678" class="input-field border-2 w-full">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" id="profileDuprPublicToggle" class="w-5 h-5 accent-indigo-600 flex-shrink-0">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase leading-relaxed">Show my DUPR number publicly on my profile</span>
+                    </label>
+                    <div class="flex justify-end">
+                        <button onclick="handleSaveOwnDupr()" id="profileDuprSaveBtn" class="bg-black text-white px-5 py-2.5 rounded-xl font-black uppercase text-xs hover:bg-indigo-600 transition">Save DUPR Number</button>
+                    </div>
+                </div>
+
+                <!-- Emergency Contact Info (items #3 & #4) - mandatory at sign up,
+                     editable here any time by the active member themselves. Never
+                     shown on any public profile - only the member and admins can
+                     see it (fetched on demand, see fetchOwnEmergencyContact()). -->
+                <div class="card p-6 border-t-8 border-black space-y-3">
+                    <h3 class="font-black uppercase text-sm text-gray-500">🚨 Emergency Contact</h3>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase leading-relaxed">Kept private - only visible to you and club admins, in case of emergency during a session.</p>
+                    <input type="text" id="profileEmergencyName" placeholder="Contact Full Name" class="input-field border-2 w-full">
+                    <input type="tel" id="profileEmergencyPhone" placeholder="Contact Phone Number" class="input-field border-2 w-full">
+                    <input type="text" id="profileEmergencyRelationship" placeholder="Relationship (e.g. Spouse, Parent, Friend)" class="input-field border-2 w-full">
+                    <div class="flex justify-end">
+                        <button onclick="handleSaveOwnEmergencyContact()" id="profileEmergencySaveBtn" class="bg-black text-white px-5 py-2.5 rounded-xl font-black uppercase text-xs hover:bg-rose-600 transition">Save Emergency Contact</button>
+                    </div>
+                </div>
+
                 <!-- Stats (shared with the "View Profile" popup - see buildProfileView()) -->
                 <div id="profileStatsBody" class="space-y-6"></div>
             </div>
@@ -1324,6 +1354,10 @@
         let adminMatchesVisible = 10;
         let adminTimeout;
         let currentUser = null;
+        // Items #3/#4: tracks which username's Emergency Contact fields have
+        // already been fetched into the Profile tab this session - see
+        // renderProfilePage()/fetchOwnEmergencyContact().
+        let profileEmergencyContactLoadedFor = null;
         let currentTabId = 'welcome-page'; // Tracks the active tab
 
         /*
@@ -1536,6 +1570,20 @@
         -- toggle on the Profile tab. Defaults to false (today's behaviour)
         -- until a player explicitly opts in.
         alter table users add column if not exists profile_public boolean not null default false;
+
+        -- DUPR membership number (item #2) + emergency contact (items #3/#4) -
+        -- see supabase/sql/add_dupr_and_emergency_contact_columns.sql for the
+        -- full explanation. In short: dupr_number/dupr_public let a player
+        -- optionally show their DUPR number on their own profile (admins can
+        -- always see it regardless of dupr_public); the emergency_contact_*
+        -- columns are mandatory at sign up, editable afterwards from the
+        -- Profile tab, and are never shown on any public-facing page - only
+        -- fetched on demand for the player themselves or an admin.
+        alter table users add column if not exists dupr_number text;
+        alter table users add column if not exists dupr_public boolean not null default false;
+        alter table users add column if not exists emergency_contact_name text;
+        alter table users add column if not exists emergency_contact_phone text;
+        alter table users add column if not exists emergency_contact_relationship text;
 
         -- Site settings (item #9) - simple key/value store for singleton
         -- admin-managed values (currently just the Rules PDF link) so future
@@ -2255,7 +2303,13 @@
                 // Climber of the Week card) - see openProfile()/
                 // saveOwnProfileVisibility(). Defaults to false (today's
                 // behaviour: Members Only) until a player explicitly opts in.
-                profilePublic: !!u.profile_public
+                profilePublic: !!u.profile_public,
+                // Item #2: DUPR membership number - dupr_public only gates
+                // whether it's shown to OTHER players on this player's public
+                // profile view; admins always see it regardless (see
+                // buildProfileView()/openAdminPlayerProfile()).
+                duprNumber: u.dupr_number || '',
+                duprPublic: !!u.dupr_public
             };
         }
 
@@ -4820,6 +4874,104 @@
             return !!isPublic;
         }
 
+        // Item #2: DUPR membership number + public/private toggle. Fetched as
+        // part of the normal members list (dupr_number/dupr_public aren't
+        // sensitive the way balance/emergency contact are - the whole point is
+        // that they're sometimes shown on a public profile) so no separate
+        // fetch is needed here, just an update + the same globalData patch
+        // pattern used by saveOwnBio()/saveOwnProfileVisibility() above.
+        async function saveOwnDupr(duprNumber, isPublic) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const trimmed = String(duprNumber || '').trim();
+            const { error } = await supabaseClient.from('users').update({
+                dupr_number: trimmed || null,
+                dupr_public: !!isPublic
+            }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            patchOwnProfileExtrasInGlobalData({ duprNumber: trimmed, duprPublic: !!isPublic });
+            return { duprNumber: trimmed, duprPublic: !!isPublic };
+        }
+
+        function handleSaveOwnDupr() {
+            const input = document.getElementById('profileDuprInput');
+            const toggle = document.getElementById('profileDuprPublicToggle');
+            const btn = document.getElementById('profileDuprSaveBtn');
+            if (!input || !toggle || !btn) return;
+
+            btn.disabled = true;
+            btn.innerText = "Saving...";
+
+            saveOwnDupr(input.value, toggle.checked)
+                .then(() => {
+                    triggerToast("DUPR number saved!");
+                    btn.disabled = false;
+                    btn.innerText = "Save DUPR Number";
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    btn.disabled = false;
+                    btn.innerText = "Save DUPR Number";
+                });
+        }
+
+        // Items #3 & #4: Emergency Contact info. Unlike bio/DUPR, this is
+        // sensitive personal data that has no business value being shown on
+        // anyone's profile, so (like wallet balance - see
+        // openAdminPlayerProfile()) it's deliberately left OUT of the broad
+        // `members` fetch every visitor's browser loads for the public
+        // leaderboard, and is instead fetched on demand: here, for the
+        // logged-in player's own record, and separately for admins viewing a
+        // specific player's profile (see openAdminPlayerProfile()).
+        async function fetchOwnEmergencyContact() {
+            if (!currentUser) throw new Error('Please log in first.');
+            const { data, error } = await supabaseClient.from('users')
+                .select('emergency_contact_name, emergency_contact_phone, emergency_contact_relationship')
+                .eq('username', currentUser.username)
+                .maybeSingle();
+            if (error) throw new Error(error.message);
+            return data || {};
+        }
+
+        async function saveOwnEmergencyContact(name, phone, relationship) {
+            if (!currentUser) throw new Error('Please log in first.');
+            const trimmedName = String(name || '').trim();
+            const trimmedPhone = String(phone || '').trim();
+            const trimmedRelationship = String(relationship || '').trim();
+            if (!trimmedName || !trimmedPhone || !trimmedRelationship) {
+                throw new Error('Please fill in all three emergency contact fields.');
+            }
+            const { error } = await supabaseClient.from('users').update({
+                emergency_contact_name: trimmedName,
+                emergency_contact_phone: trimmedPhone,
+                emergency_contact_relationship: trimmedRelationship
+            }).eq('username', currentUser.username);
+            if (error) throw new Error(error.message);
+            return { name: trimmedName, phone: trimmedPhone, relationship: trimmedRelationship };
+        }
+
+        function handleSaveOwnEmergencyContact() {
+            const nameInput = document.getElementById('profileEmergencyName');
+            const phoneInput = document.getElementById('profileEmergencyPhone');
+            const relInput = document.getElementById('profileEmergencyRelationship');
+            const btn = document.getElementById('profileEmergencySaveBtn');
+            if (!nameInput || !phoneInput || !relInput || !btn) return;
+
+            btn.disabled = true;
+            btn.innerText = "Saving...";
+
+            saveOwnEmergencyContact(nameInput.value, phoneInput.value, relInput.value)
+                .then(() => {
+                    triggerToast("Emergency contact saved!");
+                    btn.disabled = false;
+                    btn.innerText = "Save Emergency Contact";
+                })
+                .catch(err => {
+                    triggerError(err.message);
+                    btn.disabled = false;
+                    btn.innerText = "Save Emergency Contact";
+                });
+        }
+
         // Wallet system: paying for an event is now an automatic, near-instant step
         // right after signing up (see payForEventSignupNow()) rather than something
         // a member has 15 minutes to go and do separately via bank transfer. This
@@ -5259,7 +5411,11 @@
                 starting_elo: NEW_SIGNUP_STARTING_ELO,
                 is_under18: !!data.isUnder18,
                 consent_verified: false,
-                status: 'Pending'
+                status: 'Pending',
+                // Item #3: mandatory emergency contact, collected at sign up.
+                emergency_contact_name: String(data.emergencyContactName || '').trim(),
+                emergency_contact_phone: String(data.emergencyContactPhone || '').trim(),
+                emergency_contact_relationship: String(data.emergencyContactRelationship || '').trim()
             });
             if (error) throw new Error(error.message);
             clearLeagueCache();
@@ -6681,6 +6837,9 @@
                 : '';
             document.getElementById('playerProfileEmail').innerText = m.email || 'Not provided';
             document.getElementById('playerProfileRole').innerText = `${m.role} / ${m.status}`;
+            // Item #2: shown to admins regardless of this player's own
+            // public/private DUPR toggle.
+            document.getElementById('playerProfileDuprNumber').innerText = m.duprNumber || 'Not provided';
             document.getElementById('playerProfileMembershipNumberInput').value = m.membershipNumber || '';
             document.getElementById('playerProfileBalanceAdjustAmount').value = '';
             document.getElementById('playerProfileBalanceAdjustNote').value = '';
@@ -6716,6 +6875,20 @@
                 currentAdminPlayerProfile.userId = data.id;
                 document.getElementById('playerProfileBalance').innerText = '£' + Number(data.balance || 0).toFixed(2);
             });
+
+            // Items #3/#4: Emergency Contact - admins can always see it,
+            // fetched on demand (never part of the broad members list) same
+            // as wallet balance above.
+            supabaseClient.from('users')
+                .select('emergency_contact_name, emergency_contact_phone, emergency_contact_relationship')
+                .eq('username', username)
+                .maybeSingle()
+                .then(({ data, error }) => {
+                    const el = document.getElementById('playerProfileEmergencyContact');
+                    if (!el) return;
+                    if (error || !data || !data.emergency_contact_name) { el.innerText = 'Not provided'; return; }
+                    el.innerText = `${data.emergency_contact_name} (${data.emergency_contact_relationship || 'Unknown relation'}) — ${data.emergency_contact_phone || 'No phone provided'}`;
+                });
         }
 
         function savePlayerBalanceAdjustment() {
@@ -7290,6 +7463,25 @@
                         <p class="text-sm font-bold text-gray-700 whitespace-pre-wrap break-words">${escapeHtml(bio)}</p>
                    </div>`
                 : '';
+
+            // Item #2: DUPR number shows on the profile when the player has
+            // opted it public, OR when the viewer is an admin (admins can
+            // always see every player's DUPR number regardless of the
+            // checkbox). A non-public number viewed by an admin is labelled
+            // "Admin Only" so it's clear to the admin it isn't visible to
+            // anyone else.
+            const viewerIsAdmin = !!(currentUser && currentUser.role === 'Admin');
+            const duprNumber = memberRecord && memberRecord.duprNumber ? memberRecord.duprNumber : '';
+            const duprIsPublic = !!(memberRecord && memberRecord.duprPublic);
+            const duprHtml = duprNumber && (duprIsPublic || viewerIsAdmin)
+                ? `<div class="bg-indigo-50 border-l-4 border-indigo-600 rounded-xl p-4 flex items-center justify-between gap-2">
+                        <div>
+                            <p class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">🏓 DUPR Number</p>
+                            <p class="text-sm font-black text-indigo-900">${escapeHtml(duprNumber)}</p>
+                        </div>
+                        ${!duprIsPublic ? `<span class="text-[9px] font-black uppercase bg-indigo-600 text-white px-2 py-1 rounded-full flex-shrink-0">🔒 Admin Only</span>` : ''}
+                   </div>`
+                : '';
             const headerHtml = `
                 <div class="flex items-center gap-3">
                     ${avatarHtml}
@@ -7367,6 +7559,7 @@
             // 6. Build Body
             const bodyHtml = `
                 ${bioHtml}
+                ${duprHtml}
                 ${headToHeadHtml}
                 <div class="grid grid-cols-2 gap-4">
                     <div class="stat-card border-l-4 border-black p-3 text-left bg-gray-50 rounded-xl">
@@ -7548,6 +7741,34 @@
             // instantly (no draft text to lose on a background re-render).
             const publicToggle = document.getElementById('profilePublicToggle');
             if (publicToggle) publicToggle.checked = !!(memberRecord && memberRecord.profilePublic);
+
+            // Item #2: DUPR number + public toggle - same draft-safe guard as
+            // the bio textarea above (don't stomp on it mid-edit).
+            const duprInput = document.getElementById('profileDuprInput');
+            if (duprInput && document.activeElement !== duprInput) {
+                duprInput.value = memberRecord && memberRecord.duprNumber ? memberRecord.duprNumber : '';
+            }
+            const duprPublicToggle = document.getElementById('profileDuprPublicToggle');
+            if (duprPublicToggle) duprPublicToggle.checked = !!(memberRecord && memberRecord.duprPublic);
+
+            // Items #3/#4: Emergency Contact - deliberately NOT part of
+            // globalData.members (see fetchOwnEmergencyContact()), so it's
+            // fetched once per Profile tab visit rather than on every
+            // background re-render, both to avoid a wasted extra request on
+            // every refresh and to never stomp on an in-progress edit.
+            if (!profileEmergencyContactLoadedFor || profileEmergencyContactLoadedFor !== currentUser.username) {
+                profileEmergencyContactLoadedFor = currentUser.username;
+                fetchOwnEmergencyContact()
+                    .then(ec => {
+                        const nameInput = document.getElementById('profileEmergencyName');
+                        const phoneInput = document.getElementById('profileEmergencyPhone');
+                        const relInput = document.getElementById('profileEmergencyRelationship');
+                        if (nameInput) nameInput.value = ec.emergency_contact_name || '';
+                        if (phoneInput) phoneInput.value = ec.emergency_contact_phone || '';
+                        if (relInput) relInput.value = ec.emergency_contact_relationship || '';
+                    })
+                    .catch(() => { profileEmergencyContactLoadedFor = null; });
+            }
 
             // Item #9: nudge players who haven't set a photo and/or bio yet -
             // hidden automatically once both are filled in.
@@ -10935,7 +11156,12 @@
                 username: document.getElementById('regUser').value.trim(),
                 password: document.getElementById('regPass').value.trim(),
                 gender: document.getElementById('regGender').value,
-                isUnder18: isUnder18
+                isUnder18: isUnder18,
+                // Item #3: mandatory emergency contact info, collected here
+                // at sign up (also editable later from the Profile tab - item #4).
+                emergencyContactName: document.getElementById('regEmergencyName').value.trim(),
+                emergencyContactPhone: document.getElementById('regEmergencyPhone').value.trim(),
+                emergencyContactRelationship: document.getElementById('regEmergencyRelationship').value.trim()
                 };
 
                 const btn = document.getElementById('signupSubmitBtn');
@@ -10944,6 +11170,10 @@
 
                 if (!data.username || !data.password || !data.firstName || !data.email) {
                     return triggerError("Please fill in all required fields, including your email address.");
+                }
+
+                if (!data.emergencyContactName || !data.emergencyContactPhone || !data.emergencyContactRelationship) {
+                    return triggerError("Please provide emergency contact details (name, phone and relationship) - this is required for everyone's safety.");
                 }
 
                 if (data.password !== confirmPass) {
@@ -10970,7 +11200,7 @@
                     triggerSuccess("Application Submitted", "An admin will review your account soon.");
                     
                     // Clear the form fields
-                    ['regFirst', 'regLast', 'regEmail', 'regUser', 'regPass', 'regPassConfirm'].forEach(id => {
+                    ['regFirst', 'regLast', 'regEmail', 'regUser', 'regPass', 'regPassConfirm', 'regEmergencyName', 'regEmergencyPhone', 'regEmergencyRelationship'].forEach(id => {
                         document.getElementById(id).value = "";
                     });
                     document.getElementById('regUnder18').checked = false;
@@ -12358,6 +12588,21 @@
                     </div>
                     <p class="text-[10px] text-gray-400 font-bold sm:col-span-2">Each reset only affects that one board and instantly returns it to the same fresh rating a brand-new sign-up gets, with 0 wins/losses on that board. Full match history is kept and stays visible on the profile either way - only the current rating and career W/L on the reset board are affected.</p>
                 </div>
+                <!-- Item #2: admins can always see a player's DUPR number
+                     regardless of their public/private toggle - see
+                     openAdminPlayerProfile(). Read-only here (the player
+                     manages it themselves from their Profile tab). -->
+                <div class="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                    <p class="text-[9px] font-bold text-indigo-400 uppercase mb-2">🏓 DUPR Membership Number</p>
+                    <p id="playerProfileDuprNumber" class="font-black text-sm"></p>
+                </div>
+                <!-- Items #3/#4: admins can always see a player's emergency
+                     contact info, fetched on demand (never part of the broad
+                     members list) - see openAdminPlayerProfile(). -->
+                <div class="bg-rose-50 rounded-xl p-4 border border-rose-100">
+                    <p class="text-[9px] font-bold text-rose-400 uppercase mb-2">🚨 Emergency Contact</p>
+                    <p id="playerProfileEmergencyContact" class="font-black text-sm">Loading...</p>
+                </div>
                 <div class="bg-rose-50 rounded-xl p-4 border border-rose-100">
                     <p class="text-[9px] font-bold text-rose-400 uppercase mb-2">Membership Number</p>
                     <div class="flex gap-2 items-center">
@@ -12914,6 +13159,16 @@
                     <span class="text-xs font-black uppercase text-green-700">✅ Consent form submitted to the club — thank you!</span>
                 </div>
                 <input type="hidden" id="regConsentAck" value="">
+            </div>
+            <!-- Item #3: mandatory emergency contact info, collected at sign up
+                 alongside everything else - see processSignup()/registerUser().
+                 Editable later from the Profile tab (item #4) - see
+                 saveOwnEmergencyContact(). -->
+            <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-3">
+                <p class="text-[10px] font-black uppercase text-rose-600 tracking-widest">🚨 Emergency Contact (Required)</p>
+                <input type="text" id="regEmergencyName" placeholder="Emergency Contact Full Name" class="input-field border-2">
+                <input type="tel" id="regEmergencyPhone" placeholder="Emergency Contact Phone Number" class="input-field border-2">
+                <input type="text" id="regEmergencyRelationship" placeholder="Relationship (e.g. Spouse, Parent, Friend)" class="input-field border-2">
             </div>
             <input type="text" id="regUser" placeholder="Choose Username" class="input-field border-2">
             <div class="relative">
