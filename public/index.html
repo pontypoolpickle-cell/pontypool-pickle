@@ -6332,13 +6332,18 @@
                 return `
                 <div class="card p-5 border-l-4 space-y-3" style="border-color:#0d9488 !important;">
                     <p class="text-xs font-black uppercase text-gray-400">Court ${g.court}</p>
-                    <div class="grid grid-cols-2 gap-4 items-center">
+                    <!-- Stacks to one column on narrow screens (no "truncate")
+                         so both players' full names are always readable -
+                         these get called out loud court-side, so a cut-off
+                         "Shane Rowlands & ..." is no good. -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:items-center">
                         <div class="text-center">
-                            <p class="text-sm font-black uppercase truncate">${escapeHtml(g.p1)} &amp; ${escapeHtml(g.p2)}</p>
+                            <p class="text-sm font-black uppercase break-words">${escapeHtml(g.p1)} &amp; ${escapeHtml(g.p2)}</p>
                             <input type="number" min="0" value="${g.scoreA}" id="${scoreAId}" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
                         </div>
+                        <p class="text-center text-[10px] font-bold text-gray-400 uppercase sm:hidden">vs</p>
                         <div class="text-center">
-                            <p class="text-sm font-black uppercase truncate">${escapeHtml(g.p3)} &amp; ${escapeHtml(g.p4)}</p>
+                            <p class="text-sm font-black uppercase break-words">${escapeHtml(g.p3)} &amp; ${escapeHtml(g.p4)}</p>
                             <input type="number" min="0" value="${g.scoreB}" id="${scoreBId}" ${locked ? 'disabled' : ''} class="input-field border-2 text-center mt-2 ${locked ? 'bg-gray-100' : ''}" placeholder="Score">
                         </div>
                     </div>
